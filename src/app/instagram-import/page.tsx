@@ -35,6 +35,8 @@ interface ImportResult {
 function InstagramImportContent() {
   const searchParams = useSearchParams();
   const cuisineId = searchParams.get("cuisine_id") || "";
+  const importBase = process.env.NEXT_PUBLIC_IMPORT_API_BASE || "";
+  const instagramApi = importBase ? `${importBase}/api/import-instagram` : "/api/import-instagram";
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -51,7 +53,7 @@ function InstagramImportContent() {
     setSaveMessage(null);
 
     try {
-      const response = await fetch("/api/import-instagram", {
+      const response = await fetch(instagramApi, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

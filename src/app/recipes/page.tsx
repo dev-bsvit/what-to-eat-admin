@@ -95,6 +95,8 @@ export default function RecipesPage() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
   const cuisineId = searchParams.get("cuisine");
+  const importBase = process.env.NEXT_PUBLIC_IMPORT_API_BASE || "";
+  const instagramApi = importBase ? `${importBase}/api/import-instagram` : "/api/import-instagram";
 
   const [form, setForm] = useState(initialState);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -373,7 +375,7 @@ export default function RecipesPage() {
     setInstagramStatus("Импортируем...");
 
     try {
-      const response = await fetch("/api/import-instagram", {
+      const response = await fetch(instagramApi, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),

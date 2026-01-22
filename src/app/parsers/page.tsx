@@ -3,6 +3,8 @@
 import Link from "next/link";
 
 export default function ParsersPage() {
+  const importBase = process.env.NEXT_PUBLIC_IMPORT_API_BASE || "";
+  const apiDocsUrl = importBase ? `${importBase}/api/import-recipe` : "/api/import-recipe";
   const parsers = [
     {
       name: "food.ru",
@@ -127,7 +129,7 @@ export default function ParsersPage() {
             📷 Instagram импорт
           </Link>
           <a
-            href="/api/import-recipe"
+            href={apiDocsUrl}
             target="_blank"
             style={{
               padding: "10px 20px",

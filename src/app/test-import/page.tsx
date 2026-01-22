@@ -38,6 +38,8 @@ export default function TestImportPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const importBase = process.env.NEXT_PUBLIC_IMPORT_API_BASE || "";
+  const recipeApi = importBase ? `${importBase}/api/import-recipe` : "/api/import-recipe";
 
   const handleImport = async () => {
     if (!url.trim()) return;
@@ -47,7 +49,7 @@ export default function TestImportPage() {
     setResult(null);
 
     try {
-      const response = await fetch("/api/import-recipe", {
+      const response = await fetch(recipeApi, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
