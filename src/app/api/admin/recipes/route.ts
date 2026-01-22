@@ -132,8 +132,8 @@ export async function POST(request: Request) {
       }
     }
 
+    const recipeId = isUuid(body?.id) ? body.id : null;
     const payload = {
-      id: normalizeText(body.id),
       title: normalizeText(body.title),
       description: normalizeText(body.description),
       image_url: normalizeText(body.image_url),
@@ -172,11 +172,18 @@ export async function POST(request: Request) {
       translations: parseJson(body.translations),
     };
 
-    const { data, error } = await supabaseAdmin
-      .from("recipes")
-      .upsert(payload, { onConflict: "id" })
-      .select()
-      .single();
+    const payloadWithId = recipeId ? { ...payload, id: recipeId } : payload;
+    const { data, error } = recipeId
+      ? await supabaseAdmin
+          .from("recipes")
+          .upsert(payloadWithId, { onConflict: "id" })
+          .select()
+          .single()
+      : await supabaseAdmin
+          .from("recipes")
+          .insert(payloadWithId)
+          .select()
+          .single();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
