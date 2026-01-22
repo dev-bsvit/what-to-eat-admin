@@ -77,6 +77,19 @@ function getDomain(url: string) {
   }
 }
 
+function normalizeInstagramUrl(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.search = "";
+    parsed.hash = "";
+    const path = parsed.pathname.endsWith("/") ? parsed.pathname : `${parsed.pathname}/`;
+    parsed.pathname = path;
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 function extractJson(content: string) {
   const match = content.match(/\{[\s\S]*\}/);
   return match ? match[0] : content;
@@ -258,6 +271,7 @@ export async function POST(request: Request) {
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
+    const normalizedUrl = normalizeInstagramUrl(url.trim());
 
     const cwd = process.cwd();
     const outputDir = path.join(cwd, "tmp", "instagram");
@@ -275,7 +289,7 @@ export async function POST(request: Request) {
     for (const candidate of pythonCandidates) {
       const result = await runProcess(
         candidate,
-        [scriptPath, "--url", url, "--output", outputDir],
+        [scriptPath, "--url", normalizedUrl, "--output", outputDir],
         cwd
       );
       pythonUsed = candidate;

@@ -102,6 +102,19 @@ function getDomain(url: string): string | undefined {
   }
 }
 
+function normalizeInstagramUrl(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.search = "";
+    parsed.hash = "";
+    const path = parsed.pathname.endsWith("/") ? parsed.pathname : `${parsed.pathname}/`;
+    parsed.pathname = path;
+    return parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 // ============================================================================
 // User limits checking
 // ============================================================================
@@ -377,6 +390,7 @@ async function importFromInstagram(url: string, apiKey: string): Promise<Importe
   await fs.mkdir(outputDir, { recursive: true });
 
   const scriptPath = path.join(cwd, "scripts", "instagram_import.py");
+  const normalizedUrl = normalizeInstagramUrl(url);
   const pythonCandidates = [
     process.env.PYTHON_PATH,
     "python3",
@@ -385,7 +399,7 @@ async function importFromInstagram(url: string, apiKey: string): Promise<Importe
 
   let extraction = { code: 127, stdout: "", stderr: "Python not found" };
   for (const candidate of pythonCandidates) {
-    const result = await runProcess(candidate, [scriptPath, "--url", url, "--output", outputDir], cwd);
+    const result = await runProcess(candidate, [scriptPath, "--url", normalizedUrl, "--output", outputDir], cwd);
     if (result.code === 0) {
       extraction = result;
       break;
