@@ -43,7 +43,14 @@ const TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
 
 function runProcess(command: string, args: string[], cwd: string) {
   return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-    const child = spawn(command, args, { cwd });
+    let child;
+    try {
+      child = spawn(command, args, { cwd });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      resolve({ code: 127, stdout: "", stderr: message });
+      return;
+    }
     let stdout = "";
     let stderr = "";
 
