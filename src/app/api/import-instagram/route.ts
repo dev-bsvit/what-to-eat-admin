@@ -287,6 +287,7 @@ export async function POST(request: Request) {
     ].filter(Boolean) as string[];
 
     let extraction = { code: 127, stdout: "", stderr: "Python not found" };
+    const attempts: Array<{ command: string; code: number; stderr: string }> = [];
     let pythonUsed = "";
     for (const candidate of pythonCandidates) {
       const result = await runProcess(
@@ -294,6 +295,11 @@ export async function POST(request: Request) {
         [scriptPath, "--url", normalizedUrl, "--output", outputDir],
         cwd
       );
+      attempts.push({
+        command: candidate,
+        code: result.code,
+        stderr: result.stderr?.slice(0, 200) || "",
+      });
       pythonUsed = candidate;
       if (result.code === 0) {
         extraction = result;
@@ -309,6 +315,7 @@ export async function POST(request: Request) {
           details: extraction.stderr || extraction.stdout,
           python: pythonUsed || pythonCandidates[0],
           candidates: pythonCandidates,
+          attempts,
         },
         { status: 500 }
       );
