@@ -393,6 +393,8 @@ async function importFromInstagram(url: string, apiKey: string): Promise<Importe
   const normalizedUrl = normalizeInstagramUrl(url);
   const pythonCandidates = [
     process.env.PYTHON_PATH,
+    "/usr/bin/python3",
+    "/usr/local/bin/python3",
     "python3",
     "python",
   ].filter(Boolean) as string[];

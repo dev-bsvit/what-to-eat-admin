@@ -280,6 +280,8 @@ export async function POST(request: Request) {
     const scriptPath = path.join(cwd, "scripts", "instagram_import.py");
     const pythonCandidates = [
       process.env.PYTHON_PATH,
+      "/usr/bin/python3",
+      "/usr/local/bin/python3",
       "python3",
       "python",
     ].filter(Boolean) as string[];
@@ -306,6 +308,7 @@ export async function POST(request: Request) {
           error: "Instagram extract failed",
           details: extraction.stderr || extraction.stdout,
           python: pythonUsed || pythonCandidates[0],
+          candidates: pythonCandidates,
         },
         { status: 500 }
       );
