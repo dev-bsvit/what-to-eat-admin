@@ -189,19 +189,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    const recipeId = data.id as string;
+    const savedRecipeId = data.id as string;
 
     if (Array.isArray(normalizedIngredients)) {
       await supabaseAdmin
         .from("recipe_ingredients")
         .delete()
-        .eq("recipe_id", recipeId);
+        .eq("recipe_id", savedRecipeId);
 
       const ingredientsRows = await Promise.all(
         normalizedIngredients.map(async (item: any, index: number) => {
           const productId = isUuid(item?.id) ? item.id : await resolveProductId(item?.name);
           return {
-            recipe_id: recipeId,
+            recipe_id: savedRecipeId,
             product_dictionary_id: productId,
             amount: typeof item?.quantity === "number" ? item.quantity : parseNumber(item?.quantity),
             unit: normalizeText(item?.unit),
@@ -229,11 +229,11 @@ export async function POST(request: Request) {
       await supabaseAdmin
         .from("recipe_steps")
         .delete()
-        .eq("recipe_id", recipeId);
+        .eq("recipe_id", savedRecipeId);
 
       const stepsRows = parsedInstructions
         .map((step: any, index: number) => ({
-          recipe_id: recipeId,
+          recipe_id: savedRecipeId,
           text: normalizeText(step),
           order_index: index,
         }))
