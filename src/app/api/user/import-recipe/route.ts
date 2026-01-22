@@ -210,6 +210,9 @@ function runProcess(command: string, args: string[], cwd: string) {
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
+    child.on("error", (error) => {
+      resolve({ code: 127, stdout, stderr: error.message });
+    });
     child.on("close", (code) => {
       resolve({ code: code ?? 0, stdout, stderr });
     });
@@ -367,9 +370,21 @@ async function importFromInstagram(url: string, apiKey: string): Promise<Importe
   await fs.mkdir(outputDir, { recursive: true });
 
   const scriptPath = path.join(cwd, "scripts", "instagram_import.py");
-  const pythonPath = process.env.PYTHON_PATH || "python3";
+  const pythonCandidates = [
+    process.env.PYTHON_PATH,
+    "python3",
+    "python",
+  ].filter(Boolean) as string[];
 
-  const extraction = await runProcess(pythonPath, [scriptPath, "--url", url, "--output", outputDir], cwd);
+  let extraction = { code: 127, stdout: "", stderr: "Python not found" };
+  for (const candidate of pythonCandidates) {
+    const result = await runProcess(candidate, [scriptPath, "--url", url, "--output", outputDir], cwd);
+    if (result.code === 0) {
+      extraction = result;
+      break;
+    }
+    extraction = result;
+  }
 
   if (extraction.code !== 0) {
     throw new Error(`Instagram extract failed: ${extraction.stderr || extraction.stdout}`);
