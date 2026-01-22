@@ -54,13 +54,14 @@ def main() -> int:
     owner_username = getattr(post, "owner_username", None)
 
     video_path = None
+    video_error = None
     if post.is_video and post.video_url:
         video_path = os.path.join(args.output, f"{shortcode}.mp4")
         try:
             download_video(post.video_url, video_path)
         except Exception as exc:
-            print(json.dumps({"error": "video_download_failed", "message": str(exc)}))
-            return 4
+            video_error = str(exc)
+            video_path = None
 
     payload = {
         "shortcode": shortcode,
@@ -69,6 +70,7 @@ def main() -> int:
         "video_path": video_path,
         "source_url": args.url,
         "owner_username": owner_username,
+        "video_error": video_error,
     }
 
     print(json.dumps(payload, ensure_ascii=True))
