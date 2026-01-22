@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python3", "python3Packages.pip", "ffmpeg"]
+
+[phases.install]
+cmds = ["npm install", "pip3 install -r requirements.txt"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"
