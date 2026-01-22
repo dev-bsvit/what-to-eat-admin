@@ -1,0 +1,706 @@
+import { NextResponse } from "next/server";
+import * as cheerio from "cheerio";
+
+// Интерфейс для импортированного рецепта
+interface ImportedRecipe {
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  prepTime?: number; // минуты
+  cookTime?: number; // минуты
+  servings?: number;
+  cuisine?: string;
+  tags: string[];
+  ingredients: Array<{
+    name: string;
+    amount: string;
+    unit: string;
+    note?: string;
+  }>;
+  steps: Array<{
+    text: string;
+  }>;
+  sourceUrl: string;
+  sourceDomain?: string;
+  confidence: "high" | "medium" | "low"; // Уверенность в качестве парсинга
+}
+
+export async function POST(request: Request) {
+  try {
+    const { url } = await request.json();
+
+    if (!url || typeof url !== "string") {
+      return NextResponse.json(
+        { error: "URL is required" },
+        { status: 400 }
+      );
+    }
+
+    console.log("🌐 Импорт рецепта из:", url);
+
+    // Загружаем HTML страницы
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ru,en-US;q=0.9,en;q=0.8",
+      },
+    });
+
+    if (!response.ok) {
+      console.error("❌ Ошибка загрузки:", response.status, response.statusText);
+      return NextResponse.json(
+        { error: "Failed to fetch URL", details: response.statusText },
+        { status: 400 }
+      );
+    }
+
+    const html = await response.text();
+    console.log("✅ HTML загружен, размер:", html.length, "байт");
+
+    // Пытаемся извлечь рецепт разными способами
+    let recipe: ImportedRecipe | null = null;
+    let method = "";
+
+    // 1. Пробуем JSON-LD Schema.org (лучший вариант)
+    recipe = extractFromJsonLD(html, url);
+    if (recipe) {
+      method = "JSON-LD Schema.org";
+      console.log("✅ Рецепт извлечён через JSON-LD");
+    }
+
+    // 2. Если не получилось, пробуем специфичные парсеры для популярных сайтов
+    if (!recipe) {
+      recipe = extractFromKnownSites(html, url);
+      if (recipe) {
+        method = "Site-specific parser";
+        console.log("✅ Рецепт извлечён через специфичный парсер");
+      }
+    }
+
+    // 3. Запасной вариант: OpenGraph + базовый парсинг HTML
+    if (!recipe) {
+      recipe = extractFromOpenGraphAndHtml(html, url);
+      method = "OpenGraph + HTML fallback";
+      console.log("⚠️ Рецепт извлечён через fallback (низкое качество)");
+    }
+
+    if (!recipe) {
+      return NextResponse.json(
+        {
+          error: "Recipe not found",
+          message: "Не удалось найти рецепт на этой странице. Попробуйте другую ссылку или добавьте рецепт вручную.",
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      recipe,
+      meta: {
+        method,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Ошибка импорта рецепта:", error);
+    return NextResponse.json(
+      {
+        error: "Import failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================================================
+// 1. Извлечение из JSON-LD Schema.org
+// ============================================================================
+
+function extractFromJsonLD(html: string, sourceUrl: string): ImportedRecipe | null {
+  try {
+    // Ищем все <script type="application/ld+json">
+    const jsonLdMatches = html.matchAll(
+      /<script[^>]*type=["']application\/ld\+json["'][^>]*>(.*?)<\/script>/gis
+    );
+
+    for (const match of jsonLdMatches) {
+      try {
+        const jsonString = match[1].trim();
+        const data = JSON.parse(jsonString);
+
+        // Ищем рецепт в JSON (может быть вложен в @graph или массив)
+        const recipe = findRecipeInJson(data);
+        if (recipe) {
+          return parseRecipeFromJsonLD(recipe, sourceUrl);
+        }
+      } catch (e) {
+        console.log("⚠️ Ошибка парсинга JSON-LD блока:", e);
+        continue;
+      }
+    }
+  } catch (e) {
+    console.log("⚠️ Ошибка поиска JSON-LD:", e);
+  }
+
+  return null;
+}
+
+function findRecipeInJson(data: any): any {
+  if (!data) return null;
+
+  // Если это объект с @type: "Recipe"
+  if (data["@type"]) {
+    const type = Array.isArray(data["@type"]) ? data["@type"] : [data["@type"]];
+    if (type.some((t: string) => t.toLowerCase().includes("recipe"))) {
+      return data;
+    }
+  }
+
+  // Ищем в @graph
+  if (data["@graph"] && Array.isArray(data["@graph"])) {
+    for (const item of data["@graph"]) {
+      const found = findRecipeInJson(item);
+      if (found) return found;
+    }
+  }
+
+  // Ищем в массиве
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const found = findRecipeInJson(item);
+      if (found) return found;
+    }
+  }
+
+  // Ищем в mainEntity (для QAPage и т.д.)
+  if (data.mainEntity) {
+    const found = findRecipeInJson(data.mainEntity);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function parseRecipeFromJsonLD(data: any, sourceUrl: string): ImportedRecipe {
+  const domain = new URL(sourceUrl).hostname;
+
+  return {
+    title: getString(data.name) || "Рецепт",
+    description: getString(data.description),
+    imageUrl: getImageUrl(data.image),
+    prepTime: parseDuration(data.prepTime),
+    cookTime: parseDuration(data.cookTime) || parseDuration(data.totalTime),
+    servings: parseServings(data.recipeYield),
+    cuisine: getString(data.recipeCuisine),
+    tags: getStringArray(data.keywords),
+    ingredients: parseIngredients(data.recipeIngredient),
+    steps: parseInstructions(data.recipeInstructions),
+    sourceUrl,
+    sourceDomain: domain,
+    confidence: "high",
+  };
+}
+
+// ============================================================================
+// 2. Парсеры для специфичных сайтов
+// ============================================================================
+
+function extractFromKnownSites(html: string, sourceUrl: string): ImportedRecipe | null {
+  const domain = new URL(sourceUrl).hostname.toLowerCase();
+
+  // Определяем, какой парсер использовать
+  if (domain.includes("food.ru")) {
+    return parseFoodRu(html, sourceUrl);
+  }
+  if (domain.includes("eda.ru")) {
+    return parseEdaRu(html, sourceUrl);
+  }
+  if (domain.includes("povarenok.ru")) {
+    return parsePovarenok(html, sourceUrl);
+  }
+  if (domain.includes("gotovim-doma.ru")) {
+    return parseGotovimDoma(html, sourceUrl);
+  }
+  if (domain.includes("allrecipes.com") || domain.includes("allrecipes.ru")) {
+    return parseAllRecipes(html, sourceUrl);
+  }
+
+  return null;
+}
+
+function parseFoodRu(html: string, sourceUrl: string): ImportedRecipe | null {
+  try {
+    // Food.ru использует Next.js, данные в __NEXT_DATA__
+    const match = html.match(/<script id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
+    if (!match) {
+      console.log("⚠️ __NEXT_DATA__ не найден на food.ru");
+      return null;
+    }
+
+    const nextData = JSON.parse(match[1]);
+    const state = nextData?.props?.pageProps?.__EFFECTOR_NEXTJS_INITIAL_STATE__;
+
+    if (!state) {
+      console.log("⚠️ Effector state не найден");
+      return null;
+    }
+
+    // Ищем данные рецепта в state
+    let recipeData: any = null;
+
+    // Перебираем все ключи и ищем объект с данными рецепта
+    for (const key in state) {
+      const value = state[key];
+      if (value && typeof value === 'object') {
+        // Ищем объект с полями title, ingredients, steps
+        if (value.title || value.name) {
+          if (value.ingredients || value.steps || value.cooking_time) {
+            recipeData = value;
+            console.log("✅ Найдены данные рецепта в ключе:", key);
+            break;
+          }
+        }
+
+        // Проверяем вложенные объекты
+        if (value.recipe) {
+          recipeData = value.recipe;
+          console.log("✅ Найдены данные в recipe");
+          break;
+        }
+
+        if (value.data && value.data.recipe) {
+          recipeData = value.data.recipe;
+          console.log("✅ Найдены данные в data.recipe");
+          break;
+        }
+      }
+    }
+
+    if (!recipeData) {
+      console.log("⚠️ Данные рецепта не найдены в state");
+      // Fallback: пытаемся найти в initialProps
+      const initialProps = nextData?.props?.pageProps?.initialProps;
+      if (initialProps?.recipe) {
+        recipeData = initialProps.recipe;
+      }
+    }
+
+    if (!recipeData) return null;
+
+    const title = recipeData.title || recipeData.name || "Рецепт";
+
+    // Извлекаем ингредиенты
+    const ingredients: Array<{ name: string; amount: string; unit: string }> = [];
+    if (Array.isArray(recipeData.ingredients)) {
+      recipeData.ingredients.forEach((ing: any) => {
+        const name = ing.name || ing.title || ing.product?.name || "";
+        const amount = ing.amount || ing.quantity || "";
+        const unit = ing.unit || ing.measure || "";
+
+        if (name) {
+          ingredients.push({
+            name: name.trim(),
+            amount: String(amount).trim(),
+            unit: String(unit).trim(),
+          });
+        }
+      });
+    }
+
+    // Извлекаем шаги
+    const steps: Array<{ text: string }> = [];
+    if (Array.isArray(recipeData.steps)) {
+      recipeData.steps.forEach((step: any) => {
+        const text = step.description || step.text || step.content || "";
+        if (text && text.trim()) {
+          // Убираем "Реклама" и другой мусор
+          const cleaned = text
+            .replace(/Реклама/g, "")
+            .replace(/^\s*Шаг\s*\d+\s*/i, "")
+            .trim();
+
+          if (cleaned && cleaned.length > 5) {
+            steps.push({ text: cleaned });
+          }
+        }
+      });
+    } else if (Array.isArray(recipeData.cooking_steps)) {
+      recipeData.cooking_steps.forEach((step: any) => {
+        const text = step.description || step.text || "";
+        if (text && text.trim()) {
+          const cleaned = text.replace(/Реклама/g, "").trim();
+          if (cleaned && cleaned.length > 5) {
+            steps.push({ text: cleaned });
+          }
+        }
+      });
+    }
+
+    return {
+      title,
+      description: recipeData.description || recipeData.preview_text || undefined,
+      imageUrl: recipeData.image || recipeData.picture || recipeData.preview_picture || undefined,
+      prepTime: parseInt(recipeData.prep_time || recipeData.preparation_time || 0) || undefined,
+      cookTime: parseInt(recipeData.cooking_time || recipeData.cook_time || 0) || undefined,
+      servings: parseInt(recipeData.servings || recipeData.portions || 0) || undefined,
+      cuisine: recipeData.cuisine || undefined,
+      tags: Array.isArray(recipeData.tags) ? recipeData.tags.map((t: any) => t.name || t.title || t) : [],
+      ingredients,
+      steps,
+      sourceUrl,
+      sourceDomain: "food.ru",
+      confidence: "high",
+    };
+  } catch (err) {
+    console.error("❌ Ошибка парсинга food.ru:", err);
+    return null;
+  }
+}
+
+function parseEdaRu(html: string, sourceUrl: string): ImportedRecipe | null {
+  const $ = cheerio.load(html);
+
+  const title = $('h1[class*="recipe-header"]').text().trim() ||
+                $('h1').first().text().trim();
+
+  if (!title) return null;
+
+  const ingredients: Array<{ name: string; amount: string; unit: string }> = [];
+  $('[class*="ingredient"]').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text) {
+      const parsed = parseIngredientText(text);
+      ingredients.push(parsed);
+    }
+  });
+
+  const steps: Array<{ text: string }> = [];
+  $('[class*="step"] p, [class*="instruction"] p').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text) {
+      steps.push({ text });
+    }
+  });
+
+  return {
+    title,
+    description: $('[class*="description"]').first().text().trim() || undefined,
+    imageUrl: $('img[class*="recipe"]').first().attr("src"),
+    prepTime: undefined,
+    cookTime: undefined,
+    servings: undefined,
+    cuisine: undefined,
+    tags: [],
+    ingredients,
+    steps,
+    sourceUrl,
+    sourceDomain: "eda.ru",
+    confidence: "medium",
+  };
+}
+
+function parsePovarenok(html: string, sourceUrl: string): ImportedRecipe | null {
+  const $ = cheerio.load(html);
+
+  const title = $('h1').first().text().trim();
+  if (!title) return null;
+
+  const ingredients: Array<{ name: string; amount: string; unit: string }> = [];
+  $('.ingredients li, .ingredient-item').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text) {
+      const parsed = parseIngredientText(text);
+      ingredients.push(parsed);
+    }
+  });
+
+  const steps: Array<{ text: string }> = [];
+  $('.cooking-step, .step-description').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text) {
+      steps.push({ text });
+    }
+  });
+
+  return {
+    title,
+    description: $('.description').first().text().trim() || undefined,
+    imageUrl: $('img.recipe-image').first().attr("src") || $('meta[property="og:image"]').attr("content"),
+    prepTime: undefined,
+    cookTime: undefined,
+    servings: undefined,
+    cuisine: undefined,
+    tags: [],
+    ingredients,
+    steps,
+    sourceUrl,
+    sourceDomain: "povarenok.ru",
+    confidence: "medium",
+  };
+}
+
+function parseGotovimDoma(html: string, sourceUrl: string): ImportedRecipe | null {
+  const $ = cheerio.load(html);
+
+  const title = $('h1[itemprop="name"]').text().trim() || $('h1').first().text().trim();
+  if (!title) return null;
+
+  const ingredients: Array<{ name: string; amount: string; unit: string }> = [];
+  $('[itemprop="recipeIngredient"], .ingredient').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text) {
+      const parsed = parseIngredientText(text);
+      ingredients.push(parsed);
+    }
+  });
+
+  const steps: Array<{ text: string }> = [];
+  $('[itemprop="recipeInstructions"] p, .step-text').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text) {
+      steps.push({ text });
+    }
+  });
+
+  return {
+    title,
+    description: $('[itemprop="description"]').text().trim() || undefined,
+    imageUrl: $('img[itemprop="image"]').attr("src") || $('meta[property="og:image"]').attr("content"),
+    prepTime: parseDuration($('[itemprop="prepTime"]').attr("content")),
+    cookTime: parseDuration($('[itemprop="cookTime"]').attr("content")),
+    servings: parseInt($('[itemprop="recipeYield"]').text()) || undefined,
+    cuisine: undefined,
+    tags: [],
+    ingredients,
+    steps,
+    sourceUrl,
+    sourceDomain: "gotovim-doma.ru",
+    confidence: "medium",
+  };
+}
+
+function parseAllRecipes(html: string, sourceUrl: string): ImportedRecipe | null {
+  // AllRecipes обычно имеет хорошую JSON-LD разметку, но на всякий случай
+  const $ = cheerio.load(html);
+
+  const title = $('h1').first().text().trim();
+  if (!title) return null;
+
+  const ingredients: Array<{ name: string; amount: string; unit: string }> = [];
+  $('[data-ingredient], .ingredients-item').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text) {
+      const parsed = parseIngredientText(text);
+      ingredients.push(parsed);
+    }
+  });
+
+  const steps: Array<{ text: string }> = [];
+  $('.recipe-directions__list--item, .instructions-section-item').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text && !text.toLowerCase().includes("advertisement")) {
+      steps.push({ text });
+    }
+  });
+
+  return {
+    title,
+    description: $('.recipe-summary').text().trim() || undefined,
+    imageUrl: $('img.recipe-image').attr("src") || $('meta[property="og:image"]').attr("content"),
+    prepTime: undefined,
+    cookTime: undefined,
+    servings: undefined,
+    cuisine: undefined,
+    tags: [],
+    ingredients,
+    steps,
+    sourceUrl,
+    sourceDomain: new URL(sourceUrl).hostname,
+    confidence: "medium",
+  };
+}
+
+// ============================================================================
+// 3. Fallback: OpenGraph + базовый HTML парсинг
+// ============================================================================
+
+function extractFromOpenGraphAndHtml(html: string, sourceUrl: string): ImportedRecipe {
+  const $ = cheerio.load(html);
+  const domain = new URL(sourceUrl).hostname;
+
+  // Извлекаем OpenGraph метаданные
+  const title =
+    $('meta[property="og:title"]').attr("content") ||
+    $('meta[name="twitter:title"]').attr("content") ||
+    $("title").text().split("|")[0].split("-")[0].trim() ||
+    $("h1").first().text().trim() ||
+    "Рецепт";
+
+  const description =
+    $('meta[property="og:description"]').attr("content") ||
+    $('meta[name="description"]').attr("content") ||
+    $('meta[name="twitter:description"]').attr("content");
+
+  const imageUrl =
+    $('meta[property="og:image"]').attr("content") ||
+    $('meta[name="twitter:image"]').attr("content") ||
+    $("img").first().attr("src");
+
+  // Пытаемся найти ингредиенты и шаги в HTML
+  const ingredients: Array<{ name: string; amount: string; unit: string }> = [];
+  $("li, p").each((_, el) => {
+    const text = $(el).text().trim();
+    // Простая эвристика: если строка содержит цифру и единицу измерения, это может быть ингредиент
+    if (text.length > 5 && text.length < 200 && /\d/.test(text)) {
+      const parsed = parseIngredientText(text);
+      if (parsed.name) {
+        ingredients.push(parsed);
+      }
+    }
+  });
+
+  const steps: Array<{ text: string }> = [];
+  $("ol li, .step, [class*='instruction']").each((_, el) => {
+    const text = $(el).text().trim();
+    if (text.length > 10 && text.length < 1000) {
+      steps.push({ text });
+    }
+  });
+
+  return {
+    title,
+    description,
+    imageUrl,
+    prepTime: undefined,
+    cookTime: undefined,
+    servings: undefined,
+    cuisine: undefined,
+    tags: [],
+    ingredients: ingredients.slice(0, 20), // Ограничиваем до 20
+    steps: steps.slice(0, 20),
+    sourceUrl,
+    sourceDomain: domain,
+    confidence: "low",
+  };
+}
+
+// ============================================================================
+// Утилиты для парсинга
+// ============================================================================
+
+function getString(value: any): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  return undefined;
+}
+
+function getStringArray(value: any): string[] {
+  if (Array.isArray(value)) {
+    return value.map(v => typeof v === "string" ? v.trim() : "").filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value.split(",").map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function getImageUrl(value: any): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.length > 0) {
+    const first = value[0];
+    return typeof first === "string" ? first : first?.url;
+  }
+  if (value && typeof value === "object") {
+    return value.url || value.contentUrl;
+  }
+  return undefined;
+}
+
+function parseDuration(value: any): number | undefined {
+  if (!value) return undefined;
+
+  const str = String(value);
+
+  // ISO 8601 формат: PT1H30M или PT30M
+  const isoMatch = str.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (isoMatch) {
+    const hours = parseInt(isoMatch[1] || "0");
+    const minutes = parseInt(isoMatch[2] || "0");
+    return hours * 60 + minutes;
+  }
+
+  // Простой текст: "1 hour 30 minutes"
+  const hourMatch = str.match(/(\d+)\s*(?:hour|час)/i);
+  const minMatch = str.match(/(\d+)\s*(?:minute|мин)/i);
+
+  let total = 0;
+  if (hourMatch) total += parseInt(hourMatch[1]) * 60;
+  if (minMatch) total += parseInt(minMatch[1]);
+
+  return total || undefined;
+}
+
+function parseServings(value: any): number | undefined {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const match = value.match(/(\d+)/);
+    return match ? parseInt(match[1]) : undefined;
+  }
+  return undefined;
+}
+
+function parseIngredients(value: any): Array<{ name: string; amount: string; unit: string }> {
+  if (!value) return [];
+
+  const items: string[] = [];
+
+  if (Array.isArray(value)) {
+    items.push(...value.map(v => typeof v === "string" ? v : "").filter(Boolean));
+  } else if (typeof value === "string") {
+    items.push(...value.split("\n").filter(Boolean));
+  }
+
+  return items.map(parseIngredientText);
+}
+
+function parseInstructions(value: any): Array<{ text: string }> {
+  if (!value) return [];
+
+  const steps: string[] = [];
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === "string") {
+        steps.push(item);
+      } else if (item && typeof item === "object") {
+        const text = item.text || item.name || item["@type"];
+        if (typeof text === "string") steps.push(text);
+      }
+    }
+  } else if (typeof value === "string") {
+    steps.push(...value.split("\n").filter(s => s.trim().length > 0));
+  }
+
+  return steps.map(text => ({ text: text.trim() }));
+}
+
+// Улучшенный парсинг ингредиентов
+function parseIngredientText(text: string): { name: string; amount: string; unit: string } {
+  const cleaned = text.trim();
+
+  // Паттерн: "200 г муки" или "2 столовые ложки сахара"
+  const pattern = /^([\d\/.,]+)\s*([а-яёa-z.]+)?\s*(.+)$/i;
+  const match = cleaned.match(pattern);
+
+  if (match) {
+    const amount = match[1].replace(",", ".");
+    const unit = (match[2] || "").trim();
+    const name = (match[3] || "").trim();
+
+    return { name: name || cleaned, amount, unit };
+  }
+
+  // Если не нашли количество, возвращаем весь текст как название
+  return { name: cleaned, amount: "", unit: "" };
+}

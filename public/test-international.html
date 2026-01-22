@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест международных парсеров</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; }
+        .test-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-item.loading { opacity: 0.6; }
+        .test-item.success { border-left: 4px solid #4CAF50; }
+        .test-item.failed { border-left: 4px solid #f44336; }
+        .country { font-size: 24px; margin-right: 10px; }
+        .site { font-weight: bold; color: #666; }
+        .url { font-size: 12px; color: #999; word-break: break-all; }
+        .result { margin-top: 10px; font-size: 14px; }
+        .success-text { color: #4CAF50; }
+        .error-text { color: #f44336; }
+        .stats { background: #2196F3; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        button:hover { background: #1976D2; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <h1>🌍 Тест международных парсеров рецептов</h1>
+
+    <div class="stats" id="stats">
+        <div>Всего тестов: <span id="total">10</span></div>
+        <div>Выполнено: <span id="completed">0</span></div>
+        <div>Успешно: <span id="successful">0</span></div>
+        <div>Провалено: <span id="failed">0</span></div>
+        <div>Success Rate: <span id="rate">0%</span></div>
+    </div>
+
+    <button id="startBtn" onclick="runTests()">Запустить тесты</button>
+
+    <div id="results"></div>
+
+    <script>
+        const tests = [
+            { country: "🇺🇸", site: "AllRecipes", url: "https://www.allrecipes.com/recipe/12682/apple-pie-by-grandma-ople/" },
+            { country: "🇺🇸", site: "Food Network", url: "https://www.foodnetwork.com/recipes/alton-brown/good-eats-roast-turkey-recipe-1950271" },
+            { country: "🇺🇸", site: "Bon Appétit", url: "https://www.bonappetit.com/recipe/chocolate-chip-cookies" },
+            { country: "🇩🇪", site: "Chefkoch.de", url: "https://www.chefkoch.de/rezepte/2941301423374680/Joffels-Weihnachtsgans.html" },
+            { country: "🇩🇪", site: "Lecker.de", url: "https://www.lecker.de/schweinebraten-mit-knuspriger-kruste-68649.html" },
+            { country: "🇮🇹", site: "GialloZafferano", url: "https://www.giallozafferano.com/recipes/Carbonara.html" },
+            { country: "🇫🇷", site: "Marmiton", url: "https://www.marmiton.org/recettes/recette_poulet-roti-au-four_31396.aspx" },
+            { country: "🇫🇷", site: "750g", url: "https://www.750g.com/quiche-lorraine-r12502.htm" },
+            { country: "🇪🇸", site: "RecetasGratis", url: "https://www.recetasgratis.net/receta-de-paella-valenciana-35829.html" },
+            { country: "🇷🇺", site: "iamcook.ru", url: "https://www.iamcook.ru/showrecipe/3327" }
+        ];
+
+        let completed = 0, successful = 0, failed = 0;
+
+        async function testRecipe(test, index) {
+            const resultDiv = document.getElementById(`test-${index}`);
+            resultDiv.className = 'test-item loading';
+
+            try {
+                const response = await fetch('/api/import-recipe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: test.url })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const r = data.recipe;
+                    resultDiv.className = 'test-item success';
+                    resultDiv.innerHTML += `
+                        <div class="result success-text">
+                            ✅ <strong>SUCCESS</strong> - Method: ${data.meta.method}<br>
+                            Title: ${r.title}<br>
+                            Ingredients: ${r.ingredients.length} | Steps: ${r.steps.length} | Confidence: ${r.confidence}
+                        </div>
+                    `;
+                    successful++;
+                } else {
+                    resultDiv.className = 'test-item failed';
+                    resultDiv.innerHTML += `
+                        <div class="result error-text">
+                            ❌ <strong>FAILED</strong> - ${data.error}: ${data.message}
+                        </div>
+                    `;
+                    failed++;
+                }
+            } catch (error) {
+                resultDiv.className = 'test-item failed';
+                resultDiv.innerHTML += `
+                    <div class="result error-text">
+                        ❌ <strong>ERROR</strong> - ${error.message}
+                    </div>
+                `;
+                failed++;
+            }
+
+            completed++;
+            updateStats();
+        }
+
+        function updateStats() {
+            document.getElementById('completed').textContent = completed;
+            document.getElementById('successful').textContent = successful;
+            document.getElementById('failed').textContent = failed;
+            const rate = completed > 0 ? ((successful / completed) * 100).toFixed(1) : 0;
+            document.getElementById('rate').textContent = rate + '%';
+        }
+
+        async function runTests() {
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('results').innerHTML = '';
+            completed = 0;
+            successful = 0;
+            failed = 0;
+            updateStats();
+
+            // Create result divs
+            tests.forEach((test, index) => {
+                const div = document.createElement('div');
+                div.id = `test-${index}`;
+                div.className = 'test-item';
+                div.innerHTML = `
+                    <span class="country">${test.country}</span>
+                    <span class="site">${test.site}</span>
+                    <div class="url">${test.url}</div>
+                `;
+                document.getElementById('results').appendChild(div);
+            });
+
+            // Run tests sequentially with delay
+            for (let i = 0; i < tests.length; i++) {
+                await testRecipe(tests[i], i);
+                if (i < tests.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+
+            document.getElementById('startBtn').disabled = false;
+        }
+    </script>
+</body>
+</html>
