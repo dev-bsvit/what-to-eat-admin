@@ -325,9 +325,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: (extracted as any).message || "Extraction failed" }, { status: 500 });
     }
 
+    console.info("[instagram] extracted", {
+      shortcode: extracted.shortcode,
+      hasCaption: Boolean(extracted.caption?.trim()),
+      thumbnailUrl: extracted.thumbnail_url || null,
+      videoPath: extracted.video_path || null,
+      owner: extracted.owner_username || null,
+    });
+
     let transcript = "";
     let coverDataUrl: string | null = null;
     const skipTranscription = shouldSkipTranscription(extracted.caption || "");
+    console.info("[instagram] skipTranscription", { skip: skipTranscription });
 
     if (extracted.video_path) {
       const audioPath = path.join(outputDir, `${extracted.shortcode}.mp3`);
@@ -340,6 +349,11 @@ export async function POST(request: Request) {
           cwd
         );
 
+        console.info("[instagram] ffmpeg audio", {
+          code: ffmpegResult.code,
+          stderr: ffmpegResult.stderr?.slice(0, 300),
+        });
+
         if (ffmpegResult.code === 0) {
           transcript = await transcribeAudio(apiKey, audioPath);
         }
@@ -347,10 +361,12 @@ export async function POST(request: Request) {
 
       if (!extracted.thumbnail_url) {
         coverDataUrl = await extractCoverFromVideo(extracted.video_path, outputDir);
+        console.info("[instagram] cover from video", { ok: Boolean(coverDataUrl) });
       }
     }
 
     const combinedText = [extracted.caption, transcript].filter(Boolean).join("\n\n").trim();
+    console.info("[instagram] combinedText", { length: combinedText.length });
     if (!combinedText) {
       return NextResponse.json({ error: "No text to parse" }, { status: 500 });
     }
