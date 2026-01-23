@@ -4,6 +4,12 @@ function isPublicPath(pathname: string) {
   if (pathname === "/login" || pathname === "/api/login") {
     return true;
   }
+  if (pathname === "/api/user/import-recipe") {
+    return true;
+  }
+  if (pathname === "/api/import-instagram") {
+    return true;
+  }
   if (pathname.startsWith("/_next/")) {
     return true;
   }
