@@ -1,42 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const REALM = "What to Eat Admin";
-
-function unauthorized() {
-  return new NextResponse("Authentication required", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": `Basic realm="${REALM}", charset="UTF-8"`,
-    },
-  });
+function isPublicPath(pathname: string) {
+  if (pathname === "/login" || pathname === "/api/login") {
+    return true;
+  }
+  if (pathname.startsWith("/_next/")) {
+    return true;
+  }
+  return pathname === "/favicon.ico";
 }
 
 export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
   const user = process.env.ADMIN_USER;
   const pass = process.env.ADMIN_PASS;
   if (!user || !pass) {
-    return unauthorized();
+    return NextResponse.json({ error: "ADMIN_USER or ADMIN_PASS not set" }, { status: 500 });
   }
 
-  const authHeader = request.headers.get("authorization") || "";
-  if (!authHeader.startsWith("Basic ")) {
-    return unauthorized();
+  const expected = btoa(`${user}:${pass}`);
+  const cookie = request.cookies.get("admin_auth")?.value;
+  if (cookie === expected) {
+    return NextResponse.next();
   }
 
-  const base64 = authHeader.slice("Basic ".length).trim();
-  let decoded = "";
-  try {
-    decoded = atob(base64);
-  } catch {
-    return unauthorized();
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [incomingUser, incomingPass] = decoded.split(":");
-  if (incomingUser !== user || incomingPass !== pass) {
-    return unauthorized();
-  }
-
-  return NextResponse.next();
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {
