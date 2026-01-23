@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const navigation = [
   { name: "Каталоги", href: "/catalogs", icon: "📁" },
@@ -17,6 +17,13 @@ const navigation = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await fetch("/api/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <aside style={{
@@ -104,6 +111,30 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      <div style={{ padding: '0 var(--spacing-sm) var(--spacing-lg)' }}>
+        <button
+          type="button"
+          onClick={handleLogout}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--spacing-sm)',
+            padding: '10px var(--spacing-sm)',
+            borderRadius: 'var(--radius-sm)',
+            border: 'none',
+            background: 'rgba(255, 255, 255, 0.08)',
+            color: '#ffffff',
+            fontSize: '15px',
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+        >
+          <span style={{ fontSize: '18px' }}>🚪</span>
+          <span>Выйти</span>
+        </button>
+      </div>
     </aside>
   );
 }

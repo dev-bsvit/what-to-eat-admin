@@ -29,6 +29,7 @@ export default function LoginPage() {
       }
 
       router.push("/");
+      router.refresh();
     } finally {
       setLoading(false);
     }
