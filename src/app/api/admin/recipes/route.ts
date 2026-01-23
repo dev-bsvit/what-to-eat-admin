@@ -41,6 +41,36 @@ const resolveProductId = async (name: string | null | undefined) => {
   return null;
 };
 
+const ensureProductId = async (name: string | null | undefined) => {
+  const cleaned = (name || "").trim();
+  if (!cleaned) return null;
+
+  const existingId = await resolveProductId(cleaned);
+  if (existingId) {
+    return existingId;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("product_dictionary")
+    .upsert(
+      {
+        canonical_name: cleaned,
+        category: "other",
+        auto_created: true,
+        needs_moderation: true,
+      },
+      { onConflict: "canonical_name" }
+    )
+    .select("id")
+    .single();
+
+  if (error) {
+    return null;
+  }
+
+  return data?.id || null;
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search");
@@ -199,7 +229,7 @@ export async function POST(request: Request) {
 
       const ingredientsRows = await Promise.all(
         normalizedIngredients.map(async (item: any, index: number) => {
-          const productId = isUuid(item?.id) ? item.id : await resolveProductId(item?.name);
+          const productId = isUuid(item?.id) ? item.id : await ensureProductId(item?.name);
           return {
             recipe_id: savedRecipeId,
             product_dictionary_id: productId,
@@ -212,7 +242,7 @@ export async function POST(request: Request) {
         })
       );
 
-      const filteredIngredients = ingredientsRows.filter(row => row.amount !== null || row.unit !== null || row.product_dictionary_id);
+      const filteredIngredients = ingredientsRows.filter(row => row.product_dictionary_id);
 
       if (filteredIngredients.length) {
         const { error: ingredientsError } = await supabaseAdmin
@@ -232,11 +262,14 @@ export async function POST(request: Request) {
         .eq("recipe_id", savedRecipeId);
 
       const stepsRows = parsedInstructions
-        .map((step: any, index: number) => ({
-          recipe_id: savedRecipeId,
-          text: normalizeText(step),
-          order_index: index,
-        }))
+        .map((step: any, index: number) => {
+          const text = typeof step === "string" ? step : step?.text;
+          return {
+            recipe_id: savedRecipeId,
+            text: normalizeText(text),
+            order_index: index,
+          };
+        })
         .filter(step => step.text);
 
       if (stepsRows.length) {
