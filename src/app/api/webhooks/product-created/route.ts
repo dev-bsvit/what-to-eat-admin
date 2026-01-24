@@ -76,10 +76,9 @@ export async function POST(request: Request) {
 
     const product = payload.record;
 
-    // Skip if not user/auto created or doesn't need moderation
-    if (!product.auto_created && !product.user_created) {
-      return NextResponse.json({ status: "ignored", reason: "Not auto/user created" });
-    }
+    // Process all new products (removed auto_created/user_created check)
+    // Every new product should be processed for linking and data filling
+    console.log(`[Webhook] Processing new product: ${product.canonical_name} (${product.id})`)
 
     const results: {
       productId: string;
