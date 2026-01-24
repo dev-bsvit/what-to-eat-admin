@@ -10,6 +10,10 @@ function isPublicPath(pathname: string) {
   if (pathname === "/api/import-instagram") {
     return true;
   }
+  // Allow webhook endpoints (they have their own auth)
+  if (pathname.startsWith("/api/webhooks/")) {
+    return true;
+  }
   if (pathname.startsWith("/_next/")) {
     return true;
   }
