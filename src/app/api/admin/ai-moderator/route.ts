@@ -13,6 +13,52 @@ import {
 } from "@/lib/aiModeratorCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+// Helper to find recipe containing a product as ingredient
+async function findRecipeByIngredient(productName: string): Promise<{
+  id: string;
+  title: string;
+  sourceUrl?: string;
+} | null> {
+  const { data: recipes } = await supabaseAdmin
+    .from("recipes")
+    .select("id, title, source_url, ingredients")
+    .limit(100);
+
+  if (!recipes || recipes.length === 0) return null;
+
+  const normalizedSearch = productName.toLowerCase().trim();
+
+  for (const recipe of recipes) {
+    if (!recipe.ingredients) continue;
+
+    try {
+      const ingredients = typeof recipe.ingredients === "string"
+        ? JSON.parse(recipe.ingredients)
+        : recipe.ingredients;
+
+      if (!Array.isArray(ingredients)) continue;
+
+      for (const ing of ingredients) {
+        const name = typeof ing === "string"
+          ? ing
+          : (ing?.name || ing?.productName || ing?.title || "");
+
+        if (name && name.toLowerCase().trim() === normalizedSearch) {
+          return {
+            id: recipe.id,
+            title: recipe.title || "Без названия",
+            sourceUrl: recipe.source_url || undefined,
+          };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 // GET - Get moderator stats and cache info
 export async function GET() {
   try {
@@ -150,20 +196,7 @@ export async function POST(request: Request) {
             // Get recipe source if available
             let recipeSource = null;
             if (productInfo?.canonical_name) {
-              // Find recipe containing this product as ingredient
-              const { data: recipes } = await supabaseAdmin
-                .from("recipes")
-                .select("id, title, source_url")
-                .ilike("ingredients", `%${productInfo.canonical_name}%`)
-                .limit(1);
-
-              if (recipes && recipes.length > 0) {
-                recipeSource = {
-                  id: recipes[0].id,
-                  title: recipes[0].title,
-                  sourceUrl: recipes[0].source_url,
-                };
-              }
+              recipeSource = await findRecipeByIngredient(productInfo.canonical_name);
             }
 
             return {

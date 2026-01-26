@@ -1,6 +1,53 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+// Helper to find recipe containing a product as ingredient
+async function findRecipeByIngredient(productName: string): Promise<{
+  id: string;
+  title: string;
+  sourceUrl?: string;
+} | null> {
+  // Search with text containment (works for JSONB stored as text representation)
+  const { data: recipes } = await supabaseAdmin
+    .from("recipes")
+    .select("id, title, source_url, ingredients")
+    .limit(100);
+
+  if (!recipes || recipes.length === 0) return null;
+
+  const normalizedSearch = productName.toLowerCase().trim();
+
+  for (const recipe of recipes) {
+    if (!recipe.ingredients) continue;
+
+    try {
+      const ingredients = typeof recipe.ingredients === "string"
+        ? JSON.parse(recipe.ingredients)
+        : recipe.ingredients;
+
+      if (!Array.isArray(ingredients)) continue;
+
+      for (const ing of ingredients) {
+        const name = typeof ing === "string"
+          ? ing
+          : (ing?.name || ing?.productName || ing?.title || "");
+
+        if (name && name.toLowerCase().trim() === normalizedSearch) {
+          return {
+            id: recipe.id,
+            title: recipe.title || "Без названия",
+            sourceUrl: recipe.source_url || undefined,
+          };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 // GET - List moderation tasks
 export async function GET(request: Request) {
   try {
@@ -67,34 +114,18 @@ export async function GET(request: Request) {
         let productRecipeSource = null;
         let matchedRecipeSource = null;
         if (task.task_type === "merge_suggestion") {
-          // Find recipe for the first product
+          // Find recipe for the first product (search in JSON ingredients)
           if (productInfo?.canonical_name) {
-            const { data: recipes } = await supabaseAdmin
-              .from("recipes")
-              .select("id, title, source_url")
-              .ilike("ingredients", `%${productInfo.canonical_name}%`)
-              .limit(1);
-            if (recipes && recipes.length > 0) {
-              productRecipeSource = {
-                id: recipes[0].id,
-                title: recipes[0].title,
-                sourceUrl: recipes[0].source_url,
-              };
+            const productRecipe = await findRecipeByIngredient(productInfo.canonical_name);
+            if (productRecipe) {
+              productRecipeSource = productRecipe;
             }
           }
           // Find recipe for the matched product
           if (matchedProductInfo?.canonical_name) {
-            const { data: recipes } = await supabaseAdmin
-              .from("recipes")
-              .select("id, title, source_url")
-              .ilike("ingredients", `%${matchedProductInfo.canonical_name}%`)
-              .limit(1);
-            if (recipes && recipes.length > 0) {
-              matchedRecipeSource = {
-                id: recipes[0].id,
-                title: recipes[0].title,
-                sourceUrl: recipes[0].source_url,
-              };
+            const matchedRecipe = await findRecipeByIngredient(matchedProductInfo.canonical_name);
+            if (matchedRecipe) {
+              matchedRecipeSource = matchedRecipe;
             }
           }
         }
