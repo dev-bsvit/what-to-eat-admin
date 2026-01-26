@@ -253,9 +253,185 @@ export async function GET(request: Request) {
   return NextResponse.json(result);
 }
 
-// Also allow POST for manual triggering
-export async function POST(request: Request) {
-  return GET(request);
+// Also allow POST for manual triggering (no auth required - admin panel uses this)
+export async function POST() {
+  // Create a fake request without auth check for manual triggering
+  const startTime = Date.now();
+  const errors: string[] = [];
+
+  const result: NormalizationResult = {
+    timestamp: new Date().toISOString(),
+    duration_ms: 0,
+    unlinked_found: 0,
+    auto_linked: 0,
+    suggested_for_review: 0,
+    duplicates_found: 0,
+    errors: [],
+    details: {
+      autoLinked: [],
+      suggestedForReview: [],
+      duplicates: [],
+    },
+  };
+
+  try {
+    // 1. Load all products
+    const { data: products, error: productError } = await supabaseAdmin
+      .from("product_dictionary")
+      .select("id, canonical_name, synonyms");
+
+    if (productError) {
+      errors.push(`Failed to load products: ${productError.message}`);
+      result.errors = errors;
+      result.duration_ms = Date.now() - startTime;
+      return NextResponse.json(result, { status: 500 });
+    }
+
+    const productList = (products || []) as ProductRow[];
+
+    // Build known names set
+    const known = new Set<string>();
+    productList.forEach((row) => {
+      if (row.canonical_name) {
+        known.add(normalize(row.canonical_name));
+      }
+      (row.synonyms || []).forEach((syn) => {
+        if (syn) known.add(normalize(syn));
+      });
+    });
+
+    // 2. Load all recipes
+    const { data: recipes, error: recipeError } = await supabaseAdmin
+      .from("recipes")
+      .select("id, title, ingredients");
+
+    if (recipeError) {
+      errors.push(`Failed to load recipes: ${recipeError.message}`);
+      result.errors = errors;
+      result.duration_ms = Date.now() - startTime;
+      return NextResponse.json(result, { status: 500 });
+    }
+
+    // 3. Find unlinked ingredients
+    const unlinkedMap = new Map<string, { count: number; recipeIds: string[] }>();
+
+    for (const row of (recipes || []) as RecipeRow[]) {
+      const ingredientsRaw = row.ingredients;
+      if (!ingredientsRaw) continue;
+
+      let parsed: IngredientItem[] = [];
+      try {
+        parsed = typeof ingredientsRaw === "string"
+          ? JSON.parse(ingredientsRaw)
+          : (ingredientsRaw as IngredientItem[]);
+      } catch {
+        continue;
+      }
+
+      if (!Array.isArray(parsed)) continue;
+
+      for (const ing of parsed as (IngredientItem | string)[]) {
+        if (ing && typeof ing === "object") {
+          const idValue = String((ing as IngredientItem).id || "").trim();
+          if (idValue && isUuid(idValue)) continue;
+        }
+
+        const name =
+          typeof ing === "string"
+            ? ing.trim()
+            : String((ing as IngredientItem)?.name || (ing as IngredientItem)?.productName || (ing as IngredientItem)?.title || "").trim();
+
+        if (!name) continue;
+
+        const key = normalize(name);
+        if (known.has(key)) continue;
+
+        const record = unlinkedMap.get(name) || { count: 0, recipeIds: [] };
+        record.count += 1;
+        if (record.recipeIds.length < 5) {
+          record.recipeIds.push(row.id);
+        }
+        unlinkedMap.set(name, record);
+      }
+    }
+
+    result.unlinked_found = unlinkedMap.size;
+
+    // 4. Try to auto-link or suggest matches
+    for (const [ingredientName, data] of unlinkedMap.entries()) {
+      const match = findBestMatch(ingredientName, productList);
+
+      if (!match) continue;
+
+      if (match.confidence >= 0.9) {
+        const linked = await autoLinkIngredient(
+          ingredientName,
+          match.productId,
+          match.productName,
+          data.recipeIds
+        );
+
+        if (linked) {
+          result.auto_linked += 1;
+          result.details.autoLinked.push({
+            ingredient: ingredientName,
+            product: match.productName,
+            confidence: match.confidence,
+          });
+
+          await addSynonymIfNeeded(match.productId, ingredientName);
+        }
+      } else if (match.confidence >= 0.7) {
+        result.suggested_for_review += 1;
+        result.details.suggestedForReview.push({
+          ingredient: ingredientName,
+          bestMatch: match.productName,
+          confidence: match.confidence,
+        });
+
+        await createModerationTask(
+          "link_suggestion",
+          null,
+          {
+            ingredientName,
+            suggestedProductId: match.productId,
+            suggestedProductName: match.productName,
+            confidence: match.confidence,
+            recipeIds: data.recipeIds,
+          },
+          match.confidence
+        );
+      }
+    }
+
+    // 5. Find duplicate products
+    const duplicates = findDuplicateCandidates(productList);
+    const highConfidenceDuplicates = duplicates.filter((d) => d.confidence >= 0.85);
+    result.duplicates_found = highConfidenceDuplicates.length;
+    result.details.duplicates = highConfidenceDuplicates.slice(0, 20);
+
+    for (const dup of highConfidenceDuplicates.slice(0, 50)) {
+      await createModerationTask(
+        "merge_suggestion",
+        dup.productId,
+        {
+          productName: dup.productName,
+          matchedWithId: dup.matchedWithId,
+          matchedWithName: dup.matchedWithName,
+          matchType: dup.matchType,
+        },
+        dup.confidence
+      );
+    }
+
+  } catch (error) {
+    errors.push(`Unexpected error: ${error instanceof Error ? error.message : "Unknown"}`);
+  }
+
+  result.errors = errors;
+  result.duration_ms = Date.now() - startTime;
+
+  return NextResponse.json(result);
 }
 
 /**

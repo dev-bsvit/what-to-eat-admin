@@ -2,6 +2,22 @@ import { NextResponse } from "next/server";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
+/**
+ * Strip markdown code blocks from AI response
+ */
+function stripMarkdownCodeBlocks(content: string): string {
+  let cleaned = content.trim();
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.slice(7);
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned.slice(3);
+  }
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.slice(0, -3);
+  }
+  return cleaned.trim();
+}
+
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -44,7 +60,8 @@ export async function POST(request: Request) {
 
     let parsed;
     try {
-      parsed = JSON.parse(content);
+      const cleanedContent = stripMarkdownCodeBlocks(content);
+      parsed = JSON.parse(cleanedContent);
     } catch (error) {
       return NextResponse.json({ error: "Invalid JSON from model", raw: content }, { status: 500 });
     }

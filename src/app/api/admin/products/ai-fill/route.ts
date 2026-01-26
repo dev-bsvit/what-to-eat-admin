@@ -19,22 +19,76 @@ interface AIProductData {
   synonyms?: string[];
 }
 
+const OPENAI_URL = "https://api.openai.com/v1/responses";
+
+function stripMarkdownCodeBlocks(content: string): string {
+  let cleaned = content.trim();
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.slice(7);
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned.slice(3);
+  }
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.slice(0, -3);
+  }
+  return cleaned.trim();
+}
+
 async function fetchAIData(productName: string): Promise<AIProductData | null> {
   try {
-    const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "http://localhost:3000";
-    const response = await fetch(`${aiApiUrl}/api/admin/ai/product`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input: productName }),
-    });
-
-    if (!response.ok) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      console.error("[AI Fill] Missing OPENAI_API_KEY");
       return null;
     }
 
-    const result = await response.json();
-    return result.data || null;
-  } catch {
+    const prompt = `Для продукта "${productName}" верни JSON с данными:
+{
+  "calories": число ккал на 100г,
+  "protein": граммы белка на 100г,
+  "fat": граммы жира на 100г,
+  "carbohydrates": граммы углеводов на 100г,
+  "fiber": граммы клетчатки на 100г,
+  "description": "краткое описание 1-2 предложения",
+  "storage_tips": "советы по хранению",
+  "typical_serving": число граммов типичной порции,
+  "default_shelf_life_days": срок хранения в днях,
+  "synonyms": ["массив", "синонимов", "5-8 штук"]
+}
+
+Верни ТОЛЬКО валидный JSON без markdown.`;
+
+    const response = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: prompt,
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("[AI Fill] OpenAI error:", response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data?.output?.[0]?.content?.[0]?.text;
+
+    if (!content) {
+      console.error("[AI Fill] Empty response from OpenAI");
+      return null;
+    }
+
+    const cleanedContent = stripMarkdownCodeBlocks(content);
+    const parsed = JSON.parse(cleanedContent);
+    return parsed;
+  } catch (error) {
+    console.error("[AI Fill] Error:", error);
     return null;
   }
 }
