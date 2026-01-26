@@ -2,6 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 
+type RecipeSource = {
+  id: string;
+  title: string;
+  sourceUrl?: string;
+};
+
 type ModerationTask = {
   id: string;
   task_type: "link_suggestion" | "merge_suggestion" | "new_product";
@@ -31,6 +37,8 @@ type ModerationTask = {
     category?: string;
     icon?: string;
   } | null;
+  productRecipeSource?: RecipeSource | null;
+  matchedRecipeSource?: RecipeSource | null;
 };
 
 type MissingItem = {
@@ -957,6 +965,33 @@ export default function ModerationPage() {
                           <div style={{ fontWeight: 600 }}>
                             {task.productInfo?.canonical_name || task.suggested_action?.productName as string}
                           </div>
+                          {task.productRecipeSource && (
+                            <div style={{ marginTop: "6px" }}>
+                              {task.productRecipeSource.sourceUrl ? (
+                                <a
+                                  href={task.productRecipeSource.sourceUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontSize: "11px",
+                                    color: "var(--accent)",
+                                    textDecoration: "none",
+                                  }}
+                                  title={task.productRecipeSource.title}
+                                >
+                                  📎 {task.productRecipeSource.title.length > 20
+                                    ? task.productRecipeSource.title.slice(0, 20) + "..."
+                                    : task.productRecipeSource.title}
+                                </a>
+                              ) : (
+                                <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                                  📎 {task.productRecipeSource.title.length > 20
+                                    ? task.productRecipeSource.title.slice(0, 20) + "..."
+                                    : task.productRecipeSource.title}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div style={{ color: "var(--text-secondary)", fontSize: "20px" }}>⟷</div>
                         <div style={{ flex: 1, textAlign: "center" }}>
@@ -966,6 +1001,33 @@ export default function ModerationPage() {
                           <div style={{ fontWeight: 600 }}>
                             {task.matchedProductInfo?.canonical_name || task.suggested_action?.matchedWithName as string}
                           </div>
+                          {task.matchedRecipeSource && (
+                            <div style={{ marginTop: "6px" }}>
+                              {task.matchedRecipeSource.sourceUrl ? (
+                                <a
+                                  href={task.matchedRecipeSource.sourceUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontSize: "11px",
+                                    color: "var(--accent)",
+                                    textDecoration: "none",
+                                  }}
+                                  title={task.matchedRecipeSource.title}
+                                >
+                                  📎 {task.matchedRecipeSource.title.length > 20
+                                    ? task.matchedRecipeSource.title.slice(0, 20) + "..."
+                                    : task.matchedRecipeSource.title}
+                                </a>
+                              ) : (
+                                <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                                  📎 {task.matchedRecipeSource.title.length > 20
+                                    ? task.matchedRecipeSource.title.slice(0, 20) + "..."
+                                    : task.matchedRecipeSource.title}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div style={{

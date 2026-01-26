@@ -63,11 +63,49 @@ export async function GET(request: Request) {
           matchedProductInfo = matched;
         }
 
+        // Get recipe source for both products in merge_suggestion
+        let productRecipeSource = null;
+        let matchedRecipeSource = null;
+        if (task.task_type === "merge_suggestion") {
+          // Find recipe for the first product
+          if (productInfo?.canonical_name) {
+            const { data: recipes } = await supabaseAdmin
+              .from("recipes")
+              .select("id, title, source_url")
+              .ilike("ingredients", `%${productInfo.canonical_name}%`)
+              .limit(1);
+            if (recipes && recipes.length > 0) {
+              productRecipeSource = {
+                id: recipes[0].id,
+                title: recipes[0].title,
+                sourceUrl: recipes[0].source_url,
+              };
+            }
+          }
+          // Find recipe for the matched product
+          if (matchedProductInfo?.canonical_name) {
+            const { data: recipes } = await supabaseAdmin
+              .from("recipes")
+              .select("id, title, source_url")
+              .ilike("ingredients", `%${matchedProductInfo.canonical_name}%`)
+              .limit(1);
+            if (recipes && recipes.length > 0) {
+              matchedRecipeSource = {
+                id: recipes[0].id,
+                title: recipes[0].title,
+                sourceUrl: recipes[0].source_url,
+              };
+            }
+          }
+        }
+
         return {
           ...task,
           productInfo,
           suggestedProductInfo,
           matchedProductInfo,
+          productRecipeSource,
+          matchedRecipeSource,
         };
       })
     );

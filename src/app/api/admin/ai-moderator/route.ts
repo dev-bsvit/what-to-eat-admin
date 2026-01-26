@@ -11,6 +11,7 @@ import {
   getCacheStats,
   clearExpiredCache,
 } from "@/lib/aiModeratorCache";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // GET - Get moderator stats and cache info
 export async function GET() {
@@ -118,6 +119,62 @@ export async function POST(request: Request) {
           success: true,
           stats: getModeratorStats(),
         });
+      }
+
+      case "get_history": {
+        // Get recent moderation tasks created by webhook (autoCreated)
+        const limit = body.limit || 50;
+        const { data: tasks, error } = await supabaseAdmin
+          .from("moderation_tasks")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        // Enrich with product info
+        const enriched = await Promise.all(
+          (tasks || []).map(async (task) => {
+            let productInfo = null;
+            if (task.product_id) {
+              const { data: product } = await supabaseAdmin
+                .from("product_dictionary")
+                .select("id, canonical_name, category, icon")
+                .eq("id", task.product_id)
+                .single();
+              productInfo = product;
+            }
+
+            // Get recipe source if available
+            let recipeSource = null;
+            if (productInfo?.canonical_name) {
+              // Find recipe containing this product as ingredient
+              const { data: recipes } = await supabaseAdmin
+                .from("recipes")
+                .select("id, title, source_url")
+                .ilike("ingredients", `%${productInfo.canonical_name}%`)
+                .limit(1);
+
+              if (recipes && recipes.length > 0) {
+                recipeSource = {
+                  id: recipes[0].id,
+                  title: recipes[0].title,
+                  sourceUrl: recipes[0].source_url,
+                };
+              }
+            }
+
+            return {
+              ...task,
+              productInfo,
+              recipeSource,
+            };
+          })
+        );
+
+        return NextResponse.json({ history: enriched });
       }
 
       default:

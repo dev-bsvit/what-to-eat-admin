@@ -37,6 +37,27 @@ interface BatchSummary {
   aiUsed: number;
 }
 
+interface HistoryItem {
+  id: string;
+  task_type: string;
+  product_id: string;
+  suggested_action: Record<string, unknown>;
+  confidence: number;
+  status: string;
+  created_at: string;
+  productInfo?: {
+    id: string;
+    canonical_name: string;
+    category?: string;
+    icon?: string;
+  };
+  recipeSource?: {
+    id: string;
+    title: string;
+    sourceUrl?: string;
+  };
+}
+
 export default function AIModeratorPage() {
   const [stats, setStats] = useState<ModeratorStats | null>(null);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
@@ -53,6 +74,10 @@ export default function AIModeratorPage() {
   const [batchResults, setBatchResults] = useState<ProcessResult[]>([]);
   const [batchSummary, setBatchSummary] = useState<BatchSummary | null>(null);
 
+  // History
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   // Fetch stats
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -68,11 +93,29 @@ export default function AIModeratorPage() {
     setLoading(false);
   }, []);
 
+  // Fetch history
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/admin/ai-moderator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get_history", limit: 50 }),
+      });
+      const data = await res.json();
+      if (data.history) setHistory(data.history);
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+    }
+    setHistoryLoading(false);
+  }, []);
+
   useEffect(() => {
     fetchStats();
+    fetchHistory();
     const interval = setInterval(fetchStats, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, [fetchStats]);
+  }, [fetchStats, fetchHistory]);
 
   // Test single ingredient
   const testIngredient = async () => {
@@ -448,6 +491,137 @@ export default function AIModeratorPage() {
                         ) : (
                           <span className="text-gray-400">Нет</span>
                         )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Processing History */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-medium text-gray-900">
+              История обработки
+            </h2>
+            <button
+              onClick={fetchHistory}
+              disabled={historyLoading}
+              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+            >
+              {historyLoading ? "..." : "Обновить"}
+            </button>
+          </div>
+
+          {history.length === 0 ? (
+            <div className="text-gray-500 text-center py-8">
+              Пока нет обработанных продуктов
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">
+                      Продукт
+                    </th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">
+                      Тип
+                    </th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">
+                      Статус
+                    </th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">
+                      Источник
+                    </th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-600">
+                      Дата
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((item) => (
+                    <tr key={item.id} className="border-t">
+                      <td className="px-4 py-2">
+                        <span className="mr-1">{item.productInfo?.icon || "📦"}</span>
+                        {item.productInfo?.canonical_name ||
+                          (item.suggested_action?.productName as string) ||
+                          "-"}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs ${
+                            item.task_type === "merge_suggestion"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : item.task_type === "new_product"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {item.task_type === "merge_suggestion"
+                            ? "Дубликат"
+                            : item.task_type === "new_product"
+                            ? "Новый"
+                            : item.task_type === "link_suggestion"
+                            ? "Связывание"
+                            : item.task_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs ${
+                            item.status === "pending"
+                              ? "bg-orange-100 text-orange-800"
+                              : item.status === "approved"
+                              ? "bg-green-100 text-green-800"
+                              : item.status === "rejected"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {item.status === "pending"
+                            ? "Ожидает"
+                            : item.status === "approved"
+                            ? "Одобрен"
+                            : item.status === "rejected"
+                            ? "Отклонен"
+                            : item.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        {item.recipeSource ? (
+                          item.recipeSource.sourceUrl ? (
+                            <a
+                              href={item.recipeSource.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline text-xs"
+                              title={item.recipeSource.title}
+                            >
+                              {item.recipeSource.title.length > 25
+                                ? item.recipeSource.title.slice(0, 25) + "..."
+                                : item.recipeSource.title}
+                            </a>
+                          ) : (
+                            <span className="text-gray-500 text-xs" title={item.recipeSource.title}>
+                              {item.recipeSource.title.length > 25
+                                ? item.recipeSource.title.slice(0, 25) + "..."
+                                : item.recipeSource.title}
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 text-xs">
+                        {new Date(item.created_at).toLocaleString("ru-RU", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </td>
                     </tr>
                   ))}
