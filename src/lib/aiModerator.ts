@@ -77,6 +77,28 @@ const sessionStats: ModeratorStats = {
 };
 
 /**
+ * Strip markdown code blocks from AI response
+ * Handles ```json ... ``` and ``` ... ``` formats
+ */
+function stripMarkdownCodeBlocks(content: string): string {
+  let cleaned = content.trim();
+
+  // Remove ```json or ``` at the start
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.slice(7);
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned.slice(3);
+  }
+
+  // Remove ``` at the end
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.slice(0, -3);
+  }
+
+  return cleaned.trim();
+}
+
+/**
  * Process a single ingredient name - main entry point
  */
 export async function processIngredient(
@@ -293,7 +315,9 @@ ${inputs.map((input, i) => `${i + 1}. ${input}`).join("\n")}
     // Estimate tokens used
     sessionStats.tokensUsed += Math.ceil(prompt.length / 4) + Math.ceil(content.length / 4);
 
-    const parsed = JSON.parse(content);
+    // Strip markdown code blocks if present
+    const cleanedContent = stripMarkdownCodeBlocks(content);
+    const parsed = JSON.parse(cleanedContent);
     const results: ModerationResult[] = [];
 
     for (let i = 0; i < inputs.length; i++) {
@@ -447,7 +471,9 @@ export async function fillProductWithAI(
       return { success: false, fieldsUpdated: 0, tokensUsed };
     }
 
-    const parsed = JSON.parse(content);
+    // Strip markdown code blocks if present
+    const cleanedContent = stripMarkdownCodeBlocks(content);
+    const parsed = JSON.parse(cleanedContent);
     await saveAIDecision(cacheKey, "fill", parsed);
 
     const result = await applyAIData(productId, parsed);
