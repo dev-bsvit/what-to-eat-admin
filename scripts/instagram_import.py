@@ -43,6 +43,16 @@ def main() -> int:
         quiet=True,
     )
 
+    # Authenticate via session cookie if provided
+    session_id = os.environ.get("INSTAGRAM_SESSION_ID", "").strip()
+    if session_id:
+        loader.context._session.cookies.set(
+            "sessionid", session_id, domain=".instagram.com"
+        )
+        username = os.environ.get("INSTAGRAM_USERNAME", "")
+        if username:
+            loader.context.username = username
+
     try:
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
     except Exception as exc:
