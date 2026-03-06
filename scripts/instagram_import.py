@@ -24,6 +24,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--meta-only", action="store_true", help="Return only metadata without downloading video")
     args = parser.parse_args()
 
     shortcode = extract_shortcode(args.url)
@@ -65,7 +66,7 @@ def main() -> int:
 
     video_path = None
     video_error = None
-    if post.is_video and post.video_url:
+    if not args.meta_only and post.is_video and post.video_url:
         video_path = os.path.join(args.output, f"{shortcode}.mp4")
         try:
             download_video(post.video_url, video_path)

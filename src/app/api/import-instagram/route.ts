@@ -267,7 +267,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
 
-    const { url } = await request.json();
+    const body = await request.json();
+    const { url, metaOnly = false } = body;
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
@@ -289,12 +290,11 @@ export async function POST(request: Request) {
     let extraction = { code: 127, stdout: "", stderr: "Python not found" };
     const attempts: Array<{ command: string; code: number; stderr: string }> = [];
     let pythonUsed = "";
+    const pythonArgs = [scriptPath, "--url", normalizedUrl, "--output", outputDir];
+    if (metaOnly) pythonArgs.push("--meta-only");
+
     for (const candidate of pythonCandidates) {
-      const result = await runProcess(
-        candidate,
-        [scriptPath, "--url", normalizedUrl, "--output", outputDir],
-        cwd
-      );
+      const result = await runProcess(candidate, pythonArgs, cwd);
       attempts.push({
         command: candidate,
         code: result.code,
@@ -343,6 +343,16 @@ export async function POST(request: Request) {
       owner: extracted.owner_username || null,
     });
 
+    // metaOnly: return just thumbnail + caption quickly (no transcription, no AI)
+    if (metaOnly) {
+      return NextResponse.json({
+        thumbnail_url: extracted.thumbnail_url || null,
+        caption: extracted.caption || "",
+        owner_username: extracted.owner_username || null,
+        shortcode: extracted.shortcode,
+      });
+    }
+
     let transcript = "";
     let coverDataUrl: string | null = null;
     const skipTranscription = shouldSkipTranscription(extracted.caption || "");
@@ -365,7 +375,13 @@ export async function POST(request: Request) {
         });
 
         if (ffmpegResult.code === 0) {
-          transcript = await transcribeAudio(apiKey, audioPath);
+          // 45s timeout on transcription so it doesn't block indefinitely
+          const transcriptOrNull = await Promise.race([
+            transcribeAudio(apiKey, audioPath),
+            new Promise<string>((resolve) => setTimeout(() => resolve(""), 45_000)),
+          ]);
+          transcript = transcriptOrNull;
+          console.info("[instagram] transcript", { length: transcript.length, timedOut: transcript === "" && ffmpegResult.code === 0 });
         }
       }
 
@@ -381,7 +397,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No text to parse" }, { status: 500 });
     }
 
-    const imageUrl = extracted.thumbnail_url || coverDataUrl || undefined;
+    // Only use HTTPS URLs for imageUrl — AsyncImage on iOS cannot load data: URLs
+    const imageUrl = extracted.thumbnail_url || undefined;
     const prompt = buildPrompt(
       combinedText,
       extracted.source_url,
