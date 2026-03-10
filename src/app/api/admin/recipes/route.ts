@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { cleanIngredientName } from "@/lib/stringUtils";
 import {
   normalizeText,
   parseBoolean,
@@ -15,27 +16,28 @@ const isUuid = (value: string | null | undefined) => {
 };
 
 const resolveProductId = async (name: string | null | undefined) => {
-  const cleaned = (name || "").trim();
-  if (!cleaned) return null;
+  const raw = (name || "").trim();
+  if (!raw) return null;
+  const cleaned = cleanIngredientName(raw);
 
-  const exact = await supabaseAdmin
-    .from("product_dictionary")
-    .select("id")
-    .ilike("canonical_name", cleaned)
-    .limit(1);
-
-  if (exact.data?.length) {
-    return exact.data[0].id as string;
+  // Try exact match on cleaned name first, then original
+  for (const term of [cleaned, raw]) {
+    const exact = await supabaseAdmin
+      .from("product_dictionary")
+      .select("id")
+      .ilike("canonical_name", term)
+      .limit(1);
+    if (exact.data?.length) return exact.data[0].id as string;
   }
 
-  const partial = await supabaseAdmin
-    .from("product_dictionary")
-    .select("id")
-    .ilike("canonical_name", `%${cleaned}%`)
-    .limit(1);
-
-  if (partial.data?.length) {
-    return partial.data[0].id as string;
+  // Partial match: cleaned name contained in canonical, or canonical in cleaned
+  for (const term of [cleaned, raw]) {
+    const partial = await supabaseAdmin
+      .from("product_dictionary")
+      .select("id")
+      .ilike("canonical_name", `%${term}%`)
+      .limit(1);
+    if (partial.data?.length) return partial.data[0].id as string;
   }
 
   return null;

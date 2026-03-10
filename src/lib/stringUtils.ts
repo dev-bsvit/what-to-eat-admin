@@ -48,6 +48,48 @@ export function normalize(value: string): string {
 }
 
 /**
+ * Clean ingredient name for better matching.
+ * Removes quantities, units, parentheticals, and common descriptors.
+ *
+ * Examples:
+ *   "700г картофеля"              → "картофель"
+ *   "2 ст.л. оливкового масла"    → "оливковое масло"
+ *   "Дижонская горчица (или зернистая)" → "горчица дижонская"
+ *   "Соль по вкусу"               → "соль"
+ *   "свежий базилик"              → "базилик"
+ */
+export function cleanIngredientName(raw: string): string {
+  let s = raw;
+
+  // 1. Remove parenthetical content: "(extra virgin)", "(или зернистая)", etc.
+  s = s.replace(/\([^)]*\)/g, ' ');
+
+  // 2. Remove leading quantities with units: "700г", "2 ст.л.", "1/2 cup", "400мл"
+  s = s.replace(/^\d[\d/.,\s]*\s*(г|кг|мг|мл|л|шт|уп|ст\.?\s*л\.?|ч\.?\s*л\.?|tbsp|tsp|cups?|oz|lb|g|kg|ml|l|pcs)\b\.?\s*/i, '');
+
+  // 3. Remove inline quantities: "масло 2 ст.л." → "масло"
+  s = s.replace(/\b\d[\d/.,\s]*\s*(г|кг|мг|мл|л|шт|уп|ст\.?\s*л\.?|ч\.?\s*л\.?|tbsp|tsp|cups?|oz|lb|g|kg|ml|l|pcs)\b\.?/gi, '');
+
+  // 4. Remove "по вкусу", "по желанию", "для подачи", "или X" at end
+  s = s.replace(/\s+(по\s+вкусу|по\s+желанию|для\s+подачи|для\s+жарки|по\s+необходимости)$/i, '');
+  s = s.replace(/\s+или\s+\S+$/i, '');
+
+  // 5. Remove common descriptor adjectives (keep noun)
+  const descriptors = ['свежий', 'свежая', 'свежее', 'свежие', 'сухой', 'сухая', 'сухое',
+    'молотый', 'молотая', 'молотое', 'тёртый', 'тертый', 'мелкий', 'мелкая',
+    'крупный', 'крупная', 'средний', 'средняя', 'небольшой', 'небольшая',
+    'варёный', 'вареный', 'жареный', 'маринованный', 'консервированный',
+    'замороженный', 'размороженный', 'натуральный'];
+  const descRe = new RegExp(`\\b(${descriptors.join('|')})\\b`, 'gi');
+  s = s.replace(descRe, '');
+
+  // 6. Normalize whitespace
+  s = s.replace(/\s+/g, ' ').trim();
+
+  return s || raw.trim(); // fallback to original if result is empty
+}
+
+/**
  * Calculate similarity score between two strings (0-1)
  */
 export function similarity(a: string, b: string): number {

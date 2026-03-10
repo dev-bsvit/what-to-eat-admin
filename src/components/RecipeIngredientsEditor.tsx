@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { cleanIngredientName } from "@/lib/stringUtils";
 
 interface Ingredient {
   id: string;
@@ -103,7 +104,7 @@ export default function RecipeIngredientsEditor({ value, onChange, servings }: R
   const tokenize = (value: string) => normalizeName(value).split(" ").filter(Boolean);
 
   const computeMatchScore = (needle: string, product: Product) => {
-    const normalizedNeedle = normalizeName(needle);
+    const normalizedNeedle = normalizeName(cleanIngredientName(needle));
     if (!normalizedNeedle) return 0;
     const candidates = [product.canonical_name, ...(product.synonyms || [])].filter(Boolean);
     let best = 0;
@@ -143,9 +144,14 @@ export default function RecipeIngredientsEditor({ value, onChange, servings }: R
   const findBestMatch = async (name: string) => {
     if (name.trim().length < 2) return null;
     try {
-      let items = await fetchProducts(name);
+      const cleanedName = cleanIngredientName(name);
+      let items = await fetchProducts(cleanedName);
+      // Also try original name if cleaned version returns nothing
+      if (!items.length && cleanedName !== name) {
+        items = await fetchProducts(name);
+      }
       if (!items.length) {
-        const tokens = tokenize(name).filter(token => token.length > 2);
+        const tokens = tokenize(cleanedName).filter(token => token.length > 2);
         const tokenResults = await Promise.all(tokens.map(fetchProducts));
         const merged = new Map<string, Product>();
         tokenResults.flat().forEach(item => merged.set(item.id, item));
