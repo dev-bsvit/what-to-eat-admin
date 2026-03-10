@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 type RecipeSource = {
   id: string;
@@ -154,14 +154,19 @@ export default function ModerationPage() {
   const [aiFillStatus, setAiFillStatus] = useState("");
   const [selectedForAiFill, setSelectedForAiFill] = useState<Set<string>>(new Set());
 
-  const loadUserProducts = useCallback(async () => {
+  // Cache: track which tabs have already been loaded to avoid re-fetching on tab switch
+  const loadedTabsRef = useRef(new Set<TabType>());
+
+  const loadUserProducts = useCallback(async (force = false) => {
     if (activeTab !== "user_products") return;
+    if (!force && loadedTabsRef.current.has("user_products")) return;
     setLoading(true);
     try {
       const res = await fetch("/api/admin/products?needs_moderation=1&limit=100");
       const data = await res.json();
       setUserProducts(data.data ?? []);
       setUserProductsCount(data.count ?? 0);
+      loadedTabsRef.current.add("user_products");
     } catch {
       // ignore
     } finally {
@@ -169,8 +174,9 @@ export default function ModerationPage() {
     }
   }, [activeTab]);
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (force = false) => {
     if (activeTab === "unlinked" || activeTab === "incomplete" || activeTab === "user_products") return;
+    if (!force && loadedTabsRef.current.has(activeTab)) return;
     setLoading(true);
     setStatus("");
     try {
@@ -190,6 +196,7 @@ export default function ModerationPage() {
       }
 
       setTasks(result.tasks || []);
+      loadedTabsRef.current.add(activeTab);
     } catch {
       setStatus("Ошибка: не удалось подключиться");
     } finally {
@@ -197,8 +204,9 @@ export default function ModerationPage() {
     }
   }, [activeTab]);
 
-  const loadMissing = useCallback(async () => {
+  const loadMissing = useCallback(async (force = false) => {
     if (activeTab !== "unlinked") return;
+    if (!force && loadedTabsRef.current.has("unlinked")) return;
     setLoading(true);
     setStatus("");
     try {
@@ -210,6 +218,7 @@ export default function ModerationPage() {
         return;
       }
       setMissingItems(result.items || []);
+      loadedTabsRef.current.add("unlinked");
     } catch {
       setStatus("Ошибка: не удалось подключиться");
     } finally {
@@ -217,8 +226,9 @@ export default function ModerationPage() {
     }
   }, [activeTab]);
 
-  const loadIncomplete = useCallback(async () => {
+  const loadIncomplete = useCallback(async (force = false) => {
     if (activeTab !== "incomplete") return;
+    if (!force && loadedTabsRef.current.has("incomplete")) return;
     setLoading(true);
     setStatus("");
     try {
@@ -231,6 +241,7 @@ export default function ModerationPage() {
       }
       setIncompleteProducts(result.data || []);
       setIncompleteCount(result.count || 0);
+      loadedTabsRef.current.add("incomplete");
     } catch {
       setStatus("Ошибка: не удалось подключиться");
     } finally {
@@ -279,7 +290,7 @@ export default function ModerationPage() {
       }
 
       setStatus(`Задача ${action === "approve" ? "одобрена" : action === "reject" ? "отклонена" : "пропущена"}`);
-      await loadTasks();
+      await loadTasks(true);
       await loadStats();
     } catch {
       setStatus("Ошибка: не удалось выполнить действие");
@@ -302,7 +313,7 @@ export default function ModerationPage() {
       }
 
       setStatus(`Объединено! Обновлено ингредиентов: ${result.ingredientsUpdated}`);
-      await loadTasks();
+      await loadTasks(true);
       await loadStats();
     } catch {
       setStatus("Ошибка: не удалось объединить");
@@ -324,7 +335,7 @@ export default function ModerationPage() {
       }
       setStatus(`Готово! Обновлено рецептов: ${result.updated || 0}`);
       setLinkTarget(null);
-      await loadMissing();
+      await loadMissing(true);
       await loadStats();
     } catch {
       setStatus("Ошибка: не удалось подключиться");
@@ -469,7 +480,7 @@ export default function ModerationPage() {
       setCreateStatus("");
       setStatus(`Продукт "${createForm.canonical_name}" создан`);
       if (activeTab === "unlinked") {
-        await loadMissing();
+        await loadMissing(true);
       }
       await loadStats();
     } catch {
@@ -502,7 +513,7 @@ export default function ModerationPage() {
         `• Найдено дубликатов: ${result.duplicates_found}`
       );
       setStatus("");
-      await loadTasks();
+      await loadTasks(true);
       await loadStats();
     } catch {
       setStatus("Ошибка: не удалось запустить нормализацию");
@@ -532,7 +543,7 @@ export default function ModerationPage() {
       }
       setAiFillStatus(`Заполнено ${result.updated} из ${result.processed} продуктов (${result.totalFieldsUpdated} полей)`);
       setSelectedForAiFill(new Set());
-      await loadIncomplete();
+      await loadIncomplete(true);
     } catch {
       setAiFillStatus("Ошибка: не удалось заполнить");
     } finally {
@@ -686,9 +697,10 @@ export default function ModerationPage() {
           {runningNormalization ? "⏳ Нормализация..." : "🔄 Запустить нормализацию"}
         </button>
         <button className="btn-large btn-secondary" onClick={() => {
-          if (activeTab === "unlinked") void loadMissing();
-          else if (activeTab === "incomplete") void loadIncomplete();
-          else void loadTasks();
+          if (activeTab === "user_products") void loadUserProducts(true);
+          else if (activeTab === "unlinked") void loadMissing(true);
+          else if (activeTab === "incomplete") void loadIncomplete(true);
+          else void loadTasks(true);
           void loadStats();
         }}>
           Обновить список
@@ -763,6 +775,57 @@ export default function ModerationPage() {
           </button>
         ))}
       </div>
+
+      {/* Tab Description */}
+      {(() => {
+        const descriptions: Partial<Record<TabType, { title: string; text: string }>> = {
+          user_products: {
+            title: "Продукты, созданные пользователями",
+            text: "Когда пользователь вводит ингредиент, которого нет в базе, приложение создаёт его автоматически и помечает флагом «требует проверки». Одобрите продукт, объедините его с уже существующим (если это дубликат) или удалите.",
+          },
+          all: {
+            title: "Все AI-задачи",
+            text: "После нормализации AI анализирует ингредиенты рецептов и создаёт задачи трёх типов: связать ингредиент с продуктом, объединить возможные дубликаты, подтвердить новый продукт. Здесь отображаются все задачи сразу.",
+          },
+          link_suggestion: {
+            title: "Связывание ингредиентов",
+            text: "AI нашёл ингредиент в рецепте, который ещё не привязан к продукту в справочнике, и предлагает конкретный продукт. Одобрите — и ингредиент будет автоматически сопоставляться с этим продуктом при поиске.",
+          },
+          merge_suggestion: {
+            title: "Возможные дубликаты",
+            text: "AI обнаружил два продукта, которые могут быть одним и тем же (например «Куриное филе» и «Филе курицы»). При объединении один продукт становится синонимом другого, все ссылки из рецептов и кладовки переносятся автоматически.",
+          },
+          new_product: {
+            title: "Новые продукты от AI",
+            text: "AI предлагает добавить новый продукт, который часто встречается в рецептах, но отсутствует в справочнике. Одобрите — продукт появится в базе и станет доступен для связывания с ингредиентами.",
+          },
+          unlinked: {
+            title: "Несвязанные ингредиенты",
+            text: "Ингредиенты из рецептов, которые не удалось сопоставить ни с одним продуктом в справочнике. Найдите подходящий продукт и свяжите вручную, либо создайте новый продукт прямо здесь.",
+          },
+          incomplete: {
+            title: "Незаполненные продукты",
+            text: "Продукты в справочнике, у которых нет КБЖУ или описания. Выберите один или несколько и нажмите «AI заполнить» — система автоматически подберёт данные.",
+          },
+        };
+        const desc = descriptions[activeTab];
+        if (!desc) return null;
+        return (
+          <div style={{
+            padding: "10px 14px",
+            background: "var(--bg-surface)",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border-light)",
+            marginBottom: "var(--spacing-lg)",
+            fontSize: "13px",
+            color: "var(--text-secondary)",
+            lineHeight: "1.5",
+          }}>
+            <strong style={{ color: "var(--text-primary)", display: "block", marginBottom: 3 }}>{desc.title}</strong>
+            {desc.text}
+          </div>
+        );
+      })()}
 
       {/* Content based on active tab */}
       {loading ? (
