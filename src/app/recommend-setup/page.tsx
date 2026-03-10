@@ -89,12 +89,13 @@ export default function RecommendSetupPage() {
       });
       const data = await res.json();
       if (data.ok) {
-        const msg =
+        const msg = data.message ?? (
           action === "migrate"
             ? "Миграция применена успешно"
             : action === "tag"
             ? `Помечено ${data.tagged} из ${data.total} рецептов`
-            : `Создано эмбеддингов: ${data.embedded} из ${data.total}`;
+            : `Создано эмбеддингов: ${data.embedded} из ${data.total}`
+        );
         setSteps((s) => ({ ...s, [action]: { state: "done", message: msg } }));
       } else {
         setSteps((s) => ({ ...s, [action]: { state: "error", message: data.error ?? "Неизвестная ошибка" } }));
