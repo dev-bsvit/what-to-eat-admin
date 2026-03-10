@@ -348,6 +348,22 @@ export default function RecipeIngredientsEditor({ value, onChange, servings }: R
   };
 
   const replaceIngredient = (targetId: string, product: Product) => {
+    // Save original name as synonym if it differs from canonical
+    const original = ingredients.find(ing => ing.id === targetId);
+    if (original) {
+      const originalName = original.productName.trim();
+      const canonical = product.canonical_name.trim().toLowerCase();
+      const cleaned = cleanIngredientName(originalName).toLowerCase();
+      if (cleaned && cleaned !== canonical && !product.synonyms?.map(s => s.toLowerCase()).includes(cleaned)) {
+        // Fire-and-forget: save synonym to product
+        fetch(`/api/admin/products/${product.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ add_synonym: cleaned }),
+        }).catch(() => {/* silent */});
+      }
+    }
+
     setIngredients(
       ingredients.map((ing) =>
         ing.id === targetId
