@@ -77,6 +77,15 @@ async function getEmbedding(text: string): Promise<number[] | null> {
 }
 
 export async function POST(req: NextRequest) {
+  try {
+    return await handlePost(req);
+  } catch (err) {
+    console.error("[recommend] unhandled error:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+async function handlePost(req: NextRequest) {
   let body: RequestBody;
   try {
     body = await req.json();
