@@ -15,6 +15,64 @@ interface StepResult {
   message: string;
 }
 
+const PRODUCT_MATCH_SQL = `-- Улучшенный поиск продуктов: частичное совпадение + регистронезависимые синонимы
+DROP FUNCTION IF EXISTS find_product_by_name(text);
+
+CREATE OR REPLACE FUNCTION find_product_by_name(search_name TEXT)
+RETURNS TABLE (
+    id UUID, canonical_name TEXT, category TEXT, preferred_unit TEXT,
+    calories NUMERIC, protein NUMERIC, fat NUMERIC, carbohydrates NUMERIC,
+    average_piece_weight_g NUMERIC, icon TEXT, image_url TEXT
+)
+LANGUAGE plpgsql STABLE AS $$
+DECLARE lower_name TEXT := LOWER(TRIM(search_name));
+BEGIN
+    -- 1. Точное совпадение canonical_name
+    RETURN QUERY
+    SELECT pd.id, pd.canonical_name, pd.category, pd.preferred_unit,
+           pd.calories, pd.protein, pd.fat, pd.carbohydrates,
+           pd.average_piece_weight_g, pd.icon, pd.image_url
+    FROM product_dictionary pd WHERE LOWER(pd.canonical_name) = lower_name LIMIT 1;
+    IF FOUND THEN RETURN; END IF;
+
+    -- 2. Точное совпадение синонима (регистронезависимо)
+    RETURN QUERY
+    SELECT pd.id, pd.canonical_name, pd.category, pd.preferred_unit,
+           pd.calories, pd.protein, pd.fat, pd.carbohydrates,
+           pd.average_piece_weight_g, pd.icon, pd.image_url
+    FROM product_dictionary pd
+    WHERE lower_name = ANY(SELECT LOWER(s) FROM unnest(pd.synonyms) AS s)
+    LIMIT 1;
+    IF FOUND THEN RETURN; END IF;
+
+    -- 3. Частичное совпадение: "картофель молодой" → "Картофель"
+    RETURN QUERY
+    SELECT pd.id, pd.canonical_name, pd.category, pd.preferred_unit,
+           pd.calories, pd.protein, pd.fat, pd.carbohydrates,
+           pd.average_piece_weight_g, pd.icon, pd.image_url
+    FROM product_dictionary pd
+    WHERE lower_name LIKE '%' || LOWER(pd.canonical_name) || '%'
+       OR LOWER(pd.canonical_name) LIKE '%' || lower_name || '%'
+    ORDER BY CASE WHEN LOWER(pd.canonical_name) LIKE lower_name || '%' THEN 0 ELSE 1 END,
+             LENGTH(pd.canonical_name)
+    LIMIT 1;
+    IF FOUND THEN RETURN; END IF;
+
+    -- 4. Частичное совпадение по синониму
+    RETURN QUERY
+    SELECT pd.id, pd.canonical_name, pd.category, pd.preferred_unit,
+           pd.calories, pd.protein, pd.fat, pd.carbohydrates,
+           pd.average_piece_weight_g, pd.icon, pd.image_url
+    FROM product_dictionary pd
+    WHERE EXISTS (
+        SELECT 1 FROM unnest(pd.synonyms) AS s
+        WHERE lower_name LIKE '%' || LOWER(s) || '%'
+           OR LOWER(s) LIKE '%' || lower_name || '%'
+    )
+    ORDER BY LENGTH(pd.canonical_name) LIMIT 1;
+END;
+$$;`;
+
 const MIGRATION_SQL = `-- Run this in Supabase SQL Editor
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -65,6 +123,8 @@ export default function RecommendSetupPage() {
   });
   const [copied, setCopied] = useState(false);
   const [showSql, setShowSql] = useState(false);
+  const [copiedProduct, setCopiedProduct] = useState(false);
+  const [productMatchDone, setProductMatchDone] = useState(false);
   const running = Object.values(steps).some((s) => s.state === "running");
 
   async function loadStats() {
@@ -120,6 +180,12 @@ export default function RecommendSetupPage() {
     navigator.clipboard.writeText(MIGRATION_SQL);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function copyProductSQL() {
+    navigator.clipboard.writeText(PRODUCT_MATCH_SQL);
+    setCopiedProduct(true);
+    setTimeout(() => setCopiedProduct(false), 2000);
   }
 
   useEffect(() => { loadStats(); }, []);
@@ -236,6 +302,60 @@ export default function RecommendSetupPage() {
             btnLabel="Сгенерировать"
             btnColor="#5856d6"
           />
+
+          {/* Step 4 */}
+          <div style={{
+            background: "var(--bg-surface)",
+            border: `1px solid ${productMatchDone ? "#34c759" : "var(--border-light)"}`,
+            borderRadius: "var(--radius-lg)",
+            padding: "var(--spacing-xl)",
+            boxShadow: "var(--shadow-card)",
+          }}>
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+                background: productMatchDone ? "#34c759" : "#1a1a1a",
+                color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 14, fontWeight: 600,
+              }}>
+                {productMatchDone ? "✓" : 4}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+                      Улучшить поиск продуктов
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                      Обновляет <code style={codeStyle}>find_product_by_name</code>: добавляет частичное совпадение
+                      и регистронезависимые синонимы. «Картофель молодой» → находит «Картофель».
+                    </div>
+                  </div>
+                  <button
+                    onClick={copyProductSQL}
+                    style={{
+                      background: copiedProduct ? "#34c759" : "#1a1a1a",
+                      color: "#fff", border: "none", borderRadius: "var(--radius-sm)",
+                      padding: "8px 16px", fontSize: 13, fontWeight: 500,
+                      cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                    }}
+                  >
+                    {copiedProduct ? "Скопировано!" : "Копировать SQL"}
+                  </button>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-secondary)" }}>
+                  Запусти скопированный SQL в{" "}
+                  <strong>Supabase → SQL Editor</strong>, затем{" "}
+                  <button
+                    onClick={() => setProductMatchDone(true)}
+                    style={{ fontSize: 13, color: "var(--accent-primary)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}
+                  >
+                    отметь как выполнено
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <button
