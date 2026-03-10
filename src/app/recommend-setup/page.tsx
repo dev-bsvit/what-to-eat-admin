@@ -76,6 +76,14 @@ export default function RecommendSetupPage() {
       });
       const data = await res.json();
       setStats(data);
+      // If stats loaded successfully, mood_tags column exists → migration is applied
+      if (typeof data.total === "number") {
+        setSteps((s) =>
+          s.migrate.state === "idle"
+            ? { ...s, migrate: { state: "done", message: "Миграция уже применена" } }
+            : s
+        );
+      }
     } catch {}
   }
 
