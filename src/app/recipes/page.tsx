@@ -27,8 +27,6 @@ interface RecipeStep {
 type TranslationDraft = {
   title: string;
   description: string;
-  dishType: string;
-  course: string;
   instructions: string;
 };
 
@@ -43,12 +41,91 @@ const translationLanguages = [
   { code: "uk", label: "Українська" },
 ];
 
+const createEmptyTranslationDrafts = () =>
+  translationLanguages.reduce((acc, lang) => {
+    acc[lang.code] = {
+      title: "",
+      description: "",
+      instructions: "",
+    };
+    return acc;
+  }, {} as Record<string, TranslationDraft>);
+
 const emptyTranslationDraft: TranslationDraft = {
   title: "",
   description: "",
-  dishType: "",
-  course: "",
   instructions: "",
+};
+
+type BaseTextContent = {
+  title: string;
+  description: string;
+  instructions: string[];
+};
+
+const isPlainObject = (value: unknown): value is Record<string, any> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const stringArraysEqual = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((item, index) => item === right[index]);
+
+const normalizeInstructionList = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value
+      .map(item => String(item ?? "").trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split("\n")
+      .map(line => line.trim())
+      .filter(Boolean);
+  }
+
+  return [] as string[];
+};
+
+const normalizeTranslationsObject = (raw: unknown, base: BaseTextContent) => {
+  const payload: Record<string, Record<string, any>> = {};
+  if (!isPlainObject(raw)) {
+    return payload;
+  }
+
+  Object.entries(raw).forEach(([lang, entry]) => {
+    if (!isPlainObject(entry)) return;
+
+    const next = { ...entry };
+    delete next.dish_type;
+    delete next.course;
+
+    const title = typeof next.title === "string" ? next.title.trim() : "";
+    if (title && title !== base.title) {
+      next.title = title;
+    } else {
+      delete next.title;
+    }
+
+    const description = typeof next.description === "string" ? next.description.trim() : "";
+    if (description && description !== base.description) {
+      next.description = description;
+    } else {
+      delete next.description;
+    }
+
+    const instructions = normalizeInstructionList(next.instructions);
+    if (instructions.length && !stringArraysEqual(instructions, base.instructions)) {
+      next.instructions = instructions;
+    } else {
+      delete next.instructions;
+    }
+
+    if (Object.keys(next).length > 0) {
+      payload[lang] = next;
+    }
+  });
+
+  return payload;
 };
 
 const initialState = {
@@ -113,11 +190,7 @@ export default function RecipesPage() {
   const [instagramLoading, setInstagramLoading] = useState(false);
   const [activeTranslationLang, setActiveTranslationLang] = useState("ru");
   const [translationDrafts, setTranslationDrafts] = useState<Record<string, TranslationDraft>>(
-    () =>
-      translationLanguages.reduce((acc, lang) => {
-        acc[lang.code] = { ...emptyTranslationDraft };
-        return acc;
-      }, {} as Record<string, TranslationDraft>)
+    () => createEmptyTranslationDrafts()
   );
   const [showTranslationsJson, setShowTranslationsJson] = useState(false);
   const [showMainSection, setShowMainSection] = useState(true);
@@ -143,26 +216,30 @@ export default function RecipesPage() {
     }));
   };
 
+  const getBaseTextContent = (): BaseTextContent => ({
+    title: form.title.trim(),
+    description: form.description.trim(),
+    instructions: steps
+      .map(step => step.text.trim())
+      .filter(Boolean),
+  });
+
   const parseTranslationsToDrafts = (raw: any) => {
-    if (!raw || typeof raw !== "object") {
+    const nextDrafts = createEmptyTranslationDrafts();
+    if (!isPlainObject(raw)) {
+      setTranslationDrafts(nextDrafts);
       return;
     }
 
-    const nextDrafts = translationLanguages.reduce((acc, lang) => {
-      acc[lang.code] = { ...emptyTranslationDraft };
-      return acc;
-    }, {} as Record<string, TranslationDraft>);
-
-    Object.entries(raw as Record<string, any>).forEach(([lang, data]) => {
+    Object.entries(raw).forEach(([lang, data]) => {
       if (!nextDrafts[lang] || !data || typeof data !== "object") return;
-      const instructions = Array.isArray(data.instructions)
-        ? data.instructions.join("\n")
-        : "";
+      const instructions = normalizeInstructionList((data as Record<string, any>).instructions).join("\n");
       nextDrafts[lang] = {
-        title: data.title || "",
-        description: data.description || "",
-        dishType: data.dish_type || "",
-        course: data.course || "",
+        title: typeof (data as Record<string, any>).title === "string" ? (data as Record<string, any>).title : "",
+        description:
+          typeof (data as Record<string, any>).description === "string"
+            ? (data as Record<string, any>).description
+            : "",
         instructions,
       };
     });
@@ -171,52 +248,67 @@ export default function RecipesPage() {
   };
 
   const buildTranslationsPayload = () => {
-    const payload: Record<string, any> = {};
+    const base = getBaseTextContent();
+    let rawTranslations: Record<string, any> = {};
+
+    if (form.translations.trim()) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(form.translations);
+      } catch {
+        throw new Error("Поле translations должно содержать валидный JSON");
+      }
+
+      if (!isPlainObject(parsed)) {
+        throw new Error("Поле translations должно быть JSON-объектом");
+      }
+
+      rawTranslations = normalizeTranslationsObject(parsed, base);
+    }
 
     translationLanguages.forEach(({ code }) => {
       const draft = translationDrafts[code];
       if (!draft) return;
 
+      const next = isPlainObject(rawTranslations[code]) ? { ...rawTranslations[code] } : {};
+      delete next.title;
+      delete next.description;
+      delete next.instructions;
+      delete next.dish_type;
+      delete next.course;
+
       const title = draft.title.trim();
       const description = draft.description.trim();
-      const dishType = draft.dishType.trim();
-      const course = draft.course.trim();
       const instructions = draft.instructions
         .split("\n")
         .map(line => line.trim())
         .filter(Boolean);
 
-      if (title || description || dishType || course || instructions.length) {
-        payload[code] = {
-          ...(title ? { title } : {}),
-          ...(description ? { description } : {}),
-          ...(dishType ? { dish_type: dishType } : {}),
-          ...(course ? { course } : {}),
-          ...(instructions.length ? { instructions } : {}),
-        };
+      if (title && title !== base.title) {
+        next.title = title;
+      }
+      if (description && description !== base.description) {
+        next.description = description;
+      }
+      if (instructions.length && !stringArraysEqual(instructions, base.instructions)) {
+        next.instructions = instructions;
+      }
+
+      if (Object.keys(next).length > 0) {
+        rawTranslations[code] = next;
+      } else {
+        delete rawTranslations[code];
       }
     });
 
-    return payload;
+    return rawTranslations;
   };
 
   const applyBaseInstructions = (lang: string) => {
-    const instructions = steps
-      .map(step => step.text)
-      .filter(text => text.trim().length > 0)
-      .join("\n");
-    updateTranslationDraft(lang, { instructions });
+    updateTranslationDraft(lang, { instructions: getBaseTextContent().instructions.join("\n") });
   };
 
-  const applyBaseDishType = (lang: string) => {
-    updateTranslationDraft(lang, { dishType: form.dish_type });
-  };
-
-  const applyBaseCourse = (lang: string) => {
-    updateTranslationDraft(lang, { course: form.course });
-  };
-
-  const importPrompt = `Сгенерируй JSON для рецепта.\nВерни ТОЛЬКО валидный JSON без markdown и пояснений.\n\nТребования:\n- Заполняй все ключи из шаблона.\n- Массив instructions — строки шагов в правильном порядке.\n- ingredients — массив объектов {id,name,quantity,unit}. Если UUID продукта неизвестен, ставь id пустым \"\" и заполняй name.\n- translations можно оставить пустым объектом {} или заполнить.\n- Никаких trailing commas.\n\nШаблон:\n{\n  \"title\": \"Том ям\",\n  \"description\": \"Острый суп на кокосовом молоке\",\n  \"image_url\": \"https://...\",\n  \"cuisine_id\": \"UUID каталога\",\n  \"dish_type\": \"soup\",\n  \"course\": \"main\",\n  \"servings\": 4,\n  \"prep_time\": 20,\n  \"cook_time\": 25,\n  \"difficulty\": \"medium\",\n  \"diet_tags\": [\"pescatarian\"],\n  \"allergen_tags\": [\"seafood\"],\n  \"cuisine_tags\": [\"thai\"],\n  \"equipment\": [\"pot\"],\n  \"tools_optional\": [\"blender\"],\n  \"calories\": 320,\n  \"protein\": 18,\n  \"fat\": 12,\n  \"carbs\": 35,\n  \"fiber\": 4,\n  \"sugar\": 6,\n  \"salt\": 1.2,\n  \"saturated_fat\": 4,\n  \"cholesterol\": 40,\n  \"sodium\": 600,\n  \"nutrition_per_100g\": {\"calories\": 80, \"protein\": 4},\n  \"comments_enabled\": true,\n  \"comments_count\": 0,\n  \"translations\": {\n    \"ru\": {\n      \"title\": \"Том ям\",\n      \"description\": \"...\",\n      \"ingredients\": [\n        {\"id\": \"\", \"name\": \"Креветки\", \"quantity\": 200, \"unit\": \"g\"}\n      ],\n      \"instructions\": [\"Шаг 1...\", \"Шаг 2...\"]\n    },\n    \"en\": {\n      \"title\": \"Tom yum\",\n      \"description\": \"...\",\n      \"ingredients\": [\n        {\"id\": \"\", \"name\": \"Shrimp\", \"quantity\": 200, \"unit\": \"g\"}\n      ],\n      \"instructions\": [\"Step 1...\", \"Step 2...\"]\n    }\n  },\n  \"ingredients\": [\n    {\"id\": \"UUID продукта\", \"name\": \"Креветки\", \"quantity\": 200, \"unit\": \"g\"},\n    {\"id\": \"\", \"name\": \"Кокосовое молоко\", \"quantity\": 400, \"unit\": \"ml\"}\n  ],\n  \"instructions\": [\"Шаг 1...\", \"Шаг 2...\"],\n  \"step_images\": [\n    {\"step\": 1, \"imageUrl\": \"https://...\"}\n  ]\n}`;
+  const importPrompt = `Сгенерируй JSON для рецепта.\nВерни ТОЛЬКО валидный JSON без markdown и пояснений.\n\nПравила:\n- title / description / instructions — это ЕДИНСТВЕННЫЙ источник исходного текста рецепта.\n- translations содержит только переводы, которые ОТЛИЧАЮТСЯ от исходного текста. Не дублируй туда исходный язык.\n- ingredients — массив объектов {id,name,quantity,unit}. Если UUID продукта неизвестен, ставь id пустым \"\" и заполняй name.\n- Если БЖУ нельзя надежно посчитать из ингредиентов, все равно заполни calories / protein / fat / carbs и nutrition_per_100g по имеющимся данным или оставь null.\n- step_images — массив объектов со step, image_url и optional duration_minutes.\n- Никаких trailing commas.\n\nШаблон:\n{\n  \"title\": \"Том ям\",\n  \"description\": \"Острый суп на кокосовом молоке с креветками\",\n  \"image_url\": \"https://example.com/tom-yum.jpg\",\n  \"cuisine_id\": \"UUID каталога\",\n  \"dish_type\": \"soup\",\n  \"course\": \"main\",\n  \"owner_id\": null,\n  \"is_user_defined\": false,\n  \"author\": \"Имя автора\",\n  \"contributor_ids\": [],\n  \"servings\": 4,\n  \"prep_time\": 20,\n  \"cook_time\": 25,\n  \"difficulty\": \"medium\",\n  \"diet_tags\": [\"pescatarian\"],\n  \"allergen_tags\": [\"seafood\"],\n  \"cuisine_tags\": [\"thai\"],\n  \"equipment\": [\"pot\"],\n  \"tools_optional\": [\"strainer\"],\n  \"calories\": 320,\n  \"protein\": 18,\n  \"fat\": 12,\n  \"carbs\": 35,\n  \"fiber\": 4,\n  \"sugar\": 6,\n  \"salt\": 1.2,\n  \"saturated_fat\": 4,\n  \"cholesterol\": 40,\n  \"sodium\": 600,\n  \"nutrition_per_100g\": {\n    \"calories\": 80,\n    \"protein\": 4,\n    \"fat\": 3,\n    \"carbs\": 9,\n    \"fiber\": 1,\n    \"sugar\": 1.5,\n    \"salt\": 0.3,\n    \"saturated_fat\": 1,\n    \"cholesterol\": 10,\n    \"sodium\": 150\n  },\n  \"comments_enabled\": true,\n  \"comments_count\": 0,\n  \"ingredients\": [\n    {\"id\": \"UUID продукта\", \"name\": \"Креветки\", \"quantity\": 200, \"unit\": \"g\"},\n    {\"id\": \"\", \"name\": \"Кокосовое молоко\", \"quantity\": 400, \"unit\": \"ml\"},\n    {\"id\": \"\", \"name\": \"Лемонграсс\", \"quantity\": 2, \"unit\": \"pcs\"}\n  ],\n  \"instructions\": [\n    \"Подготовьте ингредиенты.\",\n    \"Доведите бульон до кипения и добавьте лемонграсс.\",\n    \"Добавьте кокосовое молоко, пасту и креветки.\",\n    \"Готовьте 5-7 минут и подавайте.\"\n  ],\n  \"step_images\": [\n    {\"step\": 1, \"image_url\": \"https://example.com/step-1.jpg\", \"duration_minutes\": 5},\n    {\"step\": 2, \"image_url\": \"https://example.com/step-2.jpg\", \"duration_minutes\": 7}\n  ],\n  \"translations\": {\n    \"ru\": {},\n    \"en\": {\n      \"title\": \"Tom Yum\",\n      \"description\": \"Spicy coconut shrimp soup\",\n      \"instructions\": [\n        \"Prepare the ingredients.\",\n        \"Bring the broth to a boil and add the lemongrass.\",\n        \"Add coconut milk, paste, and shrimp.\",\n        \"Cook for 5-7 minutes and serve.\"\n      ]\n    },\n    \"de\": {},\n    \"fr\": {},\n    \"it\": {},\n    \"es\": {},\n    \"pt-BR\": {},\n    \"uk\": {\n      \"title\": \"Том ям\",\n      \"description\": \"Гострий суп на кокосовому молоці з креветками\",\n      \"instructions\": [\n        \"Підготуйте інгредієнти.\",\n        \"Доведіть бульйон до кипіння і додайте лемонграс.\",\n        \"Додайте кокосове молоко, пасту та креветки.\",\n        \"Варіть 5-7 хвилин і подавайте.\"\n      ]\n    }\n  }\n}`;
 
   function applyImportRecipe(raw: string) {
     setImportStatus("");
@@ -228,7 +320,7 @@ export default function RecipesPage() {
     let parsed: any;
     try {
       parsed = JSON.parse(trimmed);
-    } catch (error) {
+    } catch {
       setImportStatus("Ошибка JSON: проверь формат.");
       return;
     }
@@ -252,6 +344,13 @@ export default function RecipesPage() {
         : typeof normalized.instructions === "string"
           ? JSON.parse(normalized.instructions || "[]")
           : [];
+    const normalizedTranslations = normalizeTranslationsObject(normalized.translations, {
+      title: toText(normalized.title).trim(),
+      description: toText(normalized.description).trim(),
+      instructions: instructionsArray
+        .map((step: any) => String(step ?? "").trim())
+        .filter(Boolean),
+    });
 
     setForm(prev => ({
       ...prev,
@@ -293,12 +392,16 @@ export default function RecipesPage() {
       instructions: instructionsArray.length ? JSON.stringify(instructionsArray) : toJsonText(normalized.instructions),
       comments_enabled: String(normalized.comments_enabled ?? true),
       comments_count: toText(normalized.comments_count),
-      translations: toJsonText(normalized.translations),
+      translations: Object.keys(normalizedTranslations).length
+        ? JSON.stringify(normalizedTranslations, null, 2)
+        : "",
       step_images: toJsonText(normalized.step_images || normalized.stepImages),
     }));
 
-    if (normalized.translations) {
-      parseTranslationsToDrafts(normalized.translations);
+    if (Object.keys(normalizedTranslations).length > 0) {
+      parseTranslationsToDrafts(normalizedTranslations);
+    } else {
+      parseTranslationsToDrafts({});
     }
 
     const resolveIngredientsSource = () => {
@@ -398,6 +501,23 @@ export default function RecipesPage() {
     }
   }
 
+  function handleTranslationsJsonChange(value: string) {
+    setForm(prev => ({ ...prev, translations: value }));
+
+    if (!value.trim()) {
+      parseTranslationsToDrafts({});
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      const normalized = normalizeTranslationsObject(parsed, getBaseTextContent());
+      parseTranslationsToDrafts(normalized);
+    } catch {
+      // Keep raw JSON editable even while it is temporarily invalid.
+    }
+  }
+
   async function loadCuisines() {
     try {
       const response = await fetch("/api/admin/cuisines");
@@ -415,6 +535,17 @@ export default function RecipesPage() {
       const result = await response.json();
       const recipe = result.recipe;
       if (recipe) {
+        const instructionsData = typeof recipe.instructions === 'string'
+          ? JSON.parse(recipe.instructions || "[]")
+          : recipe.instructions || [];
+        const normalizedTranslations = normalizeTranslationsObject(recipe.translations, {
+          title: (recipe.title || "").trim(),
+          description: (recipe.description || "").trim(),
+          instructions: Array.isArray(instructionsData)
+            ? instructionsData.map((step: any) => String(step ?? "").trim()).filter(Boolean)
+            : [],
+        });
+
         setForm({
           id: recipe.id || "",
           title: recipe.title || "",
@@ -451,11 +582,15 @@ export default function RecipesPage() {
           instructions: typeof recipe.instructions === 'string' ? recipe.instructions : JSON.stringify(recipe.instructions),
           comments_enabled: String(recipe.comments_enabled ?? true),
           comments_count: recipe.comments_count?.toString() || "",
-          translations: recipe.translations ? JSON.stringify(recipe.translations) : "",
+          translations: Object.keys(normalizedTranslations).length
+            ? JSON.stringify(normalizedTranslations, null, 2)
+            : "",
         });
 
-        if (recipe.translations) {
-          parseTranslationsToDrafts(recipe.translations);
+        if (Object.keys(normalizedTranslations).length > 0) {
+          parseTranslationsToDrafts(normalizedTranslations);
+        } else {
+          parseTranslationsToDrafts({});
         }
 
         if (Array.isArray(result.ingredients) && result.ingredients.length > 0) {
@@ -463,7 +598,7 @@ export default function RecipesPage() {
 
           const loadedIngredients: Ingredient[] = ingredientsData.map((ing: any) => ({
             id: crypto.randomUUID(),
-            productId: ing.product_dictionary_id || ing.productId || ing.id || '',
+            productId: ing.product_dictionary_id || ing.productId || '',
             productName: ing.name || ing.product_name || ing.productName || '',
             quantity: ing.amount ?? ing.quantity ?? 0,
             unit: ing.unit || 'g',
@@ -553,7 +688,7 @@ export default function RecipesPage() {
         const translationsPayload = buildTranslationsPayload();
         translationsJson = Object.keys(translationsPayload).length
           ? JSON.stringify(translationsPayload)
-          : (form.translations || null);
+          : null;
       } catch (error) {
         alert(error instanceof Error ? error.message : "Ошибка перевода");
         setLoading(false);
@@ -652,6 +787,14 @@ export default function RecipesPage() {
 
   const selectedCuisine = cuisines.find(c => c.id === form.cuisine_id);
   const activeTranslation = translationDrafts[activeTranslationLang] || emptyTranslationDraft;
+  const translationsJsonPreview = (() => {
+    try {
+      const payload = buildTranslationsPayload();
+      return Object.keys(payload).length ? JSON.stringify(payload, null, 2) : "";
+    } catch {
+      return form.translations;
+    }
+  })();
   const sectionHeaderStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -1809,6 +1952,20 @@ export default function RecipesPage() {
                 background: 'var(--bg-page)',
               }}>
                 <div style={{
+                  marginBottom: 'var(--spacing-md)',
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: '#fff8e8',
+                  border: '1px solid #f2d59c',
+                  fontSize: '13px',
+                  color: '#7a5c00',
+                }}>
+                  Базовые поля <strong>Название</strong>, <strong>Описание</strong> и шаги приготовления
+                  являются единственным источником исходного текста. В переводах храните только
+                  отличающиеся версии для других языков.
+                </div>
+
+                <div style={{
                   display: 'flex',
                   flexWrap: 'wrap',
                   gap: '8px',
@@ -1885,42 +2042,6 @@ export default function RecipesPage() {
                       rows={4}
                     />
                   </div>
-
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      marginBottom: 'var(--spacing-xs)',
-                      color: 'var(--text-primary)',
-                    }}>
-                      Тип блюда (dish_type)
-                    </label>
-                    <input
-                      className="input"
-                      value={activeTranslation.dishType}
-                      onChange={(e) => updateTranslationDraft(activeTranslationLang, { dishType: e.target.value })}
-                      placeholder="soup, main, dessert"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      marginBottom: 'var(--spacing-xs)',
-                      color: 'var(--text-primary)',
-                    }}>
-                      Курс (course)
-                    </label>
-                    <input
-                      className="input"
-                      value={activeTranslation.course}
-                      onChange={(e) => updateTranslationDraft(activeTranslationLang, { course: e.target.value })}
-                      placeholder="breakfast, lunch, dinner"
-                    />
-                  </div>
                 </div>
 
                 <div style={{
@@ -1935,20 +2056,6 @@ export default function RecipesPage() {
                     onClick={() => applyBaseInstructions(activeTranslationLang)}
                   >
                     Подставить инструкции из базовых
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => applyBaseDishType(activeTranslationLang)}
-                  >
-                    Подставить dish_type из базовых
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => applyBaseCourse(activeTranslationLang)}
-                  >
-                    Подставить course из базовых
                   </button>
                   <button
                     type="button"
@@ -1980,8 +2087,8 @@ export default function RecipesPage() {
                     <textarea
                       className="input"
                       placeholder='{"ru":{"title":"..."}}'
-                      value={form.translations}
-                      onChange={(e) => setForm({ ...form, translations: e.target.value })}
+                      value={translationsJsonPreview}
+                      onChange={(e) => handleTranslationsJsonChange(e.target.value)}
                       rows={4}
                       style={{ fontFamily: 'monospace', fontSize: '13px' }}
                     />
