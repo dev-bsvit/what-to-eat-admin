@@ -13,6 +13,7 @@ const navigation = [
   { name: "Парсеры", href: "/parsers", icon: "⚙️" },
   { name: "Тест импорта", href: "/test-import", icon: "🧪" },
   { name: "Instagram импорт", href: "/instagram-import", icon: "📷" },
+  { name: "Рекомендации", href: "/recommend-setup", icon: "🤖" },
 ];
 
 export default function Sidebar() {
