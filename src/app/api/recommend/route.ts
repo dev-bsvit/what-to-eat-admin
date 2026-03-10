@@ -89,52 +89,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing_answers" }, { status: 400 });
   }
 
-  // --- Try vector search first ---
+  // --- Run embedding + fallback DB query in parallel ---
   const queryText = buildQueryText(answers);
-  const embedding = await getEmbedding(queryText);
+
+  let fallbackQuery = supabaseAdmin
+    .from("recipes")
+    .select("id, title, description, image_url, cook_time, prep_time, servings, difficulty, diet_tags, cuisine_id, translations")
+    .eq("is_user_defined", false)
+    .not("image_url", "is", null);
+  if (answers.mood !== "new" && answers.mood !== "usual") {
+    fallbackQuery = fallbackQuery.contains("mood_tags", [answers.mood]);
+  }
+  if (answers.maxCookTime) {
+    fallbackQuery = fallbackQuery.lte("cook_time", answers.maxCookTime);
+  }
+  if (answers.mood === "new" && excludedRecipeIds.length > 0) {
+    fallbackQuery = fallbackQuery.not("id", "in", `(${excludedRecipeIds.join(",")})`);
+  }
+
+  const [embedding, fallbackResult] = await Promise.all([
+    getEmbedding(queryText),
+    fallbackQuery.limit(40),
+  ]);
 
   let rows: any[] | null = null;
 
   if (embedding) {
-    // Vector similarity search via Supabase RPC
     const { data, error } = await supabaseAdmin.rpc("match_recipes", {
       query_embedding: embedding,
       match_count: 40,
       filter_cook_time: answers.maxCookTime ?? null,
       filter_mood: answers.mood !== "new" ? answers.mood : null,
-      exclude_ids: answers.mood === "new" && excludedRecipeIds.length > 0
-        ? excludedRecipeIds
-        : [],
+      exclude_ids: answers.mood === "new" && excludedRecipeIds.length > 0 ? excludedRecipeIds : [],
     });
-
-    if (!error && data && data.length > 0) {
-      rows = data;
-    }
+    if (!error && data && data.length > 0) rows = data;
   }
 
-  // --- Fallback: filter by mood_tags ---
   if (!rows || rows.length === 0) {
-    let query = supabaseAdmin
-      .from("recipes")
-      .select("id, title, description, image_url, cook_time, prep_time, servings, difficulty, diet_tags, cuisine_id, translations")
-      .eq("is_user_defined", false)
-      .not("image_url", "is", null);
-
-    if (answers.mood !== "new" && answers.mood !== "usual") {
-      query = query.contains("mood_tags", [answers.mood]);
-    }
-    if (answers.maxCookTime) {
-      query = query.lte("cook_time", answers.maxCookTime);
-    }
-    if (answers.mood === "new" && excludedRecipeIds.length > 0) {
-      query = query.not("id", "in", `(${excludedRecipeIds.join(",")})`);
-    }
-
-    const { data, error } = await query.limit(40);
-
-    if (!error && data && data.length > 0) {
-      rows = data;
-    }
+    rows = (!fallbackResult.error && fallbackResult.data?.length) ? fallbackResult.data : null;
   }
 
   // --- Last fallback: any 8 recipes ---
