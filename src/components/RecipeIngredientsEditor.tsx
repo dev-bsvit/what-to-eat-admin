@@ -53,6 +53,7 @@ export default function RecipeIngredientsEditor({ value, onChange, servings }: R
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
   const [unmatchedIds, setUnmatchedIds] = useState<Set<string>>(new Set());
   const [matchStatus, setMatchStatus] = useState<string | null>(null);
+  const autoMatchedRef = useRef(false);
 
   useEffect(() => {
     isSyncingRef.current = true;
@@ -241,6 +242,14 @@ export default function RecipeIngredientsEditor({ value, onChange, servings }: R
       setIsSearching(false);
     }
   };
+
+  // Auto-match once on initial load if unlinked ingredients exist
+  useEffect(() => {
+    if (!autoMatchedRef.current && ingredients.length > 0 && ingredients.some(ing => !ing.productId && ing.productName.trim())) {
+      autoMatchedRef.current = true;
+      autoMatchIngredients();
+    }
+  }, [ingredients.length]);
 
   const createProductsFromUnmatched = async () => {
     const targets = ingredients.filter(ing => !ing.productId && ing.productName.trim().length > 0);
