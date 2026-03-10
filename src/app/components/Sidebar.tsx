@@ -10,6 +10,7 @@ const navigation = [
   { name: "Продукты", href: "/products", icon: PackageIcon },
   { name: "Рецепты", href: "/recipes", icon: BookOpenIcon },
   { name: "Схема БД", href: "/schema", icon: DatabaseIcon },
+  { name: "Рекомендации", href: "/recommend-setup", icon: BookOpenIcon },
 ];
 
 export default function Sidebar() {
