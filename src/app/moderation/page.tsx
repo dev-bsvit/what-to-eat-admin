@@ -80,7 +80,17 @@ type Stats = {
   approvalRate: number;
 };
 
-type TabType = "link_suggestion" | "merge_suggestion" | "new_product" | "all" | "unlinked" | "incomplete";
+type TabType = "link_suggestion" | "merge_suggestion" | "new_product" | "all" | "unlinked" | "incomplete" | "user_products";
+
+type UserProduct = {
+  id: string;
+  canonical_name: string;
+  category?: string;
+  icon?: string;
+  synonyms?: string[];
+  calories?: number;
+  auto_created?: boolean;
+};
 
 const categories = [
   { id: "grains", name: "Сыпучие", icon: "🌾" },
@@ -133,13 +143,34 @@ export default function ModerationPage() {
   const [createStatus, setCreateStatus] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
+  // User products (needs_moderation) state
+  const [userProducts, setUserProducts] = useState<UserProduct[]>([]);
+  const [userProductsCount, setUserProductsCount] = useState(0);
+  const [userProductsBusy, setUserProductsBusy] = useState<Record<string, boolean>>({});
+  const [userMerge, setUserMerge] = useState<{ productId: string; search: string; results: UserProduct[]; searching: boolean } | null>(null);
+
   // AI batch fill state
   const [aiFillLoading, setAiFillLoading] = useState(false);
   const [aiFillStatus, setAiFillStatus] = useState("");
   const [selectedForAiFill, setSelectedForAiFill] = useState<Set<string>>(new Set());
 
+  const loadUserProducts = useCallback(async () => {
+    if (activeTab !== "user_products") return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/products?needs_moderation=1&limit=100");
+      const data = await res.json();
+      setUserProducts(data.data ?? []);
+      setUserProductsCount(data.count ?? 0);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab]);
+
   const loadTasks = useCallback(async () => {
-    if (activeTab === "unlinked" || activeTab === "incomplete") return;
+    if (activeTab === "unlinked" || activeTab === "incomplete" || activeTab === "user_products") return;
     setLoading(true);
     setStatus("");
     try {
@@ -224,11 +255,13 @@ export default function ModerationPage() {
       void loadMissing();
     } else if (activeTab === "incomplete") {
       void loadIncomplete();
+    } else if (activeTab === "user_products") {
+      void loadUserProducts();
     } else {
       void loadTasks();
     }
     void loadStats();
-  }, [loadTasks, loadMissing, loadIncomplete, loadStats, activeTab]);
+  }, [loadTasks, loadMissing, loadIncomplete, loadUserProducts, loadStats, activeTab]);
 
   async function handleAction(taskId: string, action: "approve" | "reject" | "skip") {
     setStatus(`Обработка...`);
@@ -525,11 +558,55 @@ export default function ModerationPage() {
     setSelectedForAiFill(next);
   }
 
+  async function approveUserProduct(id: string) {
+    setUserProductsBusy((p) => ({ ...p, [id]: true }));
+    await fetch(`/api/admin/products/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approve: true }),
+    });
+    setUserProducts((ps) => ps.filter((p) => p.id !== id));
+    setUserProductsCount((c) => c - 1);
+    setUserProductsBusy((p) => ({ ...p, [id]: false }));
+  }
+
+  async function deleteUserProduct(id: string) {
+    if (!confirm("Удалить продукт?")) return;
+    setUserProductsBusy((p) => ({ ...p, [id]: true }));
+    await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+    setUserProducts((ps) => ps.filter((p) => p.id !== id));
+    setUserProductsCount((c) => c - 1);
+    setUserProductsBusy((p) => ({ ...p, [id]: false }));
+  }
+
+  async function searchMergeProducts(search: string) {
+    if (!userMerge) return;
+    setUserMerge((m) => m ? { ...m, search, searching: true, results: [] } : null);
+    const res = await fetch(`/api/admin/products?search=${encodeURIComponent(search)}&include_synonyms=1&limit=10`);
+    const data = await res.json();
+    setUserMerge((m) => m ? { ...m, results: data.data ?? [], searching: false } : null);
+  }
+
+  async function doUserMerge(primaryId: string) {
+    if (!userMerge) return;
+    setUserProductsBusy((p) => ({ ...p, [userMerge.productId]: true }));
+    await fetch("/api/admin/products/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ primaryId, mergeIds: [userMerge.productId] }),
+    });
+    setUserProducts((ps) => ps.filter((p) => p.id !== userMerge.productId));
+    setUserProductsCount((c) => c - 1);
+    setUserMerge(null);
+    setUserProductsBusy((p) => ({ ...p, [userMerge.productId]: false }));
+  }
+
   const tabs: { key: TabType; label: string; count?: number }[] = [
-    { key: "all", label: "Все", count: stats?.pendingTasks },
+    { key: "user_products", label: "Новые от пользователей", count: userProductsCount || undefined },
+    { key: "all", label: "AI задачи", count: stats?.pendingTasks },
     { key: "link_suggestion", label: "Связывание", count: stats?.tasksByType?.link_suggestion },
     { key: "merge_suggestion", label: "Дубликаты", count: stats?.tasksByType?.merge_suggestion },
-    { key: "new_product", label: "Новые продукты", count: stats?.tasksByType?.new_product },
+    { key: "new_product", label: "Новые (AI)", count: stats?.tasksByType?.new_product },
     { key: "unlinked", label: "Несвязанные", count: missingItems.length || undefined },
     { key: "incomplete", label: "Незаполненные", count: incompleteCount || undefined },
   ];
@@ -692,6 +769,60 @@ export default function ModerationPage() {
         <div style={{ padding: "var(--spacing-lg)", color: "var(--text-secondary)" }}>
           Загрузка...
         </div>
+      ) : activeTab === "user_products" ? (
+        /* User-created products needing moderation */
+        userProducts.length === 0 ? (
+          <div style={{ padding: "var(--spacing-xl)", textAlign: "center", color: "var(--text-secondary)", background: "var(--bg-surface)", borderRadius: "var(--radius-lg)" }}>
+            🎉 Нет продуктов, требующих модерации
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+              <button className="btn btn-primary" onClick={async () => {
+                if (!confirm(`Одобрить все ${userProducts.length} продуктов?`)) return;
+                for (const p of userProducts) {
+                  await fetch(`/api/admin/products/${p.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ approve: true }),
+                  });
+                }
+                setUserProducts([]);
+                setUserProductsCount(0);
+              }}>
+                ✓ Одобрить все ({userProducts.length})
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {userProducts.map((product) => (
+                <div key={product.id} style={{
+                  background: "var(--bg-surface)", border: "1px solid var(--border-light)",
+                  borderRadius: "var(--radius-lg)", padding: "12px 16px",
+                  display: "flex", alignItems: "center", gap: 14,
+                  opacity: userProductsBusy[product.id] ? 0.5 : 1,
+                }}>
+                  <span style={{ fontSize: 26, flexShrink: 0, width: 34, textAlign: "center" }}>{product.icon || "📦"}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>{product.canonical_name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                      {product.category || "other"}
+                      {product.synonyms?.length ? ` · ${product.synonyms.slice(0, 3).join(", ")}` : ""}
+                      {product.calories ? ` · ${Math.round(product.calories)} ккал` : ""}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => approveUserProduct(product.id)} disabled={!!userProductsBusy[product.id]} title="Одобрить"
+                      style={{ width: 30, height: 30, borderRadius: 6, background: "#34c759", color: "#fff", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>✓</button>
+                    <button onClick={() => setUserMerge({ productId: product.id, search: product.canonical_name, results: [], searching: false })} disabled={!!userProductsBusy[product.id]} title="Объединить"
+                      style={{ width: 30, height: 30, borderRadius: 6, background: "#007aff", color: "#fff", border: "none", cursor: "pointer", fontSize: 14 }}>⇄</button>
+                    <button onClick={() => deleteUserProduct(product.id)} disabled={!!userProductsBusy[product.id]} title="Удалить"
+                      style={{ width: 30, height: 30, borderRadius: 6, background: "#ff3b30", color: "#fff", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
       ) : activeTab === "unlinked" ? (
         /* Unlinked ingredients tab */
         <div style={{
@@ -1233,6 +1364,40 @@ export default function ModerationPage() {
                 Закрыть
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Products Merge Modal */}
+      {userMerge && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+          onClick={() => setUserMerge(null)}>
+          <div style={{ background: "var(--bg-surface)", borderRadius: "var(--radius-lg)", padding: 24, width: 480, maxWidth: "90vw", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 4, color: "var(--text-primary)" }}>Объединить с продуктом</h2>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }}>
+              «{userProducts.find((p) => p.id === userMerge.productId)?.canonical_name}» станет синонимом выбранного
+            </p>
+            <input type="text" placeholder="Поиск продукта..." defaultValue={userMerge.search} autoFocus
+              onChange={(e) => searchMergeProducts(e.target.value)}
+              style={{ width: "100%", padding: "9px 12px", fontSize: 14, border: "1px solid var(--border-light)", borderRadius: "var(--radius-sm)", background: "var(--bg-main)", color: "var(--text-primary)", boxSizing: "border-box" }} />
+            <div style={{ marginTop: 12, maxHeight: 280, overflowY: "auto" }}>
+              {userMerge.searching && <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "8px 0" }}>Поиск...</div>}
+              {userMerge.results.filter((r) => r.id !== userMerge.productId).map((result) => (
+                <button key={result.id} onClick={() => doUserMerge(result.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px", marginBottom: 4, textAlign: "left", background: "var(--bg-main)", border: "1px solid var(--border-light)", borderRadius: "var(--radius-sm)", cursor: "pointer" }}>
+                  <span style={{ fontSize: 20 }}>{result.icon || "📦"}</span>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{result.canonical_name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{result.category}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setUserMerge(null)}
+              style={{ marginTop: 12, width: "100%", padding: "8px 0", fontSize: 13, background: "none", border: "1px solid var(--border-light)", borderRadius: "var(--radius-sm)", cursor: "pointer", color: "var(--text-secondary)" }}>
+              Отмена
+            </button>
           </div>
         </div>
       )}
