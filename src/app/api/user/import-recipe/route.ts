@@ -41,7 +41,7 @@ interface InstagramExtraction {
   owner_username?: string;
 }
 
-type LinkSource = "instagram" | "tiktok" | "web";
+type LinkSource = "instagram" | "tiktok" | "youtube" | "pinterest" | "web";
 
 // ============================================================================
 // Constants
@@ -77,6 +77,87 @@ function getSupabaseAdmin() {
 }
 
 // ============================================================================
+// Image Storage - Save images to Supabase Storage
+// ============================================================================
+
+const STORAGE_BUCKET = "recipe-images";
+
+async function uploadImageToStorage(
+  imageUrl: string,
+  userId: string,
+  recipeId: string
+): Promise<string | null> {
+  try {
+    const supabase = getSupabaseAdmin();
+    let imageData: Buffer;
+    let contentType = "image/jpeg";
+
+    // Handle base64 data URLs
+    if (imageUrl.startsWith("data:")) {
+      const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        console.error("[storage] Invalid base64 data URL");
+        return null;
+      }
+      contentType = matches[1];
+      imageData = Buffer.from(matches[2], "base64");
+    } else {
+      // Download image from URL
+      console.log(`[storage] Downloading image from: ${imageUrl.slice(0, 100)}...`);
+      const response = await fetch(imageUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[storage] Failed to download image: ${response.status}`);
+        return null;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      imageData = Buffer.from(arrayBuffer);
+
+      // Detect content type
+      const responseContentType = response.headers.get("content-type");
+      if (responseContentType?.includes("image/")) {
+        contentType = responseContentType.split(";")[0];
+      }
+    }
+
+    // Generate unique filename
+    const ext = contentType.includes("png") ? "png" : "jpg";
+    const fileName = `${userId}/${recipeId}-${Date.now()}.${ext}`;
+
+    console.log(`[storage] Uploading to ${STORAGE_BUCKET}/${fileName} (${imageData.length} bytes)`);
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(fileName, imageData, {
+        contentType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("[storage] Upload error:", uploadError.message);
+      return null;
+    }
+
+    // Get public URL
+    const { data: publicUrlData } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(fileName);
+
+    console.log(`[storage] ✅ Image saved: ${publicUrlData.publicUrl}`);
+    return publicUrlData.publicUrl;
+  } catch (error) {
+    console.error("[storage] Error uploading image:", error);
+    return null;
+  }
+}
+
+// ============================================================================
 // Link source detection
 // ============================================================================
 
@@ -89,6 +170,14 @@ function detectLinkSource(url: string): LinkSource {
 
   if (lowerUrl.includes("tiktok.com") || lowerUrl.includes("vm.tiktok.com")) {
     return "tiktok";
+  }
+
+  if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be") || lowerUrl.includes("m.youtube.com")) {
+    return "youtube";
+  }
+
+  if (lowerUrl.includes("pinterest.com") || lowerUrl.includes("pin.it")) {
+    return "pinterest";
   }
 
   return "web";
@@ -519,6 +608,39 @@ async function importFromInstagram(url: string, apiKey: string): Promise<Importe
 // Web import (JSON-LD + HTML parsing)
 // ============================================================================
 
+async function importViaDedicatedEndpoint(
+  url: string,
+  endpointPath: string,
+  originalRequest: Request
+): Promise<ImportedRecipe> {
+  const requestUrl = new URL(originalRequest.url);
+  const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+  const endpointUrl = `${baseUrl}${endpointPath}`;
+
+  console.log(`📡 Calling dedicated endpoint: ${endpointUrl}`);
+
+  const response = await fetch(endpointUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      (errorData as any)?.error || (errorData as any)?.message || `Endpoint ${endpointPath} returned ${response.status}`
+    );
+  }
+
+  const data = await response.json();
+  const recipe = (data as any)?.recipe;
+  if (!recipe || !recipe.title) {
+    throw new Error("No recipe returned from endpoint");
+  }
+
+  return recipe as ImportedRecipe;
+}
+
 async function importFromWeb(url: string, apiKey: string): Promise<ImportedRecipe> {
   console.log("🌐 Importing recipe from web:", url);
 
@@ -852,17 +974,110 @@ function parseInstructions(value: any): Array<{ text: string }> {
 
 function parseIngredientText(text: string): { name: string; amount: string; unit: string } {
   const cleaned = text.trim();
-  const pattern = /^([\d/.,]+)\s*([а-яёa-z.]+)?\s*(.+)$/i;
-  const match = cleaned.match(pattern);
 
-  if (match) {
-    const amount = match[1].replace(",", ".");
-    const unit = (match[2] || "").trim();
-    const name = (match[3] || "").trim();
-    return { name: name || cleaned, amount, unit };
+  // Common unit patterns (Russian and English)
+  const unitPatterns = [
+    // Russian
+    "г", "гр", "грамм", "граммов",
+    "кг", "килограмм", "килограммов",
+    "мл", "миллилитр", "миллилитров",
+    "л", "литр", "литров",
+    "шт", "штук", "штуки", "штука",
+    "ст\\.?л", "столов(?:ая|ых)\\s*лож(?:ка|ки|ек)",
+    "ч\\.?л", "чайн(?:ая|ых)\\s*лож(?:ка|ки|ек)",
+    "стакан", "стакана", "стаканов",
+    "щепотк(?:а|и|у)",
+    "пучок", "пучка", "пучков",
+    "зубчик", "зубчика", "зубчиков",
+    "долька", "дольки", "долек",
+    "веточк(?:а|и)",
+    "кусок", "куска", "кусков",
+    "ломтик", "ломтика", "ломтиков",
+    "банк(?:а|и)", "упаковк(?:а|и)",
+    // English
+    "g", "kg", "ml", "l", "oz", "lb", "cup", "cups",
+    "tbsp", "tsp", "piece", "pieces", "pcs"
+  ].join("|");
+
+  // Pattern 1: "Name — 1,2 kg" or "Name - 1.5 units" (name first, then dash, then amount)
+  const dashPattern = new RegExp(
+    `^(.+?)\\s*[—–-]\\s*([\\d/.,]+)\\s*(${unitPatterns})\\.?\\s*$`,
+    "i"
+  );
+  const dashMatch = cleaned.match(dashPattern);
+  if (dashMatch) {
+    return {
+      name: dashMatch[1].trim(),
+      amount: dashMatch[2].replace(",", "."),
+      unit: normalizeUnit(dashMatch[3]),
+    };
   }
 
+  // Pattern 2: "Name — amount" without unit (e.g., "Соль — по вкусу")
+  const dashNoUnitPattern = /^(.+?)\s*[—–-]\s*([\d/.,]+|по вкусу|to taste)\s*$/i;
+  const dashNoUnitMatch = cleaned.match(dashNoUnitPattern);
+  if (dashNoUnitMatch) {
+    const amountPart = dashNoUnitMatch[2].toLowerCase();
+    if (amountPart === "по вкусу" || amountPart === "to taste") {
+      return { name: dashNoUnitMatch[1].trim(), amount: "", unit: "по вкусу" };
+    }
+    return {
+      name: dashNoUnitMatch[1].trim(),
+      amount: dashNoUnitMatch[2].replace(",", "."),
+      unit: "",
+    };
+  }
+
+  // Pattern 3: "1,2 kg Name" (amount first, common format)
+  const amountFirstPattern = new RegExp(
+    `^([\\d/.,]+)\\s*(${unitPatterns})\\.?\\s+(.+)$`,
+    "i"
+  );
+  const amountFirstMatch = cleaned.match(amountFirstPattern);
+  if (amountFirstMatch) {
+    return {
+      name: amountFirstMatch[3].trim(),
+      amount: amountFirstMatch[1].replace(",", "."),
+      unit: normalizeUnit(amountFirstMatch[2]),
+    };
+  }
+
+  // Pattern 4: "Name 1,2 kg" (name first, amount at end without dash)
+  const nameFirstPattern = new RegExp(
+    `^(.+?)\\s+([\\d/.,]+)\\s*(${unitPatterns})\\.?\\s*$`,
+    "i"
+  );
+  const nameFirstMatch = cleaned.match(nameFirstPattern);
+  if (nameFirstMatch) {
+    return {
+      name: nameFirstMatch[1].trim(),
+      amount: nameFirstMatch[2].replace(",", "."),
+      unit: normalizeUnit(nameFirstMatch[3]),
+    };
+  }
+
+  // No pattern matched - return as name only
   return { name: cleaned, amount: "", unit: "" };
+}
+
+function normalizeUnit(unit: string): string {
+  const u = unit.toLowerCase().replace(/\.$/, "").trim();
+
+  // Normalize common units to standard forms
+  const unitMap: Record<string, string> = {
+    "г": "г", "гр": "г", "грамм": "г", "граммов": "г",
+    "кг": "кг", "килограмм": "кг", "килограммов": "кг",
+    "мл": "мл", "миллилитр": "мл", "миллилитров": "мл",
+    "л": "л", "литр": "л", "литров": "л",
+    "шт": "шт", "штук": "шт", "штуки": "шт", "штука": "шт",
+    "ст.л": "ст.л.", "стл": "ст.л.",
+    "ч.л": "ч.л.", "чл": "ч.л.",
+    "стакан": "стакан", "стакана": "стакан", "стаканов": "стакан",
+    "зубчик": "зубчик", "зубчика": "зубчик", "зубчиков": "зубчик",
+    "пучок": "пучок", "пучка": "пучок", "пучков": "пучок",
+  };
+
+  return unitMap[u] || unit;
 }
 
 // ============================================================================
@@ -915,8 +1130,11 @@ export async function POST(request: Request) {
       if (linkSource === "instagram") {
         recipe = await importFromInstagram(url, apiKey);
       } else if (linkSource === "tiktok") {
-        // TikTok not supported yet, treat as web
-        recipe = await importFromWeb(url, apiKey);
+        recipe = await importViaDedicatedEndpoint(url, "/api/import-tiktok", request);
+      } else if (linkSource === "youtube") {
+        recipe = await importViaDedicatedEndpoint(url, "/api/import-youtube", request);
+      } else if (linkSource === "pinterest") {
+        recipe = await importViaDedicatedEndpoint(url, "/api/import-pinterest", request);
       } else {
         recipe = await importFromWeb(url, apiKey);
       }
@@ -929,6 +1147,18 @@ export async function POST(request: Request) {
         },
         { status: 500 }
       );
+    }
+
+    // Upload image to Supabase Storage if available
+    if (recipe.imageUrl) {
+      const tempRecipeId = crypto.randomUUID();
+      const permanentImageUrl = await uploadImageToStorage(recipe.imageUrl, userId, tempRecipeId);
+      if (permanentImageUrl) {
+        console.log(`[import] Image saved to storage: ${permanentImageUrl}`);
+        recipe.imageUrl = permanentImageUrl;
+      } else {
+        console.warn("[import] Failed to save image to storage, keeping original URL");
+      }
     }
 
     // Record successful import

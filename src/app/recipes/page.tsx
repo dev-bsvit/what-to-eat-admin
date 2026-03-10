@@ -69,6 +69,29 @@ const isPlainObject = (value: unknown): value is Record<string, any> =>
 const stringArraysEqual = (left: string[], right: string[]) =>
   left.length === right.length && left.every((item, index) => item === right[index]);
 
+const toFiniteNumber = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim();
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+
+    const numericMatch = normalized.match(/-?\d+(?:\.\d+)?/);
+    if (numericMatch) {
+      const extracted = Number(numericMatch[0]);
+      return Number.isFinite(extracted) ? extracted : null;
+    }
+  }
+
+  return null;
+};
+
 const normalizeInstructionList = (value: unknown) => {
   if (Array.isArray(value)) {
     return value
@@ -84,6 +107,92 @@ const normalizeInstructionList = (value: unknown) => {
   }
 
   return [] as string[];
+};
+
+const nutritionKeys = [
+  "calories",
+  "protein",
+  "fat",
+  "carbs",
+  "fiber",
+  "sugar",
+  "salt",
+  "saturated_fat",
+  "cholesterol",
+  "sodium",
+] as const;
+
+const normalizeNutritionObject = (value: unknown) => {
+  if (!isPlainObject(value)) return null;
+
+  const payload = nutritionKeys.reduce((acc, key) => {
+    const numeric = toFiniteNumber(value[key]);
+    if (numeric !== null) {
+      acc[key] = numeric;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
+  return Object.keys(payload).length > 0 ? payload : null;
+};
+
+const convertDurationToMinutes = (amount: number, unit: string) => {
+  const normalizedUnit = unit.toLowerCase();
+  if (
+    normalizedUnit.includes("hour") ||
+    normalizedUnit.includes("hr") ||
+    normalizedUnit.includes("час") ||
+    normalizedUnit.includes("год")
+  ) {
+    return Math.round(amount * 60);
+  }
+
+  return Math.round(amount);
+};
+
+const extractDurationMinutesFromText = (text: string) => {
+  const source = text.toLowerCase();
+  if (!source.trim()) return 0;
+
+  const rangeMatch = source.match(
+    /(?:от\s+)?(\d+(?:[.,]\d+)?)\s*(мин(?:ут[аы]?)?|minutes?|mins?|m|час(?:а|ов)?|hours?|hrs?|h|год(?:ина|ини|ин)?)(?:\s*(?:до|-|to)\s*\d+(?:[.,]\d+)?\s*(?:мин(?:ут[аы]?)?|minutes?|mins?|m|час(?:а|ов)?|hours?|hrs?|h|год(?:ина|ини|ин)?))?/
+  );
+
+  if (rangeMatch) {
+    const amount = toFiniteNumber(rangeMatch[1]);
+    if (amount !== null) {
+      return convertDurationToMinutes(amount, rangeMatch[2]);
+    }
+  }
+
+  const directMatch = source.match(
+    /(\d+(?:[.,]\d+)?)\s*(мин(?:ут[аы]?)?|minutes?|mins?|m|час(?:а|ов)?|hours?|hrs?|h|год(?:ина|ини|ин)?)/i
+  );
+
+  if (!directMatch) {
+    return 0;
+  }
+
+  const amount = toFiniteNumber(directMatch[1]);
+  if (amount === null) {
+    return 0;
+  }
+
+  return convertDurationToMinutes(amount, directMatch[2]);
+};
+
+const parseDurationMinutes = (value: unknown, fallbackText = "") => {
+  const numeric = toFiniteNumber(value);
+  if (numeric !== null && numeric > 0) {
+    return Math.round(numeric);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const fromString = extractDurationMinutesFromText(value);
+    if (fromString > 0) return fromString;
+  }
+
+  return extractDurationMinutesFromText(fallbackText);
 };
 
 const normalizeTranslationsObject = (raw: unknown, base: BaseTextContent) => {
@@ -250,13 +359,25 @@ ${contextLines.join("\n")}
 ${availableCuisines}
 
 Правила:
-- title / description / instructions — это ЕДИНСТВЕННЫЙ источник исходного текста рецепта.
-- translations содержит только переводы, которые ОТЛИЧАЮТСЯ от исходного текста. Не дублируй туда исходный язык.
+- title и description — это ЕДИНСТВЕННЫЙ источник исходного текста рецепта.
+- Для шагов приготовления используй canonical-массив steps. Каждый шаг обязан содержать text и duration_minutes.
+- Сначала определи язык исходного текста в title / description / instructions. Это базовый язык рецепта.
+- translations содержит переводы для ВСЕХ остальных поддерживаемых языков, кроме базового языка.
+- Базовый язык НЕ дублируй в translations.
+- Если базовый язык один из поддерживаемых, внутри translations должно быть ровно ${translationLanguages.length - 1} языков.
+- Для всех остальных языков обязательно заполни title, description и instructions. Не оставляй пустые объекты, если перевод можно сделать по исходному тексту.
+- JSON считается некорректным, если в translations есть только один язык или отсутствуют остальные поддерживаемые переводы, кроме базового.
+- Если исходный язык не удаётся определить уверенно, считай базовым языком "ru".
 - Используй только языки: ${languagesLine}.
 - Для units используй только: ${unitsLine}.
 - ingredients — массив объектов {id,name,quantity,unit}. Если UUID продукта неизвестен, ставь id пустым "" и заполняй name.
-- Если БЖУ нельзя надежно посчитать из ингредиентов, все равно заполни calories / protein / fat / carbs и nutrition_per_100g по имеющимся данным или оставь null.
-- step_images — массив объектов со step, image_url и optional duration_minutes.
+- Все числовые поля возвращай как number или null, без строк, без единиц измерения и без поясняющего текста.
+- Верхние поля calories / protein / fat / carbs / fiber / sugar / salt / saturated_fat / cholesterol / sodium не оставляй пустыми без причины. Если точных значений нет, рассчитай или реалистично оцени по ингредиентам и количеству порций.
+- nutrition_per_100g заполняй числами, если они известны или их можно оценить. Если все значения действительно неизвестны, ставь nutrition_per_100g: null, а не объект из одних null.
+- Для каждого шага обязательно укажи duration_minutes. Если в тексте шага есть диапазон времени, укажи минимально необходимое практическое время в минутах.
+- Если в шаге есть маринование, выпекание, варка, охлаждение, отдых или другое ожидание по времени, обязательно продублируй это время в duration_minutes.
+- Если у шага нет явного таймера, ставь duration_minutes: null.
+- image_url у шага можно оставлять null.
 - Не выдумывай UUID. Если точный UUID неизвестен, оставь пустую строку только там, где это допустимо.
 - Никаких trailing commas.
 
@@ -311,18 +432,13 @@ ${availableCuisines}
     {"id": "", "name": "Кокосовое молоко", "quantity": 400, "unit": "ml"},
     {"id": "", "name": "Лемонграсс", "quantity": 2, "unit": "pcs"}
   ],
-  "instructions": [
-    "Подготовьте ингредиенты.",
-    "Доведите бульон до кипения и добавьте лемонграсс.",
-    "Добавьте кокосовое молоко, пасту и креветки.",
-    "Готовьте 5-7 минут и подавайте."
-  ],
-  "step_images": [
-    {"step": 1, "image_url": "https://example.com/step-1.jpg", "duration_minutes": 5},
-    {"step": 2, "image_url": "https://example.com/step-2.jpg", "duration_minutes": 7}
+  "steps": [
+    {"text": "Подготовьте ингредиенты.", "duration_minutes": 10, "image_url": null},
+    {"text": "Доведите бульон до кипения и добавьте лемонграсс.", "duration_minutes": 7, "image_url": "https://example.com/step-1.jpg"},
+    {"text": "Добавьте кокосовое молоко, пасту и креветки.", "duration_minutes": 5, "image_url": "https://example.com/step-2.jpg"},
+    {"text": "Готовьте 5-7 минут и подавайте.", "duration_minutes": 5, "image_url": null}
   ],
   "translations": {
-    "ru": {},
     "en": {
       "title": "Tom Yum",
       "description": "Spicy coconut shrimp soup",
@@ -333,11 +449,56 @@ ${availableCuisines}
         "Cook for 5-7 minutes and serve."
       ]
     },
-    "de": {},
-    "fr": {},
-    "it": {},
-    "es": {},
-    "pt-BR": {},
+    "de": {
+      "title": "Tom Yum",
+      "description": "Scharfe Kokossuppe mit Garnelen",
+      "instructions": [
+        "Bereite die Zutaten vor.",
+        "Bringe die Brühe zum Kochen und gib das Zitronengras hinzu.",
+        "Füge Kokosmilch, Paste und Garnelen hinzu.",
+        "Koche alles 5-7 Minuten und serviere es."
+      ]
+    },
+    "fr": {
+      "title": "Tom Yum",
+      "description": "Soupe épicée aux crevettes et au lait de coco",
+      "instructions": [
+        "Préparez les ingrédients.",
+        "Portez le bouillon à ébullition et ajoutez la citronnelle.",
+        "Ajoutez le lait de coco, la pâte et les crevettes.",
+        "Faites cuire 5 à 7 minutes puis servez."
+      ]
+    },
+    "it": {
+      "title": "Tom Yum",
+      "description": "Zuppa piccante di gamberi al latte di cocco",
+      "instructions": [
+        "Prepara gli ingredienti.",
+        "Porta il brodo a ebollizione e aggiungi la citronella.",
+        "Aggiungi il latte di cocco, la pasta e i gamberi.",
+        "Cuoci per 5-7 minuti e servi."
+      ]
+    },
+    "es": {
+      "title": "Tom Yum",
+      "description": "Sopa picante de coco con gambas",
+      "instructions": [
+        "Prepara los ingredientes.",
+        "Lleva el caldo a ebullición y añade la hierba limón.",
+        "Añade la leche de coco, la pasta y las gambas.",
+        "Cocina durante 5-7 minutos y sirve."
+      ]
+    },
+    "pt-BR": {
+      "title": "Tom Yum",
+      "description": "Sopa apimentada de coco com camarão",
+      "instructions": [
+        "Prepare os ingredientes.",
+        "Leve o caldo para ferver e adicione o capim-limão.",
+        "Adicione o leite de coco, a pasta e o camarão.",
+        "Cozinhe por 5-7 minutos e sirva."
+      ]
+    },
     "uk": {
       "title": "Том ям",
       "description": "Гострий суп на кокосовому молоці з креветками",
@@ -520,13 +681,24 @@ export default function RecipesPage() {
       const parsedNumber = Number(value);
       return Number.isFinite(parsedNumber) ? parsedNumber : "";
     };
+    const rawSteps = Array.isArray(normalized.steps) ? normalized.steps : [];
+    const resolveStepText = (step: any) =>
+      typeof step === "string"
+        ? step
+        : toText(step?.text || step?.instruction || step?.description);
     const instructionsArray = Array.isArray(normalized.instructions)
-      ? normalized.instructions
-      : Array.isArray(normalized.steps)
-        ? normalized.steps.map((step: any) => step?.text ?? step).filter((step: any) => Boolean(step))
+      ? normalizeInstructionList(normalized.instructions)
+      : rawSteps.length > 0
+        ? rawSteps.map((step: any) => resolveStepText(step)).filter(Boolean)
         : typeof normalized.instructions === "string"
-          ? JSON.parse(normalized.instructions || "[]")
+          ? normalizeInstructionList(JSON.parse(normalized.instructions || "[]"))
           : [];
+    const normalizedRecipeNutrition = normalizeNutritionObject(
+      normalized.recipe_nutrition ?? normalized.recipeNutrition ?? normalized.nutrition ?? normalized.macros
+    );
+    const normalizedNutritionPer100g = normalizeNutritionObject(
+      normalized.nutrition_per_100g ?? normalized.nutritionPer100g
+    );
     const normalizedTranslations = normalizeTranslationsObject(normalized.translations, {
       title: toText(normalized.title).trim(),
       description: toText(normalized.description).trim(),
@@ -561,17 +733,17 @@ export default function RecipesPage() {
           : toText(normalized.cuisine_tags),
       equipment: Array.isArray(normalized.equipment) ? normalized.equipment.join(", ") : toText(normalized.equipment),
       tools_optional: Array.isArray(normalized.tools_optional) ? normalized.tools_optional.join(", ") : toText(normalized.tools_optional),
-      calories: toText(normalized.calories),
-      protein: toText(normalized.protein),
-      fat: toText(normalized.fat),
-      carbs: toText(normalized.carbs),
-      fiber: toText(normalized.fiber),
-      sugar: toText(normalized.sugar),
-      salt: toText(normalized.salt),
-      saturated_fat: toText(normalized.saturated_fat),
-      cholesterol: toText(normalized.cholesterol),
-      sodium: toText(normalized.sodium),
-      nutrition_per_100g: toJsonText(normalized.nutrition_per_100g),
+      calories: toText(normalized.calories ?? normalizedRecipeNutrition?.calories),
+      protein: toText(normalized.protein ?? normalizedRecipeNutrition?.protein),
+      fat: toText(normalized.fat ?? normalizedRecipeNutrition?.fat),
+      carbs: toText(normalized.carbs ?? normalizedRecipeNutrition?.carbs),
+      fiber: toText(normalized.fiber ?? normalizedRecipeNutrition?.fiber),
+      sugar: toText(normalized.sugar ?? normalizedRecipeNutrition?.sugar),
+      salt: toText(normalized.salt ?? normalizedRecipeNutrition?.salt),
+      saturated_fat: toText(normalized.saturated_fat ?? normalizedRecipeNutrition?.saturated_fat),
+      cholesterol: toText(normalized.cholesterol ?? normalizedRecipeNutrition?.cholesterol),
+      sodium: toText(normalized.sodium ?? normalizedRecipeNutrition?.sodium),
+      nutrition_per_100g: normalizedNutritionPer100g ? JSON.stringify(normalizedNutritionPer100g) : "",
       instructions: instructionsArray.length ? JSON.stringify(instructionsArray) : toJsonText(normalized.instructions),
       comments_enabled: String(normalized.comments_enabled ?? true),
       comments_count: toText(normalized.comments_count),
@@ -625,14 +797,35 @@ export default function RecipesPage() {
         ? JSON.parse(normalized.step_images || "[]")
         : [];
 
-    const maxSteps = Math.max(instructionsData.length, stepImagesData.length);
+    const maxSteps = Math.max(instructionsData.length, stepImagesData.length, rawSteps.length);
     const loadedSteps: RecipeStep[] = [];
     for (let i = 0; i < maxSteps; i += 1) {
+      const rawStep = rawSteps[i];
+      const stepText = instructionsData[i] || resolveStepText(rawStep) || "";
+      const rawStepDuration =
+        typeof rawStep === "object" && rawStep !== null
+          ? rawStep.duration_minutes ??
+            rawStep.durationMinutes ??
+            rawStep.timer_minutes ??
+            rawStep.timerMinutes ??
+            rawStep.timer ??
+            rawStep.duration
+          : null;
       loadedSteps.push({
         id: crypto.randomUUID(),
-        text: instructionsData[i] || "",
-        imageUrl: stepImagesData[i]?.image_url || stepImagesData[i]?.imageUrl || "",
-        durationMinutes: stepImagesData[i]?.duration_minutes || 0,
+        text: stepText,
+        imageUrl:
+          stepImagesData[i]?.image_url ||
+          stepImagesData[i]?.imageUrl ||
+          (typeof rawStep === "object" && rawStep !== null
+            ? rawStep.image_url || rawStep.imageUrl || ""
+            : ""),
+        durationMinutes: parseDurationMinutes(
+          stepImagesData[i]?.duration_minutes ??
+            stepImagesData[i]?.durationMinutes ??
+            rawStepDuration,
+          stepText
+        ),
       });
     }
     if (loadedSteps.length > 0) {
