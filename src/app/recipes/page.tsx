@@ -182,9 +182,9 @@ const extractDurationMinutesFromText = (text: string) => {
 };
 
 const parseDurationMinutes = (value: unknown, fallbackText = "") => {
-  const numeric = toFiniteNumber(value);
-  if (numeric !== null && numeric > 0) {
-    return Math.round(numeric);
+  const fromText = extractDurationMinutesFromText(fallbackText);
+  if (fromText > 0) {
+    return fromText;
   }
 
   if (typeof value === "string" && value.trim()) {
@@ -192,7 +192,7 @@ const parseDurationMinutes = (value: unknown, fallbackText = "") => {
     if (fromString > 0) return fromString;
   }
 
-  return extractDurationMinutesFromText(fallbackText);
+  return 0;
 };
 
 const normalizeTranslationsObject = (raw: unknown, base: BaseTextContent) => {
@@ -374,9 +374,10 @@ ${availableCuisines}
 - Все числовые поля возвращай как number или null, без строк, без единиц измерения и без поясняющего текста.
 - Верхние поля calories / protein / fat / carbs / fiber / sugar / salt / saturated_fat / cholesterol / sodium не оставляй пустыми без причины. Если точных значений нет, рассчитай или реалистично оцени по ингредиентам и количеству порций.
 - nutrition_per_100g заполняй числами, если они известны или их можно оценить. Если все значения действительно неизвестны, ставь nutrition_per_100g: null, а не объект из одних null.
-- Для каждого шага обязательно укажи duration_minutes. Если в тексте шага есть диапазон времени, укажи минимально необходимое практическое время в минутах.
-- Если в шаге есть маринование, выпекание, варка, охлаждение, отдых или другое ожидание по времени, обязательно продублируй это время в duration_minutes.
-- Если у шага нет явного таймера, ставь duration_minutes: null.
+- Для каждого шага обязательно укажи поле duration_minutes, но заполняй его ТОЛЬКО если время явно указано в исходном рецепте.
+- Не оценивай, не вычисляй и не придумывай duration_minutes по здравому смыслу. Если время не написано явно, ставь duration_minutes: null.
+- Если в тексте шага есть диапазон времени, укажи минимально необходимое практическое время в минутах.
+- Если в шаге есть маринование, выпекание, варка, охлаждение, отдых или другое ожидание по времени, заполняй duration_minutes только когда это время прямо указано в исходном тексте.
 - image_url у шага можно оставлять null.
 - Не выдумывай UUID. Если точный UUID неизвестен, оставь пустую строку только там, где это допустимо.
 - Никаких trailing commas.
@@ -433,9 +434,9 @@ ${availableCuisines}
     {"id": "", "name": "Лемонграсс", "quantity": 2, "unit": "pcs"}
   ],
   "steps": [
-    {"text": "Подготовьте ингредиенты.", "duration_minutes": 10, "image_url": null},
+    {"text": "Подготовьте ингредиенты.", "duration_minutes": null, "image_url": null},
     {"text": "Доведите бульон до кипения и добавьте лемонграсс.", "duration_minutes": 7, "image_url": "https://example.com/step-1.jpg"},
-    {"text": "Добавьте кокосовое молоко, пасту и креветки.", "duration_minutes": 5, "image_url": "https://example.com/step-2.jpg"},
+    {"text": "Добавьте кокосовое молоко, пасту и креветки.", "duration_minutes": null, "image_url": "https://example.com/step-2.jpg"},
     {"text": "Готовьте 5-7 минут и подавайте.", "duration_minutes": 5, "image_url": null}
   ],
   "translations": {

@@ -35,5 +35,28 @@ export async function PATCH(
     return NextResponse.json({ ok: true, synonym });
   }
 
+  // Approve product (clear needs_moderation flag)
+  if (body.approve) {
+    const { error } = await supabaseAdmin
+      .from("product_dictionary")
+      .update({ needs_moderation: false, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.json({ ok: false, error: "unknown operation" }, { status: 400 });
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const { error } = await supabaseAdmin
+    .from("product_dictionary")
+    .delete()
+    .eq("id", id);
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
 }
