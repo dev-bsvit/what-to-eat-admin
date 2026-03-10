@@ -93,7 +93,12 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const { answers, favoriteRecipeTitles = [], excludedRecipeIds = [], language = "ru" } = body;
+  const { answers: rawAnswers, favoriteRecipeTitles = [], excludedRecipeIds = [], language = "ru" } = body;
+  const answers: RecommendationAnswers = {
+    ...rawAnswers,
+    pantryIngredients: rawAnswers.pantryIngredients ?? [],
+    excludedIngredients: rawAnswers.excludedIngredients ?? [],
+  };
   if (!answers) {
     return NextResponse.json({ error: "missing_answers" }, { status: 400 });
   }
