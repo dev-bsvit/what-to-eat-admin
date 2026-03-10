@@ -10,6 +10,18 @@ function isPublicPath(pathname: string) {
   if (pathname === "/api/import-instagram") {
     return true;
   }
+  if (pathname === "/api/import-tiktok") {
+    return true;
+  }
+  if (pathname === "/api/import-youtube") {
+    return true;
+  }
+  if (pathname === "/api/import-pinterest") {
+    return true;
+  }
+  if (pathname === "/api/recommend") {
+    return true;
+  }
   // Allow webhook endpoints (they have their own auth)
   if (pathname.startsWith("/api/webhooks/")) {
     return true;
