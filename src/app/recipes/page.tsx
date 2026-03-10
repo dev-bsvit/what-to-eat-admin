@@ -167,6 +167,191 @@ const initialState = {
   translations: "",
 };
 
+type RecipeFormState = typeof initialState;
+
+function buildRecipeImportPrompt({
+  selectedCuisine,
+  cuisines,
+  form,
+  isEditing,
+}: {
+  selectedCuisine: { id?: string; name?: string } | null;
+  cuisines: Array<{ id?: string; name?: string }>;
+  form: RecipeFormState;
+  isEditing: boolean;
+}) {
+  const contextLines: string[] = [];
+
+  if (selectedCuisine?.id) {
+    contextLines.push(
+      `- Каталог уже выбран: ${JSON.stringify(selectedCuisine.name || "Без названия")} (cuisine_id="${selectedCuisine.id}"). Используй именно этот UUID.`
+    );
+  } else if (cuisines.length > 0) {
+    contextLines.push("- Для cuisine_id используй один из UUID из списка доступных каталогов ниже.");
+  }
+
+  if (isEditing && form.id) {
+    contextLines.push(`- Это редактирование существующего рецепта. Для обновления записи сохрани id "${form.id}".`);
+  }
+
+  if (form.owner_id.trim()) {
+    contextLines.push(`- owner_id уже задан: "${form.owner_id.trim()}". Не меняй его без причины.`);
+  }
+
+  contextLines.push(`- is_user_defined: ${form.is_user_defined === "true" ? "true" : "false"}.`);
+
+  if (form.difficulty.trim()) {
+    contextLines.push(`- difficulty по умолчанию в текущей форме: "${form.difficulty.trim()}".`);
+  }
+
+  if (form.dish_type.trim()) {
+    contextLines.push(`- Если подходит рецепту, используй dish_type "${form.dish_type.trim()}".`);
+  }
+
+  if (form.course.trim()) {
+    contextLines.push(`- Если подходит рецепту, используй course "${form.course.trim()}".`);
+  }
+
+  if (form.servings > 0) {
+    contextLines.push(`- Если точное число порций неизвестно, возьми servings=${form.servings}.`);
+  }
+
+  contextLines.push(`- comments_enabled по умолчанию: ${form.comments_enabled === "true" ? "true" : "false"}.`);
+
+  if (form.title.trim()) {
+    contextLines.push(`- В форме уже есть title: ${JSON.stringify(form.title.trim())}. Если это тот же рецепт, используй как ориентир.`);
+  }
+
+  if (form.description.trim()) {
+    contextLines.push(`- В форме уже есть description: ${JSON.stringify(form.description.trim())}. Если это тот же рецепт, используй как ориентир.`);
+  }
+
+  const availableCuisines = !selectedCuisine && cuisines.length > 0
+    ? `\nДоступные каталоги (name -> cuisine_id):\n${cuisines
+        .map((cuisine) => `- ${cuisine.name || "Без названия"} -> ${cuisine.id || ""}`)
+        .join("\n")}`
+    : "";
+
+  const languagesLine = translationLanguages.map((lang) => lang.code).join(", ");
+  const unitsLine = ["g", "kg", "ml", "l", "pcs", "tbsp", "tsp"].join(", ");
+  const cuisinePlaceholder = selectedCuisine?.id || "UUID каталога";
+  const ownerPlaceholder = form.owner_id.trim() || null;
+  const commentsEnabledPlaceholder = form.comments_enabled === "true";
+  const servingsPlaceholder = form.servings > 0 ? form.servings : 4;
+  const difficultyPlaceholder = form.difficulty.trim() || "medium";
+  const dishTypePlaceholder = form.dish_type.trim() || "soup";
+  const coursePlaceholder = form.course.trim() || "main";
+
+  return `Сгенерируй JSON для рецепта.
+Верни ТОЛЬКО валидный JSON без markdown и пояснений.
+
+Контекст текущей формы:
+${contextLines.join("\n")}
+${availableCuisines}
+
+Правила:
+- title / description / instructions — это ЕДИНСТВЕННЫЙ источник исходного текста рецепта.
+- translations содержит только переводы, которые ОТЛИЧАЮТСЯ от исходного текста. Не дублируй туда исходный язык.
+- Используй только языки: ${languagesLine}.
+- Для units используй только: ${unitsLine}.
+- ingredients — массив объектов {id,name,quantity,unit}. Если UUID продукта неизвестен, ставь id пустым "" и заполняй name.
+- Если БЖУ нельзя надежно посчитать из ингредиентов, все равно заполни calories / protein / fat / carbs и nutrition_per_100g по имеющимся данным или оставь null.
+- step_images — массив объектов со step, image_url и optional duration_minutes.
+- Не выдумывай UUID. Если точный UUID неизвестен, оставь пустую строку только там, где это допустимо.
+- Никаких trailing commas.
+
+Шаблон:
+{
+  "id": ${isEditing && form.id ? `"${form.id}"` : "null"},
+  "title": "Том ям",
+  "description": "Острый суп на кокосовом молоке с креветками",
+  "image_url": "https://example.com/tom-yum.jpg",
+  "cuisine_id": "${cuisinePlaceholder}",
+  "dish_type": "${dishTypePlaceholder}",
+  "course": "${coursePlaceholder}",
+  "owner_id": ${ownerPlaceholder ? `"${ownerPlaceholder}"` : "null"},
+  "is_user_defined": ${form.is_user_defined === "true" ? "true" : "false"},
+  "author": "Имя автора",
+  "contributor_ids": [],
+  "servings": ${servingsPlaceholder},
+  "prep_time": 20,
+  "cook_time": 25,
+  "difficulty": "${difficultyPlaceholder}",
+  "diet_tags": ["pescatarian"],
+  "allergen_tags": ["seafood"],
+  "cuisine_tags": ["thai"],
+  "equipment": ["pot"],
+  "tools_optional": ["strainer"],
+  "calories": 320,
+  "protein": 18,
+  "fat": 12,
+  "carbs": 35,
+  "fiber": 4,
+  "sugar": 6,
+  "salt": 1.2,
+  "saturated_fat": 4,
+  "cholesterol": 40,
+  "sodium": 600,
+  "nutrition_per_100g": {
+    "calories": 80,
+    "protein": 4,
+    "fat": 3,
+    "carbs": 9,
+    "fiber": 1,
+    "sugar": 1.5,
+    "salt": 0.3,
+    "saturated_fat": 1,
+    "cholesterol": 10,
+    "sodium": 150
+  },
+  "comments_enabled": ${commentsEnabledPlaceholder},
+  "comments_count": 0,
+  "ingredients": [
+    {"id": "UUID продукта", "name": "Креветки", "quantity": 200, "unit": "g"},
+    {"id": "", "name": "Кокосовое молоко", "quantity": 400, "unit": "ml"},
+    {"id": "", "name": "Лемонграсс", "quantity": 2, "unit": "pcs"}
+  ],
+  "instructions": [
+    "Подготовьте ингредиенты.",
+    "Доведите бульон до кипения и добавьте лемонграсс.",
+    "Добавьте кокосовое молоко, пасту и креветки.",
+    "Готовьте 5-7 минут и подавайте."
+  ],
+  "step_images": [
+    {"step": 1, "image_url": "https://example.com/step-1.jpg", "duration_minutes": 5},
+    {"step": 2, "image_url": "https://example.com/step-2.jpg", "duration_minutes": 7}
+  ],
+  "translations": {
+    "ru": {},
+    "en": {
+      "title": "Tom Yum",
+      "description": "Spicy coconut shrimp soup",
+      "instructions": [
+        "Prepare the ingredients.",
+        "Bring the broth to a boil and add the lemongrass.",
+        "Add coconut milk, paste, and shrimp.",
+        "Cook for 5-7 minutes and serve."
+      ]
+    },
+    "de": {},
+    "fr": {},
+    "it": {},
+    "es": {},
+    "pt-BR": {},
+    "uk": {
+      "title": "Том ям",
+      "description": "Гострий суп на кокосовому молоці з креветками",
+      "instructions": [
+        "Підготуйте інгредієнти.",
+        "Доведіть бульйон до кипіння і додайте лемонграс.",
+        "Додайте кокосове молоко, пасту та креветки.",
+        "Варіть 5-7 хвилин і подавайте."
+      ]
+    }
+  }
+}`;
+}
+
 export default function RecipesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -307,8 +492,6 @@ export default function RecipesPage() {
   const applyBaseInstructions = (lang: string) => {
     updateTranslationDraft(lang, { instructions: getBaseTextContent().instructions.join("\n") });
   };
-
-  const importPrompt = `Сгенерируй JSON для рецепта.\nВерни ТОЛЬКО валидный JSON без markdown и пояснений.\n\nПравила:\n- title / description / instructions — это ЕДИНСТВЕННЫЙ источник исходного текста рецепта.\n- translations содержит только переводы, которые ОТЛИЧАЮТСЯ от исходного текста. Не дублируй туда исходный язык.\n- ingredients — массив объектов {id,name,quantity,unit}. Если UUID продукта неизвестен, ставь id пустым \"\" и заполняй name.\n- Если БЖУ нельзя надежно посчитать из ингредиентов, все равно заполни calories / protein / fat / carbs и nutrition_per_100g по имеющимся данным или оставь null.\n- step_images — массив объектов со step, image_url и optional duration_minutes.\n- Никаких trailing commas.\n\nШаблон:\n{\n  \"title\": \"Том ям\",\n  \"description\": \"Острый суп на кокосовом молоке с креветками\",\n  \"image_url\": \"https://example.com/tom-yum.jpg\",\n  \"cuisine_id\": \"UUID каталога\",\n  \"dish_type\": \"soup\",\n  \"course\": \"main\",\n  \"owner_id\": null,\n  \"is_user_defined\": false,\n  \"author\": \"Имя автора\",\n  \"contributor_ids\": [],\n  \"servings\": 4,\n  \"prep_time\": 20,\n  \"cook_time\": 25,\n  \"difficulty\": \"medium\",\n  \"diet_tags\": [\"pescatarian\"],\n  \"allergen_tags\": [\"seafood\"],\n  \"cuisine_tags\": [\"thai\"],\n  \"equipment\": [\"pot\"],\n  \"tools_optional\": [\"strainer\"],\n  \"calories\": 320,\n  \"protein\": 18,\n  \"fat\": 12,\n  \"carbs\": 35,\n  \"fiber\": 4,\n  \"sugar\": 6,\n  \"salt\": 1.2,\n  \"saturated_fat\": 4,\n  \"cholesterol\": 40,\n  \"sodium\": 600,\n  \"nutrition_per_100g\": {\n    \"calories\": 80,\n    \"protein\": 4,\n    \"fat\": 3,\n    \"carbs\": 9,\n    \"fiber\": 1,\n    \"sugar\": 1.5,\n    \"salt\": 0.3,\n    \"saturated_fat\": 1,\n    \"cholesterol\": 10,\n    \"sodium\": 150\n  },\n  \"comments_enabled\": true,\n  \"comments_count\": 0,\n  \"ingredients\": [\n    {\"id\": \"UUID продукта\", \"name\": \"Креветки\", \"quantity\": 200, \"unit\": \"g\"},\n    {\"id\": \"\", \"name\": \"Кокосовое молоко\", \"quantity\": 400, \"unit\": \"ml\"},\n    {\"id\": \"\", \"name\": \"Лемонграсс\", \"quantity\": 2, \"unit\": \"pcs\"}\n  ],\n  \"instructions\": [\n    \"Подготовьте ингредиенты.\",\n    \"Доведите бульон до кипения и добавьте лемонграсс.\",\n    \"Добавьте кокосовое молоко, пасту и креветки.\",\n    \"Готовьте 5-7 минут и подавайте.\"\n  ],\n  \"step_images\": [\n    {\"step\": 1, \"image_url\": \"https://example.com/step-1.jpg\", \"duration_minutes\": 5},\n    {\"step\": 2, \"image_url\": \"https://example.com/step-2.jpg\", \"duration_minutes\": 7}\n  ],\n  \"translations\": {\n    \"ru\": {},\n    \"en\": {\n      \"title\": \"Tom Yum\",\n      \"description\": \"Spicy coconut shrimp soup\",\n      \"instructions\": [\n        \"Prepare the ingredients.\",\n        \"Bring the broth to a boil and add the lemongrass.\",\n        \"Add coconut milk, paste, and shrimp.\",\n        \"Cook for 5-7 minutes and serve.\"\n      ]\n    },\n    \"de\": {},\n    \"fr\": {},\n    \"it\": {},\n    \"es\": {},\n    \"pt-BR\": {},\n    \"uk\": {\n      \"title\": \"Том ям\",\n      \"description\": \"Гострий суп на кокосовому молоці з креветками\",\n      \"instructions\": [\n        \"Підготуйте інгредієнти.\",\n        \"Доведіть бульйон до кипіння і додайте лемонграс.\",\n        \"Додайте кокосове молоко, пасту та креветки.\",\n        \"Варіть 5-7 хвилин і подавайте.\"\n      ]\n    }\n  }\n}`;
 
   function applyImportRecipe(raw: string) {
     setImportStatus("");
@@ -786,6 +969,12 @@ export default function RecipesPage() {
   }
 
   const selectedCuisine = cuisines.find(c => c.id === form.cuisine_id);
+  const importPrompt = buildRecipeImportPrompt({
+    selectedCuisine,
+    cuisines,
+    form,
+    isEditing: Boolean(editId),
+  });
   const activeTranslation = translationDrafts[activeTranslationLang] || emptyTranslationDraft;
   const translationsJsonPreview = (() => {
     try {
