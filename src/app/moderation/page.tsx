@@ -275,7 +275,10 @@ export default function ModerationPage() {
   }, [loadTasks, loadMissing, loadIncomplete, loadUserProducts, loadStats, activeTab]);
 
   async function handleAction(taskId: string, action: "approve" | "reject" | "skip") {
-    setStatus(`Обработка...`);
+    // Optimistic: remove task from list immediately
+    const previousTasks = tasks;
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    setStatus(`Задача ${action === "approve" ? "одобрена" : action === "reject" ? "отклонена" : "пропущена"}`);
     try {
       const response = await fetch("/api/admin/moderation", {
         method: "PATCH",
@@ -285,20 +288,23 @@ export default function ModerationPage() {
 
       const result = await response.json();
       if (!response.ok) {
+        setTasks(previousTasks); // rollback
         setStatus(`Ошибка: ${result.error}`);
         return;
       }
 
-      setStatus(`Задача ${action === "approve" ? "одобрена" : action === "reject" ? "отклонена" : "пропущена"}`);
-      await loadTasks(true);
-      await loadStats();
+      void loadStats();
     } catch {
+      setTasks(previousTasks); // rollback
       setStatus("Ошибка: не удалось выполнить действие");
     }
   }
 
-  async function handleMerge(primaryId: string, mergeId: string) {
-    setStatus("Объединение продуктов...");
+  async function handleMerge(taskId: string, primaryId: string, mergeId: string) {
+    // Optimistic: remove task from list immediately
+    const previousTasks = tasks;
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    setStatus("Объединено!");
     try {
       const response = await fetch("/api/admin/products/merge", {
         method: "POST",
@@ -308,20 +314,25 @@ export default function ModerationPage() {
 
       const result = await response.json();
       if (!response.ok) {
+        setTasks(previousTasks); // rollback
         setStatus(`Ошибка: ${result.error}`);
         return;
       }
 
       setStatus(`Объединено! Обновлено ингредиентов: ${result.ingredientsUpdated}`);
-      await loadTasks(true);
-      await loadStats();
+      void loadStats();
     } catch {
+      setTasks(previousTasks); // rollback
       setStatus("Ошибка: не удалось объединить");
     }
   }
 
   async function handleLink(name: string, productId: string) {
-    setStatus(`Связываю "${name}"...`);
+    // Optimistic: remove item from list and close modal immediately
+    const previousItems = missingItems;
+    setMissingItems((prev) => prev.filter((i) => i.name !== name));
+    setLinkTarget(null);
+    setStatus(`Связано: "${name}"`);
     try {
       const response = await fetch("/api/admin/ingredients/link", {
         method: "POST",
@@ -330,14 +341,15 @@ export default function ModerationPage() {
       });
       const result = await response.json();
       if (!response.ok) {
+        setMissingItems(previousItems); // rollback
+        setLinkTarget(name);
         setStatus(`Ошибка: ${result.error || "не удалось связать"}`);
         return;
       }
       setStatus(`Готово! Обновлено рецептов: ${result.updated || 0}`);
-      setLinkTarget(null);
-      await loadMissing(true);
-      await loadStats();
+      void loadStats();
     } catch {
+      setMissingItems(previousItems); // rollback
       setStatus("Ошибка: не удалось подключиться");
     }
   }
@@ -1270,7 +1282,7 @@ export default function ModerationPage() {
                           const primaryId = task.product_id;
                           const mergeId = task.suggested_action?.matchedWithId as string;
                           if (primaryId && mergeId) {
-                            void handleMerge(primaryId, mergeId);
+                            void handleMerge(task.id, primaryId, mergeId);
                           }
                         }}
                       >
@@ -1282,7 +1294,7 @@ export default function ModerationPage() {
                           const primaryId = task.suggested_action?.matchedWithId as string;
                           const mergeId = task.product_id;
                           if (primaryId && mergeId) {
-                            void handleMerge(primaryId, mergeId);
+                            void handleMerge(task.id, primaryId, mergeId);
                           }
                         }}
                       >
