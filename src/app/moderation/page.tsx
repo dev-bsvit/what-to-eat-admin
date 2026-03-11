@@ -80,7 +80,8 @@ type Stats = {
   approvalRate: number;
 };
 
-type TabType = "link_suggestion" | "merge_suggestion" | "new_product" | "all" | "unlinked" | "incomplete" | "user_products";
+type TabType = "all" | "unlinked" | "incomplete" | "user_products";
+type TaskTypeFilter = "link_suggestion" | "merge_suggestion" | "new_product" | null;
 
 type UserProduct = {
   id: string;
@@ -149,6 +150,9 @@ export default function ModerationPage() {
   const [userProductsBusy, setUserProductsBusy] = useState<Record<string, boolean>>({});
   const [userMerge, setUserMerge] = useState<{ productId: string; search: string; results: UserProduct[]; searching: boolean } | null>(null);
 
+  // AI task type filter (chips inside "all" tab)
+  const [taskTypeFilter, setTaskTypeFilter] = useState<TaskTypeFilter>(null);
+
   // AI batch fill state
   const [aiFillLoading, setAiFillLoading] = useState(false);
   const [aiFillStatus, setAiFillStatus] = useState("");
@@ -176,17 +180,11 @@ export default function ModerationPage() {
 
   const loadTasks = useCallback(async (force = false) => {
     if (activeTab === "unlinked" || activeTab === "incomplete" || activeTab === "user_products") return;
-    if (!force && loadedTabsRef.current.has(activeTab)) return;
+    if (!force && loadedTabsRef.current.has("all")) return;
     setLoading(true);
     setStatus("");
     try {
-      const params = new URLSearchParams();
-      params.set("status", "pending");
-      if (activeTab !== "all") {
-        params.set("type", activeTab);
-      }
-
-      const response = await fetch(`/api/admin/moderation?${params.toString()}`);
+      const response = await fetch("/api/admin/moderation?status=pending&limit=500");
       const result = await response.json();
 
       if (!response.ok) {
@@ -196,7 +194,7 @@ export default function ModerationPage() {
       }
 
       setTasks(result.tasks || []);
-      loadedTabsRef.current.add(activeTab);
+      loadedTabsRef.current.add("all");
     } catch {
       setStatus("Ошибка: не удалось подключиться");
     } finally {
@@ -624,12 +622,42 @@ export default function ModerationPage() {
     setUserProductsBusy((p) => ({ ...p, [userMerge.productId]: false }));
   }
 
+  // Auto-search when merge modal opens
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (userMerge?.productId && userMerge.results.length === 0 && !userMerge.searching) {
+      void searchMergeProducts(userMerge.search);
+    }
+  }, [userMerge?.productId]);
+
+  async function handleBatchApprove(minConfidence: number) {
+    const eligible = tasks.filter(
+      (t) => t.confidence >= minConfidence && t.task_type !== "merge_suggestion"
+    );
+    if (eligible.length === 0) {
+      setStatus(`Нет задач с уверенностью ≥${Math.round(minConfidence * 100)}%`);
+      return;
+    }
+    // Optimistic: remove all eligible tasks
+    const eligibleIds = new Set(eligible.map((t) => t.id));
+    setTasks((prev) => prev.filter((t) => !eligibleIds.has(t.id)));
+    setStatus(`Одобрение ${eligible.length} задач...`);
+    await Promise.all(
+      eligible.map((task) =>
+        fetch("/api/admin/moderation", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskId: task.id, action: "approve" }),
+        })
+      )
+    );
+    setStatus(`Одобрено ${eligible.length} задач`);
+    void loadStats();
+  }
+
   const tabs: { key: TabType; label: string; count?: number }[] = [
     { key: "user_products", label: "Новые от пользователей", count: userProductsCount || undefined },
     { key: "all", label: "AI задачи", count: stats?.pendingTasks },
-    { key: "link_suggestion", label: "Связывание", count: stats?.tasksByType?.link_suggestion },
-    { key: "merge_suggestion", label: "Дубликаты", count: stats?.tasksByType?.merge_suggestion },
-    { key: "new_product", label: "Новые (AI)", count: stats?.tasksByType?.new_product },
     { key: "unlinked", label: "Несвязанные", count: missingItems.length || undefined },
     { key: "incomplete", label: "Незаполненные", count: incompleteCount || undefined },
   ];
@@ -790,7 +818,7 @@ export default function ModerationPage() {
 
       {/* Tab Description */}
       {(() => {
-        const descriptions: Partial<Record<TabType, { title: string; text: string }>> = {
+        const descriptions: Record<string, { title: string; text: string }> = {
           user_products: {
             title: "Продукты, созданные пользователями",
             text: "Когда пользователь вводит ингредиент, которого нет в базе, приложение создаёт его автоматически и помечает флагом «требует проверки». Одобрите продукт, объедините его с уже существующим (если это дубликат) или удалите.",
@@ -1051,20 +1079,70 @@ export default function ModerationPage() {
             )}
           </div>
         </div>
-      ) : tasks.length === 0 ? (
-        <div style={{
-          padding: "var(--spacing-xl)",
-          textAlign: "center",
-          color: "var(--text-secondary)",
-          background: "var(--bg-surface)",
-          borderRadius: "var(--radius-lg)",
-        }}>
-          🎉 Нет задач на модерацию
-        </div>
       ) : (
-        /* Tasks List */
+        /* AI Tasks with filter chips */
+        <>
+          {/* Filter chips */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            {([
+              { key: null, label: "Все", count: tasks.length },
+              { key: "link_suggestion" as TaskTypeFilter, label: "🔗 Связывание", count: tasks.filter(t => t.task_type === "link_suggestion").length },
+              { key: "merge_suggestion" as TaskTypeFilter, label: "🔀 Дубликаты", count: tasks.filter(t => t.task_type === "merge_suggestion").length },
+              { key: "new_product" as TaskTypeFilter, label: "✨ Новые (AI)", count: tasks.filter(t => t.task_type === "new_product").length },
+            ] as { key: TaskTypeFilter; label: string; count: number }[]).map((chip) => (
+              <button
+                key={String(chip.key)}
+                onClick={() => setTaskTypeFilter(chip.key)}
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: "20px",
+                  border: taskTypeFilter === chip.key ? "2px solid var(--accent)" : "1px solid var(--border-light)",
+                  background: taskTypeFilter === chip.key ? "var(--accent)" : "var(--bg-surface)",
+                  color: taskTypeFilter === chip.key ? "white" : "var(--text-secondary)",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: taskTypeFilter === chip.key ? 600 : 400,
+                }}
+              >
+                {chip.label}
+                {chip.count > 0 && (
+                  <span style={{ marginLeft: 6, opacity: 0.8 }}>{chip.count}</span>
+                )}
+              </button>
+            ))}
+            {/* Batch approve button */}
+            {tasks.filter(t => t.confidence >= 0.9 && t.task_type !== "merge_suggestion").length > 0 && (
+              <button
+                onClick={() => void handleBatchApprove(0.9)}
+                style={{
+                  marginLeft: "auto",
+                  padding: "5px 14px",
+                  borderRadius: "20px",
+                  border: "1px solid var(--success)",
+                  background: "transparent",
+                  color: "var(--success)",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                }}
+              >
+                ✓ Одобрить все ≥90% ({tasks.filter(t => t.confidence >= 0.9 && t.task_type !== "merge_suggestion").length})
+              </button>
+            )}
+          </div>
+
+          {(() => {
+            const filteredTasks = taskTypeFilter ? tasks.filter(t => t.task_type === taskTypeFilter) : tasks;
+            if (filteredTasks.length === 0) {
+              return (
+                <div style={{ padding: "var(--spacing-xl)", textAlign: "center", color: "var(--text-secondary)", background: "var(--bg-surface)", borderRadius: "var(--radius-lg)" }}>
+                  🎉 Нет задач на модерацию
+                </div>
+              );
+            }
+            return (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--spacing-md)" }}>
-          {tasks.map((task) => (
+          {filteredTasks.map((task) => (
             <div
               key={task.id}
               style={{
@@ -1326,6 +1404,9 @@ export default function ModerationPage() {
             </div>
           ))}
         </div>
+            );
+          })()}
+        </>
       )}
 
       {/* Link Modal */}
