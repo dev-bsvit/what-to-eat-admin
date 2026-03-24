@@ -173,7 +173,7 @@ REQUIRED OUTPUT FORMAT (copy structure exactly):
   "cookTime": 30,
   "servings": 4,
   "cuisine": "international",
-  "tags": ["quick", "easy"],
+  "tags": ["quick", "dinner"],
   "ingredients": [
     { "name": "ingredient name", "amount": "100", "unit": "г", "note": "" }
   ],
@@ -200,7 +200,14 @@ CRITICAL RULES:
 4. For ingredients without specific amounts: use "по вкусу", "1 шт", "100 г" etc.
 5. Keep ORIGINAL language - do NOT translate Russian to English or vice versa
 6. confidence: "high" if clear recipe, "medium" if inferred some data, "low" if mostly guessed
-7. Extract ALL mentioned food items as ingredients, even if amounts are not specified`;
+7. Extract ALL mentioned food items as ingredients, even if amounts are not specified
+8. TAGS — choose only from this list (pick all that apply):
+   Time: "quick" (≤20 min total), "special occasion" (>60 min total)
+   Calories: "light" (<300 kcal/serving), "hearty" (>650 kcal/serving)
+   Meal: "breakfast", "lunch", "dinner", "snack"
+   Diet: "vegetarian", "vegan", "gluten-free", "dairy-free"
+   Type: "soup", "salad", "pasta", "grill", "baking", "raw"
+   If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.`;
 }
 
 function looksLikeRecipe(text: string) {

@@ -431,8 +431,14 @@ RULES:
 - prepTime/cookTime/servings are numbers or null.
 - If amount/unit unknown, use empty strings.
 - Steps are individual actions.
-- tags should be simple, short words found in the text.
-- confidence: high if ingredients+steps are clear, medium if partial, low if minimal.`;
+- confidence: high if ingredients+steps are clear, medium if partial, low if minimal.
+- TAGS — choose only from this list (pick all that apply):
+  Time: "quick" (≤20 min total), "special occasion" (>60 min total)
+  Calories: "light" (<300 kcal/serving), "hearty" (>650 kcal/serving)
+  Meal: "breakfast", "lunch", "dinner", "snack"
+  Diet: "vegetarian", "vegan", "gluten-free", "dairy-free"
+  Type: "soup", "salad", "pasta", "grill", "baking", "raw"
+  If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.`;
 }
 
 function extractJson(content: string): string {
