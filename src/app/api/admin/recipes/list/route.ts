@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
     let query = supabaseAdmin
       .from("recipes")
-      .select("id, title, tags, difficulty, prep_time, cook_time, nutrition_json, is_public")
+      .select("id, title, tags, difficulty, prep_time, cook_time, is_public")
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 

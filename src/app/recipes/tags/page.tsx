@@ -2,10 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 
-interface Nutrition {
-  calories?: number;
-}
-
 interface RecipeRow {
   id: string;
   title: string;
@@ -13,7 +9,6 @@ interface RecipeRow {
   difficulty: "easy" | "medium" | "hard" | null;
   prep_time: number | null;
   cook_time: number | null;
-  nutrition_json: Nutrition | null;
   is_public: boolean | null;
 }
 
@@ -37,11 +32,7 @@ function autoClassifyTags(recipe: RecipeRow): string[] {
     if (recipe.difficulty === "hard") tags.push("special occasion");
   }
 
-  const calories = recipe.nutrition_json?.calories;
-  if (calories) {
-    if (calories < 300) tags.push("light");
-    if (calories > 650) tags.push("hearty");
-  }
+  // Calories not available in list query — skip light/hearty auto-classify here
 
   return tags;
 }
@@ -146,9 +137,6 @@ function TagEditor({
             >
               {recipe.difficulty}
             </span>
-          )}
-          {recipe.nutrition_json?.calories && (
-            <span>🔥 {recipe.nutrition_json.calories} ккал</span>
           )}
           <span
             style={{
@@ -378,10 +366,16 @@ export default function RecipeTagsPage() {
       });
       if (search.trim()) params.set("title", search.trim());
       const res = await fetch(`/api/admin/recipes/list?${params}`);
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("List API error:", data);
+        setRecipes([]);
+      } else {
         setRecipes(Array.isArray(data) ? data : []);
       }
+    } catch (e) {
+      console.error("Fetch error:", e);
+      setRecipes([]);
     } finally {
       setLoading(false);
     }
