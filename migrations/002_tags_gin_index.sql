@@ -1,6 +1,9 @@
 -- GIN index for fast tag-based filtering and search
 -- Run in Supabase Dashboard → SQL Editor
 
+-- Add tags column if it doesn't exist yet
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS tags text[] DEFAULT '{}';
+
 CREATE INDEX IF NOT EXISTS idx_recipes_tags_gin
   ON recipes USING gin(tags);
 
