@@ -182,6 +182,11 @@ const extractDurationMinutesFromText = (text: string) => {
 };
 
 const parseDurationMinutes = (value: unknown, fallbackText = "") => {
+  const numericValue = toFiniteNumber(value);
+  if (numericValue !== null && numericValue > 0) {
+    return Math.round(numericValue);
+  }
+
   const fromText = extractDurationMinutesFromText(fallbackText);
   if (fromText > 0) {
     return fromText;
@@ -193,6 +198,32 @@ const parseDurationMinutes = (value: unknown, fallbackText = "") => {
   }
 
   return 0;
+};
+
+const parseStepImagesArray = (value: unknown): any[] => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+};
+
+const resolveStepImageRecord = (stepImagesData: any[], index: number) => {
+  const stepNumber = index + 1;
+  return (
+    stepImagesData.find((item: any) => toFiniteNumber(item?.step) === stepNumber) ||
+    stepImagesData[index] ||
+    null
+  );
 };
 
 const normalizeTranslationsObject = (raw: unknown, base: BaseTextContent) => {
@@ -796,11 +827,7 @@ export default function RecipesPage() {
     }
 
     const instructionsData = instructionsArray;
-    const stepImagesData = Array.isArray(normalized.step_images || normalized.stepImages)
-      ? normalized.step_images || normalized.stepImages
-      : typeof normalized.step_images === "string"
-        ? JSON.parse(normalized.step_images || "[]")
-        : [];
+    const stepImagesData = parseStepImagesArray(normalized.step_images || normalized.stepImages);
 
     const maxSteps = Math.max(instructionsData.length, stepImagesData.length, rawSteps.length);
     const loadedSteps: RecipeStep[] = [];
@@ -816,18 +843,19 @@ export default function RecipesPage() {
             rawStep.timer ??
             rawStep.duration
           : null;
+      const stepImageRecord = resolveStepImageRecord(stepImagesData, i);
       loadedSteps.push({
         id: crypto.randomUUID(),
         text: stepText,
         imageUrl:
-          stepImagesData[i]?.image_url ||
-          stepImagesData[i]?.imageUrl ||
+          stepImageRecord?.image_url ||
+          stepImageRecord?.imageUrl ||
           (typeof rawStep === "object" && rawStep !== null
             ? rawStep.image_url || rawStep.imageUrl || ""
             : ""),
         durationMinutes: parseDurationMinutes(
-          stepImagesData[i]?.duration_minutes ??
-            stepImagesData[i]?.durationMinutes ??
+          stepImageRecord?.duration_minutes ??
+            stepImageRecord?.durationMinutes ??
             rawStepDuration,
           stepText
         ),
@@ -1004,15 +1032,19 @@ export default function RecipesPage() {
 
         if (Array.isArray(result.steps) && result.steps.length > 0) {
           const instructionsData = result.steps.map((step: any) => step.text || "");
-          const stepImagesData: any[] = [];
+          const stepImagesData = parseStepImagesArray(recipe.step_images);
 
-          const maxSteps = Math.max(instructionsData.length, stepImagesData.length);
+          const maxSteps = Math.max(instructionsData.length, stepImagesData.length, result.steps.length);
           const loadedSteps: RecipeStep[] = [];
 
           for (let i = 0; i < maxSteps; i += 1) {
             const stepText = instructionsData[i] || "";
-            const stepImage = stepImagesData[i]?.image_url || "";
-            const stepDuration = stepImagesData[i]?.duration_minutes || 0;
+            const stepImageRecord = resolveStepImageRecord(stepImagesData, i);
+            const stepImage = stepImageRecord?.image_url || stepImageRecord?.imageUrl || "";
+            const stepDuration = parseDurationMinutes(
+              stepImageRecord?.duration_minutes ?? stepImageRecord?.durationMinutes,
+              stepText
+            );
             loadedSteps.push({
               id: crypto.randomUUID(),
               text: stepText,
@@ -1027,17 +1059,19 @@ export default function RecipesPage() {
             ? JSON.parse(recipe.instructions || "[]")
             : recipe.instructions || [];
 
-          const stepImagesData = typeof recipe.step_images === 'string'
-            ? JSON.parse(recipe.step_images || "[]")
-            : recipe.step_images || [];
+          const stepImagesData = parseStepImagesArray(recipe.step_images);
 
           const maxSteps = Math.max(instructionsData.length, stepImagesData.length);
           const loadedSteps: RecipeStep[] = [];
 
           for (let i = 0; i < maxSteps; i += 1) {
             const stepText = instructionsData[i] || "";
-            const stepImage = stepImagesData[i]?.image_url || "";
-            const stepDuration = stepImagesData[i]?.duration_minutes || 0;
+            const stepImageRecord = resolveStepImageRecord(stepImagesData, i);
+            const stepImage = stepImageRecord?.image_url || stepImageRecord?.imageUrl || "";
+            const stepDuration = parseDurationMinutes(
+              stepImageRecord?.duration_minutes ?? stepImageRecord?.durationMinutes,
+              stepText
+            );
             loadedSteps.push({
               id: crypto.randomUUID(),
               text: stepText,
@@ -1087,13 +1121,19 @@ export default function RecipesPage() {
         .filter(step => step.text.trim().length > 0)
         .map(step => step.text.trim());
 
-      const stepImagesJson = steps
-        .filter(step => step.imageUrl.trim().length > 0 || step.durationMinutes > 0)
-        .map((step, index) => ({
+      const stepImagesJson = steps.flatMap((step, index) => {
+        const imageUrl = step.imageUrl.trim();
+        const durationMinutes = step.durationMinutes > 0 ? step.durationMinutes : null;
+        if (!imageUrl && durationMinutes === null) {
+          return [];
+        }
+
+        return [{
           step: index + 1,
-          image_url: step.imageUrl.trim() || null,
-          duration_minutes: step.durationMinutes > 0 ? step.durationMinutes : null,
-        }));
+          image_url: imageUrl || null,
+          duration_minutes: durationMinutes,
+        }];
+      });
 
       const payload = {
         id: form.id || crypto.randomUUID(),
