@@ -18,15 +18,13 @@ async function classifyTags(recipe: {
   difficulty: string | null;
   prep_time: number | null;
   cook_time: number | null;
-  nutrition_json: { calories?: number } | null;
 }): Promise<string[]> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY not set");
 
   const totalTime = (recipe.prep_time ?? 0) + (recipe.cook_time ?? 0);
-  const calories = recipe.nutrition_json?.calories;
 
-  // Auto-classify time/calorie tags without AI
+  // Auto-classify time tags without AI
   const autoTags: string[] = [];
   if (totalTime > 0) {
     if (totalTime <= 20) autoTags.push("quick");
@@ -34,10 +32,6 @@ async function classifyTags(recipe: {
   } else if (!totalTime) {
     if (recipe.difficulty === "easy") autoTags.push("quick");
     if (recipe.difficulty === "hard") autoTags.push("special occasion");
-  }
-  if (calories) {
-    if (calories < 300) autoTags.push("light");
-    if (calories > 650) autoTags.push("hearty");
   }
 
   // Use AI only for the semantic tags (meal type, diet, dish type)
@@ -106,7 +100,7 @@ export async function POST(request: Request) {
 
     let query = supabaseAdmin
       .from("recipes")
-      .select("id, title, description, difficulty, prep_time, cook_time, nutrition_json")
+      .select("id, title, description, difficulty, prep_time, cook_time")
       .order("created_at", { ascending: true })
       .limit(200);
 
