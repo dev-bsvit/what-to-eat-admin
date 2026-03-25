@@ -365,6 +365,8 @@ export default function RecipeTagsPage() {
   const [filterTag, setFilterTag] = useState("");
   const [showNoTags, setShowNoTags] = useState(false);
   const [page, setPage] = useState(0);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
   const PAGE_SIZE = 20;
 
   const fetchRecipes = useCallback(async () => {
@@ -395,6 +397,26 @@ export default function RecipeTagsPage() {
     );
   }
 
+  async function runBatchAutotag() {
+    setBatchRunning(true);
+    setBatchStatus(null);
+    try {
+      const res = await fetch("/api/admin/recipes/batch-autotag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ only_empty: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Error");
+      setBatchStatus(`✓ Помечено ${data.tagged} из ${data.total} рецептов`);
+      fetchRecipes();
+    } catch (e) {
+      setBatchStatus(`Ошибка: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBatchRunning(false);
+    }
+  }
+
   const filtered = recipes.filter((r) => {
     if (showNoTags && (r.tags ?? []).length > 0) return false;
     if (filterTag && !(r.tags ?? []).includes(filterTag.toLowerCase())) return false;
@@ -404,20 +426,60 @@ export default function RecipeTagsPage() {
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: "var(--spacing-2xl)" }}>
-        <h1
-          style={{
-            fontSize: "28px",
-            fontWeight: 700,
-            color: "var(--text-primary)",
-            marginBottom: "8px",
-          }}
-        >
-          Теги рецептов
-        </h1>
-        <p style={{ color: "var(--text-secondary)", fontSize: "15px" }}>
-          Управление тегами и авто-классификация
-        </p>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          marginBottom: "var(--spacing-2xl)",
+          flexWrap: "wrap",
+          gap: "var(--spacing-md)",
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              fontSize: "28px",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              marginBottom: "8px",
+            }}
+          >
+            Теги рецептов
+          </h1>
+          <p style={{ color: "var(--text-secondary)", fontSize: "15px" }}>
+            Управление тегами и авто-классификация
+          </p>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+          <button
+            onClick={runBatchAutotag}
+            disabled={batchRunning}
+            style={{
+              background: batchRunning ? "var(--text-muted)" : "#6b21a8",
+              color: "white",
+              border: "none",
+              borderRadius: "var(--radius-sm)",
+              padding: "10px 20px",
+              fontSize: "14px",
+              fontWeight: 500,
+              cursor: batchRunning ? "default" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {batchRunning ? "⏳ Классификация…" : "🤖 AI авто-теггинг (без тегов)"}
+          </button>
+          {batchStatus && (
+            <span
+              style={{
+                fontSize: "13px",
+                color: batchStatus.startsWith("✓") ? "var(--accent-success)" : "var(--accent-danger)",
+              }}
+            >
+              {batchStatus}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
