@@ -59,9 +59,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, sent: 0, reason: "No push tokens registered" });
     }
 
-    const eligible = tokenRows
-      .filter((row: Record<string, unknown>) => {
-        const pref = row.notification_preferences as Record<string, boolean> | null;
+    const eligible = (tokenRows as Array<Record<string, unknown>>)
+      .filter((row) => {
+        const raw = row.notification_preferences;
+        const pref = (Array.isArray(raw) ? raw[0] ?? null : raw) as Record<string, boolean> | null;
         return pref === null || pref[prefColumn] !== false;
       })
       .map((row: { token: string }) => row.token);

@@ -76,12 +76,14 @@ async function handle(request: Request) {
     }
 
     // Keep tokens where catalog_enabled is true or preference row is missing (default = true)
-    const eligible = tokenRows
-      .filter((row: { notification_preferences: { catalog_enabled: boolean } | null }) => {
-        const pref = row.notification_preferences;
+    const eligible = (tokenRows as Array<{ token: string; notification_preferences: { catalog_enabled: boolean | null } | { catalog_enabled: boolean | null }[] | null }>)
+      .filter((row) => {
+        const pref = Array.isArray(row.notification_preferences)
+          ? row.notification_preferences[0] ?? null
+          : row.notification_preferences;
         return pref === null || pref.catalog_enabled !== false;
       })
-      .map((row: { token: string }) => row.token);
+      .map((row) => row.token);
 
     if (eligible.length === 0) {
       return NextResponse.json({ ok: true, sent: 0, reason: "All users have catalog notifications disabled" });
