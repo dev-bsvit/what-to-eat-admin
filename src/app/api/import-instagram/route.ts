@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -40,8 +41,17 @@ interface InstagramExtraction {
 
 const MODEL = "gpt-4o-mini";
 const TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
+const META_CACHE_TTL_MS = 5 * 60 * 1000;
+const META_EXTRACT_TIMEOUT_MS = 20_000;
+const FULL_EXTRACT_TIMEOUT_MS = 120_000;
+const OPENAI_TIMEOUT_MS = 60_000;
+const TRANSCRIBE_TIMEOUT_MS = 45_000;
+const MAX_COMBINED_TEXT_LENGTH = 12_000;
 
-function runProcess(command: string, args: string[], cwd: string) {
+const metaExtractionCache = new Map<string, { expiresAt: number; extraction: InstagramExtraction }>();
+const metaExtractionInFlight = new Map<string, Promise<InstagramExtraction>>();
+
+function runProcess(command: string, args: string[], cwd: string, timeoutMs?: number) {
   return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
     let child;
     try {
@@ -53,6 +63,16 @@ function runProcess(command: string, args: string[], cwd: string) {
     }
     let stdout = "";
     let stderr = "";
+    let didTimeout = false;
+    let timeoutHandle: NodeJS.Timeout | null = null;
+
+    if (timeoutMs && timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        didTimeout = true;
+        stderr += `${stderr ? "\n" : ""}Process timed out after ${timeoutMs}ms`;
+        child.kill("SIGKILL");
+      }, timeoutMs);
+    }
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -61,10 +81,12 @@ function runProcess(command: string, args: string[], cwd: string) {
       stderr += chunk.toString();
     });
     child.on("error", (error) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       resolve({ code: 127, stdout, stderr: error.message });
     });
     child.on("close", (code) => {
-      resolve({ code: code ?? 0, stdout, stderr });
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      resolve({ code: didTimeout ? 124 : (code ?? 0), stdout, stderr });
     });
   });
 }
@@ -88,6 +110,17 @@ function normalizeInstagramUrl(rawUrl: string) {
   } catch {
     return rawUrl;
   }
+}
+
+function buildRequestOutputDir(cwd: string) {
+  return path.join(cwd, "tmp", "instagram", randomUUID());
+}
+
+function truncateForAI(text: string) {
+  if (text.length <= MAX_COMBINED_TEXT_LENGTH) {
+    return text;
+  }
+  return text.slice(0, MAX_COMBINED_TEXT_LENGTH).trim();
 }
 
 function extractJson(content: string) {
@@ -163,6 +196,7 @@ async function transcribeAudio(apiKey: string, audioPath: string) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: form,
+    signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -174,22 +208,13 @@ async function transcribeAudio(apiKey: string, audioPath: string) {
   return data?.text ? String(data.text).trim() : "";
 }
 
-async function extractCoverFromVideo(videoPath: string, outputDir: string) {
-  const coverPath = path.join(outputDir, `${path.basename(videoPath, ".mp4")}_cover.jpg`);
-  const ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
-  const result = await runProcess(
-    ffmpegPath,
-    ["-y", "-ss", "00:00:01", "-i", videoPath, "-frames:v", "1", "-q:v", "2", coverPath],
-    process.cwd()
-  );
-
-  if (result.code !== 0) {
-    return null;
+async function cleanupOutputDir(outputDir: string | null) {
+  if (!outputDir) return;
+  try {
+    await fs.rm(outputDir, { recursive: true, force: true });
+  } catch {
+    // Best-effort cleanup only.
   }
-
-  const buffer = await fs.readFile(coverPath);
-  const base64 = buffer.toString("base64");
-  return `data:image/jpeg;base64,${base64}`;
 }
 
 function buildPrompt(inputText: string, sourceUrl: string, sourceDomain?: string, imageUrl?: string) {
@@ -267,13 +292,117 @@ function shouldSkipTranscription(caption: string) {
   return looksLikeIngredients(caption) && looksLikeSteps(caption);
 }
 
-export async function POST(request: Request) {
-  try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
-    }
+async function runInstagramExtraction(
+  normalizedUrl: string,
+  cwd: string,
+  outputDir: string,
+  metaOnly: boolean
+) {
+  await fs.mkdir(outputDir, { recursive: true });
 
+  const scriptPath = path.join(cwd, "scripts", "instagram_import.py");
+  const pythonCandidates = [
+    process.env.PYTHON_PATH,
+    "/usr/bin/python3",
+    "/usr/local/bin/python3",
+    "python3",
+    "python",
+  ].filter(Boolean) as string[];
+
+  let extraction = { code: 127, stdout: "", stderr: "Python not found" };
+  const attempts: Array<{ command: string; code: number; stderr: string }> = [];
+  let pythonUsed = "";
+  const pythonArgs = [scriptPath, "--url", normalizedUrl, "--output", outputDir];
+  if (metaOnly) pythonArgs.push("--meta-only");
+
+  for (const candidate of pythonCandidates) {
+    const result = await runProcess(
+      candidate,
+      pythonArgs,
+      cwd,
+      metaOnly ? META_EXTRACT_TIMEOUT_MS : FULL_EXTRACT_TIMEOUT_MS
+    );
+    attempts.push({
+      command: candidate,
+      code: result.code,
+      stderr: result.stderr?.slice(0, 300) || "",
+    });
+    pythonUsed = candidate;
+    if (result.code === 0) {
+      extraction = result;
+      break;
+    }
+    extraction = result;
+  }
+
+  if (extraction.code !== 0) {
+    throw new Error(
+      JSON.stringify({
+        error: "Instagram extract failed",
+        details: extraction.stderr || extraction.stdout,
+        python: pythonUsed || pythonCandidates[0],
+        candidates: pythonCandidates,
+        attempts,
+      })
+    );
+  }
+
+  let extracted: InstagramExtraction;
+  try {
+    extracted = JSON.parse(extraction.stdout.trim());
+  } catch {
+    throw new Error(
+      JSON.stringify({
+        error: "Invalid extractor response",
+        details: extraction.stdout,
+      })
+    );
+  }
+
+  if ((extracted as any).error) {
+    throw new Error(
+      JSON.stringify({
+        error: (extracted as any).message || "Extraction failed",
+      })
+    );
+  }
+
+  return extracted;
+}
+
+async function getCachedInstagramMeta(normalizedUrl: string, cwd: string) {
+  const cached = metaExtractionCache.get(normalizedUrl);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.extraction;
+  }
+
+  const inFlight = metaExtractionInFlight.get(normalizedUrl);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const extractionPromise = (async () => {
+    const outputDir = buildRequestOutputDir(cwd);
+    try {
+      const extraction = await runInstagramExtraction(normalizedUrl, cwd, outputDir, true);
+      metaExtractionCache.set(normalizedUrl, {
+        expiresAt: Date.now() + META_CACHE_TTL_MS,
+        extraction,
+      });
+      return extraction;
+    } finally {
+      metaExtractionInFlight.delete(normalizedUrl);
+      await cleanupOutputDir(outputDir);
+    }
+  })();
+
+  metaExtractionInFlight.set(normalizedUrl, extractionPromise);
+  return extractionPromise;
+}
+
+export async function POST(request: Request) {
+  let fullExtractionOutputDir: string | null = null;
+  try {
     const body = await request.json();
     const { url, metaOnly = false } = body;
     if (!url || typeof url !== "string") {
@@ -282,98 +411,59 @@ export async function POST(request: Request) {
     const normalizedUrl = normalizeInstagramUrl(url.trim());
 
     const cwd = process.cwd();
-    const outputDir = path.join(cwd, "tmp", "instagram");
-    await fs.mkdir(outputDir, { recursive: true });
-
-    const scriptPath = path.join(cwd, "scripts", "instagram_import.py");
-    const pythonCandidates = [
-      process.env.PYTHON_PATH,
-      "/usr/bin/python3",
-      "/usr/local/bin/python3",
-      "python3",
-      "python",
-    ].filter(Boolean) as string[];
-
-    let extraction = { code: 127, stdout: "", stderr: "Python not found" };
-    const attempts: Array<{ command: string; code: number; stderr: string }> = [];
-    let pythonUsed = "";
-    const pythonArgs = [scriptPath, "--url", normalizedUrl, "--output", outputDir];
-    if (metaOnly) pythonArgs.push("--meta-only");
-
-    for (const candidate of pythonCandidates) {
-      const result = await runProcess(candidate, pythonArgs, cwd);
-      attempts.push({
-        command: candidate,
-        code: result.code,
-        stderr: result.stderr?.slice(0, 200) || "",
-      });
-      pythonUsed = candidate;
-      if (result.code === 0) {
-        extraction = result;
-        break;
-      }
-      extraction = result;
-    }
-
-    if (extraction.code !== 0) {
-      return NextResponse.json(
-        {
-          error: "Instagram extract failed",
-          details: extraction.stderr || extraction.stdout,
-          python: pythonUsed || pythonCandidates[0],
-          candidates: pythonCandidates,
-          attempts,
-        },
-        { status: 500 }
-      );
-    }
-
-    let extracted: InstagramExtraction;
-    try {
-      extracted = JSON.parse(extraction.stdout.trim());
-    } catch (error) {
-      return NextResponse.json(
-        { error: "Invalid extractor response", details: extraction.stdout },
-        { status: 500 }
-      );
-    }
-
-    if ((extracted as any).error) {
-      return NextResponse.json({ error: (extracted as any).message || "Extraction failed" }, { status: 500 });
-    }
+    const extractedMeta = await getCachedInstagramMeta(normalizedUrl, cwd);
 
     console.info("[instagram] extracted", {
-      shortcode: extracted.shortcode,
-      hasCaption: Boolean(extracted.caption?.trim()),
-      thumbnailUrl: extracted.thumbnail_url || null,
-      videoPath: extracted.video_path || null,
-      owner: extracted.owner_username || null,
+      shortcode: extractedMeta.shortcode,
+      hasCaption: Boolean(extractedMeta.caption?.trim()),
+      thumbnailUrl: extractedMeta.thumbnail_url || null,
+      owner: extractedMeta.owner_username || null,
+      metaOnly,
     });
 
     // metaOnly: return just thumbnail + caption quickly (no transcription, no AI)
     if (metaOnly) {
       return NextResponse.json({
-        thumbnail_url: extracted.thumbnail_url || null,
-        caption: extracted.caption || "",
-        owner_username: extracted.owner_username || null,
-        shortcode: extracted.shortcode,
+        thumbnail_url: extractedMeta.thumbnail_url || null,
+        caption: extractedMeta.caption || "",
+        owner_username: extractedMeta.owner_username || null,
+        shortcode: extractedMeta.shortcode,
       });
     }
 
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+    }
+
     let transcript = "";
-    let coverDataUrl: string | null = null;
-    const skipTranscription = shouldSkipTranscription(extracted.caption || "");
+    let extracted = extractedMeta;
+    const skipTranscription = shouldSkipTranscription(extractedMeta.caption || "");
     console.info("[instagram] skipTranscription", { skip: skipTranscription });
 
+    if (!skipTranscription) {
+      fullExtractionOutputDir = buildRequestOutputDir(cwd);
+      try {
+        extracted = await runInstagramExtraction(normalizedUrl, cwd, fullExtractionOutputDir, false);
+      } catch (error) {
+        console.warn("[instagram] full extraction failed, fallback to meta-only", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        extracted = extractedMeta;
+      }
+    }
+
     if (extracted.video_path) {
-      const audioPath = path.join(outputDir, `${extracted.shortcode}.mp3`);
+      const workingOutputDir = fullExtractionOutputDir ?? path.dirname(extracted.video_path);
+      const audioPath = path.join(workingOutputDir, `${extracted.shortcode}.mp3`);
       const ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
 
       if (!skipTranscription) {
         const ffmpegResult = await runProcess(
           ffmpegPath,
           ["-y", "-i", extracted.video_path, "-vn", "-acodec", "mp3", audioPath],
-          cwd
+          cwd,
+          45_000
         );
 
         console.info("[instagram] ffmpeg audio", {
@@ -382,23 +472,19 @@ export async function POST(request: Request) {
         });
 
         if (ffmpegResult.code === 0) {
-          // 45s timeout on transcription so it doesn't block indefinitely
           const transcriptOrNull = await Promise.race([
             transcribeAudio(apiKey, audioPath),
-            new Promise<string>((resolve) => setTimeout(() => resolve(""), 45_000)),
+            new Promise<string>((resolve) => setTimeout(() => resolve(""), TRANSCRIBE_TIMEOUT_MS)),
           ]);
           transcript = transcriptOrNull;
           console.info("[instagram] transcript", { length: transcript.length, timedOut: transcript === "" && ffmpegResult.code === 0 });
         }
       }
-
-      if (!extracted.thumbnail_url) {
-        coverDataUrl = await extractCoverFromVideo(extracted.video_path, outputDir);
-        console.info("[instagram] cover from video", { ok: Boolean(coverDataUrl) });
-      }
     }
 
-    const combinedText = [extracted.caption, transcript].filter(Boolean).join("\n\n").trim();
+    const combinedText = truncateForAI(
+      [extracted.caption, transcript].filter(Boolean).join("\n\n").trim()
+    );
     console.info("[instagram] combinedText", { length: combinedText.length });
     if (!combinedText) {
       return NextResponse.json({ error: "No text to parse" }, { status: 500 });
@@ -424,6 +510,7 @@ export async function POST(request: Request) {
         input: prompt,
         temperature: 0.2,
       }),
+      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
     });
 
     if (!aiResponse.ok) {
@@ -462,9 +549,29 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    if (error instanceof Error) {
+      try {
+        const parsed = JSON.parse(error.message);
+        const status =
+          typeof parsed?.details === "string" && parsed.details.includes("timed out")
+            ? 504
+            : 500;
+        return NextResponse.json(parsed, { status });
+      } catch {
+        if (error.name === "AbortError") {
+          return NextResponse.json(
+            { error: "Instagram import timed out", details: error.message },
+            { status: 504 }
+          );
+        }
+      }
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
+  } finally {
+    await cleanupOutputDir(fullExtractionOutputDir);
   }
 }
