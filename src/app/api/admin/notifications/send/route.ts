@@ -65,7 +65,7 @@ export async function POST(request: Request) {
         const pref = (Array.isArray(raw) ? raw[0] ?? null : raw) as Record<string, boolean> | null;
         return pref === null || pref[prefColumn] !== false;
       })
-      .map((row: { token: string }) => row.token);
+      .map((row) => row.token as string);
 
     if (eligible.length === 0) {
       return NextResponse.json({ ok: true, sent: 0, reason: "All users have this notification type disabled" });
