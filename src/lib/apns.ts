@@ -66,7 +66,7 @@ export async function sendPush(
   const note = new apn.Notification();
   note.alert = { title, body };
   note.sound = "default";
-  note.contentAvailable = 1;
+  note.contentAvailable = true;
   note.topic = process.env.APNS_BUNDLE_ID!;
   note.priority = 5;   // battery-friendly
   note.expiry = 0;     // deliver once, don't retry
