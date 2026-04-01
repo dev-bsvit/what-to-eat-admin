@@ -20,16 +20,12 @@ let _provider: apn.Provider | null = null;
 function getProvider(): apn.Provider {
   if (_provider) return _provider;
 
-  const keyRaw = process.env.APNS_PRIVATE_KEY ?? "";
-  // Strip PEM header/footer and whitespace, then re-wrap as base64 Buffer
-  const keyBase64 = keyRaw
-    .replace(/-----BEGIN (?:EC |)PRIVATE KEY-----/g, "")
-    .replace(/-----END (?:EC |)PRIVATE KEY-----/g, "")
-    .replace(/\s+/g, "");
+  // Replace literal \n sequences with real newlines (Render stores multiline env vars this way)
+  const keyPem = (process.env.APNS_PRIVATE_KEY ?? "").replace(/\\n/g, "\n");
 
   _provider = new apn.Provider({
     token: {
-      key: Buffer.from(keyBase64, "base64"),
+      key: keyPem,
       keyId: process.env.APNS_KEY_ID!,
       teamId: process.env.APNS_TEAM_ID!,
     },
