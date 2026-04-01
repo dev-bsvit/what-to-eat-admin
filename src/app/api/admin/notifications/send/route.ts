@@ -61,8 +61,8 @@ export async function POST(request: Request) {
       .in("user_id", userIds);
 
     const prefMap = new Map<string, boolean>();
-    for (const pref of prefs ?? []) {
-      prefMap.set(pref.user_id, pref[prefColumn] !== false);
+    for (const pref of (prefs ?? []) as Array<Record<string, unknown>>) {
+      prefMap.set(pref.user_id as string, pref[prefColumn] !== false);
     }
 
     // 3. Filter eligible tokens (default = enabled if no preference row)
