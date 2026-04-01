@@ -301,13 +301,44 @@ async function runInstagramExtraction(
   await fs.mkdir(outputDir, { recursive: true });
 
   const scriptPath = path.join(cwd, "scripts", "instagram_import.py");
-  const pythonCandidates = [
-    process.env.PYTHON_PATH,
-    "/usr/bin/python3",
-    "/usr/local/bin/python3",
-    "python3",
-    "python",
-  ].filter(Boolean) as string[];
+  const pythonCandidates = Array.from(
+    new Set(
+      [
+        process.env.PYTHON_PATH,
+        "/usr/bin/python3",
+        "/usr/local/bin/python3",
+        "python3",
+        "python",
+      ].filter(Boolean) as string[]
+    )
+  );
+
+  const parseStructuredFailure = (stdout: string, stderr: string) => {
+    try {
+      const parsed = JSON.parse(stdout.trim());
+      if (parsed && typeof parsed === "object" && (parsed.error || parsed.message)) {
+        return {
+          error: String(parsed.error || "Instagram extract failed"),
+          details: String(parsed.message || stderr || stdout).trim(),
+        };
+      }
+    } catch {
+      // Not structured JSON, fall back to stderr/stdout.
+    }
+
+    const details = (stderr || stdout).trim();
+    if (!details) return null;
+
+    return {
+      error: "Instagram extract failed",
+      details,
+    };
+  };
+
+  const isInterpreterMissing = (result: { code: number; stderr: string }) => {
+    if (result.code === 127) return true;
+    return /enoent|not found/i.test(result.stderr);
+  };
 
   let extraction = { code: 127, stdout: "", stderr: "Python not found" };
   const attempts: Array<{ command: string; code: number; stderr: string }> = [];
@@ -332,14 +363,23 @@ async function runInstagramExtraction(
       extraction = result;
       break;
     }
+
+    // If Python actually ran and the extractor returned a real Instagram error,
+    // stop here instead of masking it with later fallback attempts like `python ENOENT`.
+    if (!isInterpreterMissing(result) && parseStructuredFailure(result.stdout, result.stderr)) {
+      extraction = result;
+      break;
+    }
+
     extraction = result;
   }
 
   if (extraction.code !== 0) {
+    const structuredFailure = parseStructuredFailure(extraction.stdout, extraction.stderr);
     throw new Error(
       JSON.stringify({
-        error: "Instagram extract failed",
-        details: extraction.stderr || extraction.stdout,
+        error: structuredFailure?.error || "Instagram extract failed",
+        details: structuredFailure?.details || extraction.stderr || extraction.stdout,
         python: pythonUsed || pythonCandidates[0],
         candidates: pythonCandidates,
         attempts,
