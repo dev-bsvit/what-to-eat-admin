@@ -90,8 +90,11 @@ export async function POST(request: Request) {
 
   } catch (err) {
     console.error("admin/notifications/send error:", err);
+    const errMsg = err instanceof Error
+      ? err.message
+      : (typeof err === "object" ? JSON.stringify(err) : String(err));
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { ok: false, error: errMsg },
       { status: 500 }
     );
   }
