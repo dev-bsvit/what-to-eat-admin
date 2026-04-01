@@ -6,9 +6,6 @@
  *
  * Body:
  *   { title: string, body: string, type: "promo" | "system" }
- *
- * No cron auth — only accessible from within the admin panel (same origin).
- * Add session-based auth if the admin panel is ever exposed publicly.
  */
 
 import { NextResponse } from "next/server";
@@ -43,15 +40,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    // 1. Get eligible push tokens (filter by notification_preferences)
     const prefColumn = type === "promo" ? "promo_enabled" : "system_enabled";
 
+    // 1. Get all iOS push tokens with user_ids
     const { data: tokenRows, error: tokenErr } = await supabaseAdmin
       .from("push_tokens")
-      .select(`
-        token,
-        notification_preferences!left ( ${prefColumn} )
-      `)
+      .select("token, user_id")
       .eq("platform", "ios");
 
     if (tokenErr) throw tokenErr;
@@ -59,11 +53,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, sent: 0, reason: "No push tokens registered" });
     }
 
-    const eligible = (tokenRows as Array<Record<string, unknown>>)
+    // 2. Get notification preferences for those users
+    const userIds = tokenRows.map((r) => r.user_id).filter(Boolean);
+    const { data: prefs } = await supabaseAdmin
+      .from("notification_preferences")
+      .select(`user_id, ${prefColumn}`)
+      .in("user_id", userIds);
+
+    const prefMap = new Map<string, boolean>();
+    for (const pref of prefs ?? []) {
+      prefMap.set(pref.user_id, pref[prefColumn] !== false);
+    }
+
+    // 3. Filter eligible tokens (default = enabled if no preference row)
+    const eligible = tokenRows
       .filter((row) => {
-        const raw = row.notification_preferences;
-        const pref = (Array.isArray(raw) ? raw[0] ?? null : raw) as Record<string, boolean> | null;
-        return pref === null || pref[prefColumn] !== false;
+        if (!row.user_id) return true;
+        const enabled = prefMap.get(row.user_id);
+        return enabled === undefined ? true : enabled;
       })
       .map((row) => row.token as string);
 
@@ -71,15 +78,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, sent: 0, reason: "All users have this notification type disabled" });
     }
 
-    // 2. Send pushes
+    // 4. Send pushes
     const { sent, invalidTokens } = await sendPush(eligible, title.trim(), body.trim(), { type });
 
-    // 3. Remove stale tokens
+    // 5. Remove stale tokens
     if (invalidTokens.length > 0) {
       await supabaseAdmin.from("push_tokens").delete().in("token", invalidTokens);
     }
 
-    // 4. Log the broadcast
+    // 6. Log the broadcast
     await supabaseAdmin.from("notification_log").insert({
       type,
       reference_id: null,

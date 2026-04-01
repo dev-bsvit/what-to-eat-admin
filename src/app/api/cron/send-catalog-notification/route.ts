@@ -5,15 +5,13 @@
  * Finds new cuisines added in the last 25h that haven't been notified yet,
  * then sends an APNs push to all users with catalog notifications enabled.
  *
- * Auth: Bearer CRON_SECRET header (same pattern as normalize-ingredients)
+ * Auth: Bearer CRON_SECRET header
  * Also accepts POST for manual triggering from the admin panel UI.
  */
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendPush } from "@/lib/apns";
-
-// ─── Auth ──────────────────────────────────────────────────────────────────
 
 function verifyCronAuth(request: Request): boolean {
   const authHeader = request.headers.get("authorization");
@@ -24,8 +22,6 @@ function verifyCronAuth(request: Request): boolean {
 
   return authHeader === `Bearer ${cronSecret}`;
 }
-
-// ─── Handler ───────────────────────────────────────────────────────────────
 
 async function handle(request: Request) {
   if (!verifyCronAuth(request)) {
@@ -60,14 +56,10 @@ async function handle(request: Request) {
       return NextResponse.json({ ok: true, sent: 0, reason: "No new unnotified cuisines" });
     }
 
-    // 2. Get push tokens for users with catalog notifications enabled
+    // 2. Get all iOS push tokens with user_ids
     const { data: tokenRows, error: tokenErr } = await supabaseAdmin
       .from("push_tokens")
-      .select(`
-        token,
-        user_id,
-        notification_preferences!left ( catalog_enabled )
-      `)
+      .select("token, user_id")
       .eq("platform", "ios");
 
     if (tokenErr) throw tokenErr;
@@ -75,21 +67,32 @@ async function handle(request: Request) {
       return NextResponse.json({ ok: true, sent: 0, reason: "No push tokens registered" });
     }
 
-    // Keep tokens where catalog_enabled is true or preference row is missing (default = true)
-    const eligible = (tokenRows as Array<{ token: string; notification_preferences: { catalog_enabled: boolean | null } | { catalog_enabled: boolean | null }[] | null }>)
+    // 3. Get notification preferences for those users
+    const userIds = tokenRows.map((r) => r.user_id).filter(Boolean);
+    const { data: prefs } = await supabaseAdmin
+      .from("notification_preferences")
+      .select("user_id, catalog_enabled")
+      .in("user_id", userIds);
+
+    const prefMap = new Map<string, boolean>();
+    for (const pref of prefs ?? []) {
+      prefMap.set(pref.user_id, pref.catalog_enabled !== false);
+    }
+
+    // 4. Filter eligible tokens (default = enabled if no preference row)
+    const eligible = tokenRows
       .filter((row) => {
-        const pref = Array.isArray(row.notification_preferences)
-          ? row.notification_preferences[0] ?? null
-          : row.notification_preferences;
-        return pref === null || pref.catalog_enabled !== false;
+        if (!row.user_id) return true;
+        const enabled = prefMap.get(row.user_id);
+        return enabled === undefined ? true : enabled;
       })
-      .map((row) => row.token);
+      .map((row) => row.token as string);
 
     if (eligible.length === 0) {
       return NextResponse.json({ ok: true, sent: 0, reason: "All users have catalog notifications disabled" });
     }
 
-    // 3. Build notification content
+    // 5. Build notification content
     const firstName = (unnotified[0] as { name: string }).name;
     const title = "🍽️ Новый каталог";
     const body =
@@ -97,16 +100,16 @@ async function handle(request: Request) {
         ? `Добавлен каталог «${firstName}» — загляни!`
         : `Добавлено ${unnotified.length} новых каталога — посмотри что нового`;
 
-    // 4. Send pushes
+    // 6. Send pushes
     const { sent, invalidTokens } = await sendPush(eligible, title, body, { type: "catalog" });
 
-    // 5. Remove stale tokens
+    // 7. Remove stale tokens
     if (invalidTokens.length > 0) {
       await supabaseAdmin.from("push_tokens").delete().in("token", invalidTokens);
       console.log(`Removed ${invalidTokens.length} stale tokens`);
     }
 
-    // 6. Log each notified cuisine to prevent future duplicates
+    // 8. Log each notified cuisine to prevent future duplicates
     const logEntries = unnotified.map((c: { id: string }) => ({
       type: "catalog",
       reference_id: c.id,
