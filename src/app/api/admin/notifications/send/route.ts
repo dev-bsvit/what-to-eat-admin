@@ -5,7 +5,14 @@
  * Supports type "promo" and "system".
  *
  * Body:
- *   { title: string, body: string, type: "promo" | "system" }
+ *   {
+ *     title: string,
+ *     body: string,
+ *     type: "promo" | "system",
+ *     imageUrl?: string | null,
+ *     ctaAction?: "subscription" | "catalog" | null,
+ *     ctaTitle?: string | null
+ *   }
  */
 
 import { NextResponse } from "next/server";
@@ -13,11 +20,15 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendPush } from "@/lib/apns";
 
 type BroadcastType = "promo" | "system";
+type CtaAction = "subscription" | "catalog";
 
 interface SendBody {
   title: string;
   body: string;
   type: BroadcastType;
+  imageUrl?: string | null;
+  ctaAction?: CtaAction | null;
+  ctaTitle?: string | null;
 }
 
 export async function POST(request: Request) {
@@ -30,6 +41,9 @@ export async function POST(request: Request) {
   }
 
   const { title, body, type } = payload;
+  const imageUrl = typeof payload.imageUrl === "string" ? payload.imageUrl.trim() : "";
+  const ctaTitle = typeof payload.ctaTitle === "string" ? payload.ctaTitle.trim() : "";
+  const ctaAction = payload.ctaAction ?? null;
 
   if (!title?.trim() || !body?.trim()) {
     return NextResponse.json({ error: "title and body are required" }, { status: 400 });
@@ -37,6 +51,18 @@ export async function POST(request: Request) {
 
   if (type !== "promo" && type !== "system") {
     return NextResponse.json({ error: "type must be 'promo' or 'system'" }, { status: 400 });
+  }
+
+  if (ctaAction !== null && ctaAction !== "subscription" && ctaAction !== "catalog") {
+    return NextResponse.json({ error: "ctaAction must be 'subscription', 'catalog' or null" }, { status: 400 });
+  }
+
+  if (imageUrl) {
+    try {
+      new URL(imageUrl);
+    } catch {
+      return NextResponse.json({ error: "imageUrl must be a valid absolute URL" }, { status: 400 });
+    }
   }
 
   try {
@@ -79,7 +105,21 @@ export async function POST(request: Request) {
     }
 
     // 4. Send pushes
-    const { sent, invalidTokens } = await sendPush(eligible, title.trim(), body.trim(), { type });
+    const extraData: Record<string, unknown> = { type };
+
+    if (imageUrl) {
+      extraData.image_url = imageUrl;
+    }
+
+    if (ctaAction) {
+      extraData.cta_action = ctaAction;
+    }
+
+    if (ctaTitle) {
+      extraData.cta_title = ctaTitle;
+    }
+
+    const { sent, invalidTokens } = await sendPush(eligible, title.trim(), body.trim(), extraData);
 
     // 5. Remove stale tokens
     if (invalidTokens.length > 0) {

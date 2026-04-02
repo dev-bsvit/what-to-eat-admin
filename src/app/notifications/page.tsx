@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 type BroadcastType = "promo" | "system";
+type CtaAction = "none" | "subscription" | "catalog";
 
 interface LogEntry {
   id: string;
@@ -19,6 +20,9 @@ export default function NotificationsPage() {
   const [type, setType] = useState<BroadcastType>("promo");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [ctaAction, setCtaAction] = useState<CtaAction>("none");
+  const [ctaTitle, setCtaTitle] = useState("");
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ ok: boolean; sent?: number; total?: number; error?: string } | null>(null);
 
@@ -48,16 +52,29 @@ export default function NotificationsPage() {
     setSending(true);
     setSendResult(null);
     try {
+      const trimmedImageUrl = imageUrl.trim();
+      const trimmedCtaTitle = ctaTitle.trim();
+
       const res = await fetch("/api/admin/notifications/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, body, type }),
+        body: JSON.stringify({
+          title,
+          body,
+          type,
+          imageUrl: trimmedImageUrl || null,
+          ctaAction: ctaAction === "none" ? null : ctaAction,
+          ctaTitle: trimmedCtaTitle || null,
+        }),
       });
       const data = await res.json();
       setSendResult(data);
       if (data.ok) {
         setTitle("");
         setBody("");
+        setImageUrl("");
+        setCtaAction("none");
+        setCtaTitle("");
       }
     } catch (err) {
       setSendResult({ ok: false, error: String(err) });
@@ -79,6 +96,17 @@ export default function NotificationsPage() {
       setSending(false);
     }
   };
+
+  const hasValidImageUrl = (() => {
+    const value = imageUrl.trim();
+    if (!value) return false;
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
   return (
     <div style={{ padding: "32px", maxWidth: "720px" }}>
@@ -233,6 +261,110 @@ export default function NotificationsPage() {
                 }}
               />
             </div>
+
+            <div>
+              <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
+                URL изображения
+              </label>
+              <input
+                type="url"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://..."
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid #ddd",
+                  fontSize: "15px",
+                  boxSizing: "border-box",
+                }}
+              />
+              <p style={{ marginTop: "6px", fontSize: "12px", color: "#777" }}>
+                Поле опционально. Если пусто, сообщение откроется без hero-изображения.
+              </p>
+              {hasValidImageUrl && (
+                <div
+                  style={{
+                    marginTop: "10px",
+                    borderRadius: "14px",
+                    overflow: "hidden",
+                    border: "1px solid #e8e8e8",
+                    background: "#fff",
+                  }}
+                >
+                  <img
+                    src={imageUrl.trim()}
+                    alt="Preview"
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      maxHeight: "180px",
+                      objectFit: "cover",
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
+                Целевое действие кнопки
+              </label>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                {([
+                  { value: "none", label: "Без кнопки" },
+                  { value: "subscription", label: "Подписка" },
+                  { value: "catalog", label: "Каталог" },
+                ] as const).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setCtaAction(option.value)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: "6px",
+                      border: `2px solid ${ctaAction === option.value ? "#111" : "#ddd"}`,
+                      background: ctaAction === option.value ? "#111" : "#fff",
+                      color: ctaAction === option.value ? "#fff" : "#444",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p style={{ marginTop: "6px", fontSize: "12px", color: "#777" }}>
+                Кнопка внизу открытого сообщения появится только если здесь выбран переход.
+              </p>
+            </div>
+
+            {ctaAction !== "none" && (
+              <div>
+                <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
+                  Текст кнопки
+                </label>
+                <input
+                  type="text"
+                  value={ctaTitle}
+                  onChange={(e) => setCtaTitle(e.target.value)}
+                  placeholder={ctaAction === "subscription" ? "Открыть подписку" : "Открыть каталог"}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #ddd",
+                    fontSize: "15px",
+                    boxSizing: "border-box",
+                  }}
+                />
+                <p style={{ marginTop: "6px", fontSize: "12px", color: "#777" }}>
+                  Поле опционально. Если пусто, приложение подставит дефолтный текст.
+                </p>
+              </div>
+            )}
 
             <button
               type="submit"
