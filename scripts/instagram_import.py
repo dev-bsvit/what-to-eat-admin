@@ -81,7 +81,13 @@ def test_login(loader: instaloader.Instaloader):
 def classify_fetch_error(message: str, has_auth_cookies: bool, logged_in_username: Optional[str]):
     lower = message.lower()
 
-    if "challenge_required" in lower or "checkpoint_required" in lower or "feedback_required" in lower:
+    if (
+        "challenge_required" in lower
+        or "checkpoint_required" in lower
+        or "feedback_required" in lower
+        or "/challenge/" in lower
+        or '302 found' in lower and 'instagram.com/challenge/' in lower
+    ):
         return (
             "instagram_challenge_required",
             "Instagram requested an account challenge/checkpoint. Refresh the Instagram session cookies on the server.",
