@@ -20,6 +20,97 @@ def download_video(video_url: str, output_path: str) -> None:
     urllib.request.urlretrieve(video_url, output_path)
 
 
+def set_cookie(session, name: str, value: str) -> bool:
+    normalized = value.strip()
+    if not normalized:
+        return False
+    session.cookies.set(name, normalized, domain=".instagram.com")
+    session.cookies.set(name, normalized, domain="www.instagram.com")
+    return True
+
+
+def load_instagram_cookies(loader: instaloader.Instaloader):
+    session = loader.context._session
+    applied = []
+
+    cookies_json = os.environ.get("INSTAGRAM_COOKIES_JSON", "").strip()
+    if cookies_json:
+        try:
+            parsed = json.loads(cookies_json)
+        except json.JSONDecodeError as exc:
+            return applied, f"Invalid INSTAGRAM_COOKIES_JSON: {exc}"
+
+        if not isinstance(parsed, dict):
+            return applied, "INSTAGRAM_COOKIES_JSON must be a JSON object"
+
+        for name, value in parsed.items():
+            if isinstance(name, str) and isinstance(value, str) and set_cookie(session, name, value):
+                applied.append(name)
+
+    cookie_env = {
+        "sessionid": os.environ.get("INSTAGRAM_SESSION_ID", ""),
+        "csrftoken": os.environ.get("INSTAGRAM_CSRF_TOKEN", ""),
+        "ds_user_id": os.environ.get("INSTAGRAM_DS_USER_ID", ""),
+        "mid": os.environ.get("INSTAGRAM_MID", ""),
+        "ig_did": os.environ.get("INSTAGRAM_IG_DID", ""),
+    }
+    for name, value in cookie_env.items():
+        if set_cookie(session, name, value) and name not in applied:
+            applied.append(name)
+
+    username = os.environ.get("INSTAGRAM_USERNAME", "").strip()
+    if username:
+        loader.context.username = username
+
+    return applied, None
+
+
+def test_login(loader: instaloader.Instaloader):
+    try:
+        return loader.test_login()
+    except Exception:
+        pass
+
+    try:
+        return loader.context.test_login()
+    except Exception:
+        return None
+
+
+def classify_fetch_error(message: str, has_auth_cookies: bool, logged_in_username: str | None):
+    lower = message.lower()
+
+    if "challenge_required" in lower or "checkpoint_required" in lower or "feedback_required" in lower:
+        return (
+            "instagram_challenge_required",
+            "Instagram requested an account challenge/checkpoint. Refresh the Instagram session cookies on the server.",
+        )
+
+    if "please wait a few minutes" in lower or "401 unauthorized" in lower:
+        return (
+            "instagram_rate_limited",
+            "Instagram temporarily blocked requests for this session or server IP. Wait and refresh the session cookies.",
+        )
+
+    if "graphql/query" in lower and "expecting value" in lower:
+        if has_auth_cookies and not logged_in_username:
+            return (
+                "instagram_auth_invalid",
+                "Instagram returned HTML instead of JSON. The configured Instagram session cookies are invalid or expired.",
+            )
+        if not has_auth_cookies:
+            return (
+                "instagram_auth_required",
+                "Instagram returned HTML instead of JSON. Public unauthenticated extraction is blocked; configure Instagram session cookies.",
+            )
+        return (
+            "instagram_fetch_blocked",
+            "Instagram returned HTML instead of JSON. The session may be rate-limited, challenged, or blocked from this server.",
+        )
+
+    return ("fetch_failed", message)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
@@ -44,20 +135,28 @@ def main() -> int:
         quiet=True,
     )
 
-    # Authenticate via session cookie if provided
-    session_id = os.environ.get("INSTAGRAM_SESSION_ID", "").strip()
-    if session_id:
-        loader.context._session.cookies.set(
-            "sessionid", session_id, domain=".instagram.com"
-        )
-        username = os.environ.get("INSTAGRAM_USERNAME", "")
-        if username:
-            loader.context.username = username
+    cookie_names, cookie_error = load_instagram_cookies(loader)
+    if cookie_error:
+        print(json.dumps({"error": "invalid_config", "message": cookie_error}))
+        return 4
+
+    logged_in_username = test_login(loader) if cookie_names else None
 
     try:
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
     except Exception as exc:
-        print(json.dumps({"error": "fetch_failed", "message": str(exc)}))
+        error, message = classify_fetch_error(str(exc), bool(cookie_names), logged_in_username)
+        print(
+            json.dumps(
+                {
+                    "error": error,
+                    "message": message,
+                    "raw_message": str(exc),
+                    "auth_cookie_names": cookie_names,
+                    "logged_in_username": logged_in_username,
+                }
+            )
+        )
         return 3
 
     caption = post.caption or ""
@@ -82,6 +181,7 @@ def main() -> int:
         "source_url": args.url,
         "owner_username": owner_username,
         "video_error": video_error,
+        "logged_in_username": logged_in_username,
     }
 
     print(json.dumps(payload, ensure_ascii=True))

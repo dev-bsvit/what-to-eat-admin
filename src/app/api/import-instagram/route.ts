@@ -402,7 +402,8 @@ async function runInstagramExtraction(
   if ((extracted as any).error) {
     throw new Error(
       JSON.stringify({
-        error: (extracted as any).message || "Extraction failed",
+        error: String((extracted as any).error || "Instagram extract failed"),
+        details: String((extracted as any).message || "Extraction failed"),
       })
     );
   }
@@ -592,10 +593,20 @@ export async function POST(request: Request) {
     if (error instanceof Error) {
       try {
         const parsed = JSON.parse(error.message);
+        const errorCode = typeof parsed?.error === "string" ? parsed.error : "";
+        const details = typeof parsed?.details === "string" ? parsed.details : "";
         const status =
-          typeof parsed?.details === "string" && parsed.details.includes("timed out")
+          details.includes("timed out")
             ? 504
-            : 500;
+            : [
+                "instagram_auth_required",
+                "instagram_auth_invalid",
+                "instagram_rate_limited",
+                "instagram_challenge_required",
+                "instagram_fetch_blocked",
+              ].includes(errorCode)
+              ? 502
+              : 500;
         return NextResponse.json(parsed, { status });
       } catch {
         if (error.name === "AbortError") {
