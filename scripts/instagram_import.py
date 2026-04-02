@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import urllib.request
+from typing import Optional
 
 import instaloader
 
@@ -77,7 +78,7 @@ def test_login(loader: instaloader.Instaloader):
         return None
 
 
-def classify_fetch_error(message: str, has_auth_cookies: bool, logged_in_username: str | None):
+def classify_fetch_error(message: str, has_auth_cookies: bool, logged_in_username: Optional[str]):
     lower = message.lower()
 
     if "challenge_required" in lower or "checkpoint_required" in lower or "feedback_required" in lower:
