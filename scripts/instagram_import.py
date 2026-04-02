@@ -99,6 +99,22 @@ def classify_fetch_error(message: str, has_auth_cookies: bool, logged_in_usernam
             "Instagram temporarily blocked requests for this session or server IP. Wait and refresh the session cookies.",
         )
 
+    if "403 forbidden" in lower:
+        if has_auth_cookies and not logged_in_username:
+            return (
+                "instagram_auth_invalid",
+                "Instagram rejected the configured session cookies with 403 Forbidden. Refresh the Instagram cookies on the server.",
+            )
+        if not has_auth_cookies:
+            return (
+                "instagram_auth_required",
+                "Instagram rejected unauthenticated access with 403 Forbidden. Configure Instagram session cookies.",
+            )
+        return (
+            "instagram_fetch_blocked",
+            "Instagram rejected this server request with 403 Forbidden. The account may be limited or the server IP may be blocked.",
+        )
+
     if "graphql/query" in lower and "expecting value" in lower:
         if has_auth_cookies and not logged_in_username:
             return (
