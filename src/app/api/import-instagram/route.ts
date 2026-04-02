@@ -595,18 +595,19 @@ export async function POST(request: Request) {
         const parsed = JSON.parse(error.message);
         const errorCode = typeof parsed?.error === "string" ? parsed.error : "";
         const details = typeof parsed?.details === "string" ? parsed.details : "";
+        const isInstagramAccessError = [
+          "instagram_auth_required",
+          "instagram_auth_invalid",
+          "instagram_rate_limited",
+          "instagram_challenge_required",
+          "instagram_fetch_blocked",
+        ].includes(errorCode);
         const status =
-          details.includes("timed out")
+          isInstagramAccessError
+            ? 502
+            : details.includes("timed out")
             ? 504
-            : [
-                "instagram_auth_required",
-                "instagram_auth_invalid",
-                "instagram_rate_limited",
-                "instagram_challenge_required",
-                "instagram_fetch_blocked",
-              ].includes(errorCode)
-              ? 502
-              : 500;
+            : 500;
         return NextResponse.json(parsed, { status });
       } catch {
         if (error.name === "AbortError") {

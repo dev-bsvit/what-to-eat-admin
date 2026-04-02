@@ -68,14 +68,14 @@ def load_instagram_cookies(loader: instaloader.Instaloader):
 
 def test_login(loader: instaloader.Instaloader):
     try:
-        return loader.test_login()
-    except Exception:
-        pass
+        return loader.test_login(), None
+    except Exception as exc:
+        primary_error = str(exc)
 
     try:
-        return loader.context.test_login()
+        return loader.context.test_login(), primary_error
     except Exception:
-        return None
+        return None, primary_error
 
 
 def classify_fetch_error(message: str, has_auth_cookies: bool, logged_in_username: Optional[str]):
@@ -133,6 +133,9 @@ def main() -> int:
         download_comments=False,
         save_metadata=False,
         compress_json=False,
+        max_connection_attempts=1,
+        request_timeout=8.0,
+        fatal_status_codes=[302, 400, 401, 403, 429],
         quiet=True,
     )
 
@@ -141,7 +144,24 @@ def main() -> int:
         print(json.dumps({"error": "invalid_config", "message": cookie_error}))
         return 4
 
-    logged_in_username = test_login(loader) if cookie_names else None
+    logged_in_username = None
+    login_error = None
+    if cookie_names:
+        logged_in_username, login_error = test_login(loader)
+        if not logged_in_username and login_error:
+            error, message = classify_fetch_error(login_error, True, None)
+            print(
+                json.dumps(
+                    {
+                        "error": error,
+                        "message": message,
+                        "raw_message": login_error,
+                        "auth_cookie_names": cookie_names,
+                        "logged_in_username": None,
+                    }
+                )
+            )
+            return 3
 
     try:
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
