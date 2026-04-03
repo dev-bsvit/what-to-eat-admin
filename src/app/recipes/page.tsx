@@ -28,6 +28,10 @@ type TranslationDraft = {
   title: string;
   description: string;
   instructions: string;
+  tips: string;
+  serving_tips: string;
+  storage_tips: string;
+  recipe_note: string;
 };
 
 const translationLanguages = [
@@ -47,6 +51,10 @@ const createEmptyTranslationDrafts = () =>
       title: "",
       description: "",
       instructions: "",
+      tips: "",
+      serving_tips: "",
+      storage_tips: "",
+      recipe_note: "",
     };
     return acc;
   }, {} as Record<string, TranslationDraft>);
@@ -55,12 +63,20 @@ const emptyTranslationDraft: TranslationDraft = {
   title: "",
   description: "",
   instructions: "",
+  tips: "",
+  serving_tips: "",
+  storage_tips: "",
+  recipe_note: "",
 };
 
 type BaseTextContent = {
   title: string;
   description: string;
   instructions: string[];
+  tips: string;
+  serving_tips: string;
+  storage_tips: string;
+  recipe_note: string;
 };
 
 const isPlainObject = (value: unknown): value is Record<string, any> =>
@@ -107,6 +123,25 @@ const normalizeInstructionList = (value: unknown) => {
   }
 
   return [] as string[];
+};
+
+const normalizeLongText = (value: unknown) =>
+  typeof value === "string"
+    ? value
+        .split("\n")
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join("\n")
+    : "";
+
+const readAdviceValue = (source: Record<string, any>, aliases: string[]) => {
+  for (const alias of aliases) {
+    if (typeof source[alias] === "string") {
+      return normalizeLongText(source[alias]);
+    }
+  }
+
+  return "";
 };
 
 const nutritionKeys = [
@@ -260,6 +295,38 @@ const normalizeTranslationsObject = (raw: unknown, base: BaseTextContent) => {
       delete next.instructions;
     }
 
+    const tips = readAdviceValue(next, ["tips", "cooking_tips"]);
+    if (tips && tips !== base.tips) {
+      next.tips = tips;
+    } else {
+      delete next.tips;
+      delete next.cooking_tips;
+    }
+
+    const servingTips = readAdviceValue(next, ["serving_tips", "serving"]);
+    if (servingTips && servingTips !== base.serving_tips) {
+      next.serving_tips = servingTips;
+    } else {
+      delete next.serving_tips;
+      delete next.serving;
+    }
+
+    const storageTips = readAdviceValue(next, ["storage_tips", "storage"]);
+    if (storageTips && storageTips !== base.storage_tips) {
+      next.storage_tips = storageTips;
+    } else {
+      delete next.storage_tips;
+      delete next.storage;
+    }
+
+    const recipeNote = readAdviceValue(next, ["recipe_note", "note"]);
+    if (recipeNote && recipeNote !== base.recipe_note) {
+      next.recipe_note = recipeNote;
+    } else {
+      delete next.recipe_note;
+      delete next.note;
+    }
+
     if (Object.keys(next).length > 0) {
       payload[lang] = next;
     }
@@ -301,6 +368,10 @@ const initialState = {
   cholesterol: "",
   sodium: "",
   nutrition_per_100g: "",
+  tips: "",
+  serving_tips: "",
+  storage_tips: "",
+  recipe_note: "",
   instructions: "",
   comments_enabled: "true",
   comments_count: "",
@@ -366,6 +437,22 @@ function buildRecipeImportPrompt({
     contextLines.push(`- В форме уже есть description: ${JSON.stringify(form.description.trim())}. Если это тот же рецепт, используй как ориентир.`);
   }
 
+  if (form.tips.trim()) {
+    contextLines.push(`- В форме уже есть tips: ${JSON.stringify(form.tips.trim())}. Если это тот же рецепт, используй как ориентир.`);
+  }
+
+  if (form.serving_tips.trim()) {
+    contextLines.push(`- В форме уже есть serving_tips: ${JSON.stringify(form.serving_tips.trim())}.`);
+  }
+
+  if (form.storage_tips.trim()) {
+    contextLines.push(`- В форме уже есть storage_tips: ${JSON.stringify(form.storage_tips.trim())}.`);
+  }
+
+  if (form.recipe_note.trim()) {
+    contextLines.push(`- В форме уже есть recipe_note: ${JSON.stringify(form.recipe_note.trim())}.`);
+  }
+
   const availableCuisines = !selectedCuisine && cuisines.length > 0
     ? `\nДоступные каталоги (name -> cuisine_id):\n${cuisines
         .map((cuisine) => `- ${cuisine.name || "Без названия"} -> ${cuisine.id || ""}`)
@@ -390,13 +477,13 @@ ${contextLines.join("\n")}
 ${availableCuisines}
 
 Правила:
-- title и description — это ЕДИНСТВЕННЫЙ источник исходного текста рецепта.
+- title, description, tips, serving_tips, storage_tips и recipe_note — это канонические текстовые поля рецепта.
 - Для шагов приготовления используй canonical-массив steps. Каждый шаг обязан содержать text и duration_minutes.
-- Сначала определи язык исходного текста в title / description / instructions. Это базовый язык рецепта.
+- Сначала определи язык исходного текста в title / description / instructions / tips / serving_tips / storage_tips / recipe_note. Это базовый язык рецепта.
 - translations содержит переводы для ВСЕХ остальных поддерживаемых языков, кроме базового языка.
 - Базовый язык НЕ дублируй в translations.
 - Если базовый язык один из поддерживаемых, внутри translations должно быть ровно ${translationLanguages.length - 1} языков.
-- Для всех остальных языков обязательно заполни title, description и instructions. Не оставляй пустые объекты, если перевод можно сделать по исходному тексту.
+- Для всех остальных языков обязательно заполни title, description, instructions, tips, serving_tips, storage_tips и recipe_note, если в базовом рецепте эти секции непустые.
 - JSON считается некорректным, если в translations есть только один язык или отсутствуют остальные поддерживаемые переводы, кроме базового.
 - Если исходный язык не удаётся определить уверенно, считай базовым языком "ru".
 - Используй только языки: ${languagesLine}.
@@ -413,6 +500,8 @@ ${availableCuisines}
 - Пример правильно: "Готовьте около 15 минут, обязательно перевернув" -> "duration_minutes": 15.
 - Пример правильно: "Нарежьте ребрышки по 2-3 кости. Натрите мясо смесью соли..." -> "duration_minutes": null.
 - Числа, которые означают размер, количество костей, температуру, номер шага, вес или объём, НЕ считаются временем.
+- tips, serving_tips, storage_tips и recipe_note — это обычные строки или null. Не возвращай массивы или объекты.
+- Если в исходном рецепте нет данных для tips / serving_tips / storage_tips / recipe_note, ставь null.
 - image_url у шага можно оставлять null.
 - Не выдумывай UUID. Если точный UUID неизвестен, оставь пустую строку только там, где это допустимо.
 - Никаких trailing commas.
@@ -461,6 +550,10 @@ ${availableCuisines}
     "cholesterol": 10,
     "sodium": 150
   },
+  "tips": "Для более насыщенного вкуса дайте супу настояться 5 минут после приготовления.",
+  "serving_tips": "Подавайте горячим с лаймом и кинзой.",
+  "storage_tips": "Храните в холодильнике до 2 суток в закрытом контейнере.",
+  "recipe_note": "Пасту том-ям регулируйте по остроте.",
   "comments_enabled": ${commentsEnabledPlaceholder},
   "comments_count": 0,
   "ingredients": [
@@ -478,6 +571,10 @@ ${availableCuisines}
     "en": {
       "title": "Tom Yum",
       "description": "Spicy coconut shrimp soup",
+      "tips": "Let the soup rest for 5 minutes after cooking for a deeper flavor.",
+      "serving_tips": "Serve hot with lime and cilantro.",
+      "storage_tips": "Store refrigerated for up to 2 days in an airtight container.",
+      "recipe_note": "Adjust the tom yum paste to your preferred heat level.",
       "instructions": [
         "Prepare the ingredients.",
         "Bring the broth to a boil and add the lemongrass.",
@@ -488,6 +585,10 @@ ${availableCuisines}
     "de": {
       "title": "Tom Yum",
       "description": "Scharfe Kokossuppe mit Garnelen",
+      "tips": "Lass die Suppe nach dem Kochen 5 Minuten ziehen, damit der Geschmack intensiver wird.",
+      "serving_tips": "Heiß mit Limette und Koriander servieren.",
+      "storage_tips": "Im Kühlschrank in einem geschlossenen Behälter bis zu 2 Tage aufbewahren.",
+      "recipe_note": "Die Tom-Yum-Paste je nach gewünschter Schärfe anpassen.",
       "instructions": [
         "Bereite die Zutaten vor.",
         "Bringe die Brühe zum Kochen und gib das Zitronengras hinzu.",
@@ -498,6 +599,10 @@ ${availableCuisines}
     "fr": {
       "title": "Tom Yum",
       "description": "Soupe épicée aux crevettes et au lait de coco",
+      "tips": "Laissez reposer la soupe 5 minutes après cuisson pour un goût plus profond.",
+      "serving_tips": "Servez bien chaud avec du citron vert et de la coriandre.",
+      "storage_tips": "Conservez au réfrigérateur jusqu’à 2 jours dans une boîte hermétique.",
+      "recipe_note": "Ajustez la pâte tom yum selon le niveau de piquant souhaité.",
       "instructions": [
         "Préparez les ingrédients.",
         "Portez le bouillon à ébullition et ajoutez la citronnelle.",
@@ -508,6 +613,10 @@ ${availableCuisines}
     "it": {
       "title": "Tom Yum",
       "description": "Zuppa piccante di gamberi al latte di cocco",
+      "tips": "Lascia riposare la zuppa per 5 minuti dopo la cottura per un gusto più intenso.",
+      "serving_tips": "Servi calda con lime e coriandolo.",
+      "storage_tips": "Conserva in frigorifero fino a 2 giorni in un contenitore chiuso.",
+      "recipe_note": "Regola la pasta tom yum in base al livello di piccante desiderato.",
       "instructions": [
         "Prepara gli ingredienti.",
         "Porta il brodo a ebollizione e aggiungi la citronella.",
@@ -518,6 +627,10 @@ ${availableCuisines}
     "es": {
       "title": "Tom Yum",
       "description": "Sopa picante de coco con gambas",
+      "tips": "Deja reposar la sopa 5 minutos después de cocinarla para un sabor más intenso.",
+      "serving_tips": "Sirve caliente con lima y cilantro.",
+      "storage_tips": "Guárdala en el refrigerador hasta 2 días en un recipiente hermético.",
+      "recipe_note": "Ajusta la pasta tom yum según el nivel de picante deseado.",
       "instructions": [
         "Prepara los ingredientes.",
         "Lleva el caldo a ebullición y añade la hierba limón.",
@@ -528,6 +641,10 @@ ${availableCuisines}
     "pt-BR": {
       "title": "Tom Yum",
       "description": "Sopa apimentada de coco com camarão",
+      "tips": "Deixe a sopa descansar por 5 minutos após o preparo para intensificar o sabor.",
+      "serving_tips": "Sirva quente com limão e coentro.",
+      "storage_tips": "Armazene na geladeira por até 2 dias em recipiente fechado.",
+      "recipe_note": "Ajuste a pasta tom yum ao nível de pimenta desejado.",
       "instructions": [
         "Prepare os ingredientes.",
         "Leve o caldo para ferver e adicione o capim-limão.",
@@ -538,6 +655,10 @@ ${availableCuisines}
     "uk": {
       "title": "Том ям",
       "description": "Гострий суп на кокосовому молоці з креветками",
+      "tips": "Дайте супу настоятися 5 хвилин після приготування для глибшого смаку.",
+      "serving_tips": "Подавайте гарячим із лаймом і кінзою.",
+      "storage_tips": "Зберігайте в холодильнику до 2 діб у закритому контейнері.",
+      "recipe_note": "Регулюйте пасту том-ям за бажаним рівнем гостроти.",
       "instructions": [
         "Підготуйте інгредієнти.",
         "Доведіть бульйон до кипіння і додайте лемонграс.",
@@ -604,6 +725,10 @@ export default function RecipesPage() {
     instructions: steps
       .map(step => step.text.trim())
       .filter(Boolean),
+    tips: normalizeLongText(form.tips),
+    serving_tips: normalizeLongText(form.serving_tips),
+    storage_tips: normalizeLongText(form.storage_tips),
+    recipe_note: normalizeLongText(form.recipe_note),
   });
 
   const parseTranslationsToDrafts = (raw: any) => {
@@ -623,6 +748,10 @@ export default function RecipesPage() {
             ? (data as Record<string, any>).description
             : "",
         instructions,
+        tips: readAdviceValue(data as Record<string, any>, ["tips", "cooking_tips"]),
+        serving_tips: readAdviceValue(data as Record<string, any>, ["serving_tips", "serving"]),
+        storage_tips: readAdviceValue(data as Record<string, any>, ["storage_tips", "storage"]),
+        recipe_note: readAdviceValue(data as Record<string, any>, ["recipe_note", "note"]),
       };
     });
 
@@ -656,6 +785,14 @@ export default function RecipesPage() {
       delete next.title;
       delete next.description;
       delete next.instructions;
+      delete next.tips;
+      delete next.cooking_tips;
+      delete next.serving_tips;
+      delete next.serving;
+      delete next.storage_tips;
+      delete next.storage;
+      delete next.recipe_note;
+      delete next.note;
       delete next.dish_type;
       delete next.course;
 
@@ -665,6 +802,10 @@ export default function RecipesPage() {
         .split("\n")
         .map(line => line.trim())
         .filter(Boolean);
+      const tips = normalizeLongText(draft.tips);
+      const servingTips = normalizeLongText(draft.serving_tips);
+      const storageTips = normalizeLongText(draft.storage_tips);
+      const recipeNote = normalizeLongText(draft.recipe_note);
 
       if (title && title !== base.title) {
         next.title = title;
@@ -674,6 +815,18 @@ export default function RecipesPage() {
       }
       if (instructions.length && !stringArraysEqual(instructions, base.instructions)) {
         next.instructions = instructions;
+      }
+      if (tips && tips !== base.tips) {
+        next.tips = tips;
+      }
+      if (servingTips && servingTips !== base.serving_tips) {
+        next.serving_tips = servingTips;
+      }
+      if (storageTips && storageTips !== base.storage_tips) {
+        next.storage_tips = storageTips;
+      }
+      if (recipeNote && recipeNote !== base.recipe_note) {
+        next.recipe_note = recipeNote;
       }
 
       if (Object.keys(next).length > 0) {
@@ -741,6 +894,10 @@ export default function RecipesPage() {
       instructions: instructionsArray
         .map((step: any) => String(step ?? "").trim())
         .filter(Boolean),
+      tips: readAdviceValue(normalized, ["tips", "cooking_tips"]),
+      serving_tips: readAdviceValue(normalized, ["serving_tips", "serving"]),
+      storage_tips: readAdviceValue(normalized, ["storage_tips", "storage"]),
+      recipe_note: readAdviceValue(normalized, ["recipe_note", "note"]),
     });
 
     setForm(prev => ({
@@ -780,6 +937,10 @@ export default function RecipesPage() {
       cholesterol: toText(normalized.cholesterol ?? normalizedRecipeNutrition?.cholesterol),
       sodium: toText(normalized.sodium ?? normalizedRecipeNutrition?.sodium),
       nutrition_per_100g: normalizedNutritionPer100g ? JSON.stringify(normalizedNutritionPer100g) : "",
+      tips: readAdviceValue(normalized, ["tips", "cooking_tips"]),
+      serving_tips: readAdviceValue(normalized, ["serving_tips", "serving"]),
+      storage_tips: readAdviceValue(normalized, ["storage_tips", "storage"]),
+      recipe_note: readAdviceValue(normalized, ["recipe_note", "note"]),
       instructions: instructionsArray.length ? JSON.stringify(instructionsArray) : toJsonText(normalized.instructions),
       comments_enabled: String(normalized.comments_enabled ?? true),
       comments_count: toText(normalized.comments_count),
@@ -953,6 +1114,10 @@ export default function RecipesPage() {
           instructions: Array.isArray(instructionsData)
             ? instructionsData.map((step: any) => String(step ?? "").trim()).filter(Boolean)
             : [],
+          tips: normalizeLongText(recipe.tips || ""),
+          serving_tips: normalizeLongText(recipe.serving_tips || ""),
+          storage_tips: normalizeLongText(recipe.storage_tips || ""),
+          recipe_note: normalizeLongText(recipe.recipe_note || ""),
         });
 
         setForm({
@@ -988,6 +1153,10 @@ export default function RecipesPage() {
           cholesterol: recipe.cholesterol?.toString() || "",
           sodium: recipe.sodium?.toString() || "",
           nutrition_per_100g: recipe.nutrition_per_100g ? JSON.stringify(recipe.nutrition_per_100g) : "",
+          tips: recipe.tips || "",
+          serving_tips: recipe.serving_tips || "",
+          storage_tips: recipe.storage_tips || "",
+          recipe_note: recipe.recipe_note || "",
           instructions: typeof recipe.instructions === 'string' ? recipe.instructions : JSON.stringify(recipe.instructions),
           comments_enabled: String(recipe.comments_enabled ?? true),
           comments_count: recipe.comments_count?.toString() || "",
@@ -1168,6 +1337,10 @@ export default function RecipesPage() {
         cholesterol: form.cholesterol ? parseFloat(form.cholesterol) : null,
         sodium: form.sodium ? parseFloat(form.sodium) : null,
         nutrition_per_100g: form.nutrition_per_100g || null,
+        tips: normalizeLongText(form.tips) || null,
+        serving_tips: normalizeLongText(form.serving_tips) || null,
+        storage_tips: normalizeLongText(form.storage_tips) || null,
+        recipe_note: normalizeLongText(form.recipe_note) || null,
         ingredients: JSON.stringify(ingredientsJson),
         instructions: JSON.stringify(instructionsJson),
         comments_enabled: form.comments_enabled === "true",
@@ -1523,6 +1696,96 @@ export default function RecipesPage() {
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               rows={3}
             />
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--spacing-lg)',
+            marginBottom: 'var(--spacing-lg)',
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                Нюансы и советы
+              </label>
+              <textarea
+                className="input"
+                placeholder="Важные нюансы приготовления, ошибки, тонкости."
+                value={form.tips}
+                onChange={(e) => setForm({ ...form, tips: e.target.value })}
+                rows={4}
+              />
+            </div>
+
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                Подача
+              </label>
+              <textarea
+                className="input"
+                placeholder="Как и с чем лучше подавать."
+                value={form.serving_tips}
+                onChange={(e) => setForm({ ...form, serving_tips: e.target.value })}
+                rows={4}
+              />
+            </div>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--spacing-lg)',
+            marginBottom: 'var(--spacing-lg)',
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                Хранение
+              </label>
+              <textarea
+                className="input"
+                placeholder="Условия и срок хранения."
+                value={form.storage_tips}
+                onChange={(e) => setForm({ ...form, storage_tips: e.target.value })}
+                rows={4}
+              />
+            </div>
+
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                Заметка
+              </label>
+              <textarea
+                className="input"
+                placeholder="Дополнительная заметка к рецепту."
+                value={form.recipe_note}
+                onChange={(e) => setForm({ ...form, recipe_note: e.target.value })}
+                rows={4}
+              />
+            </div>
           </div>
 
           {/* 2 колонки: Каталог и Сложность */}
@@ -2387,7 +2650,7 @@ export default function RecipesPage() {
                   fontSize: '13px',
                   color: '#7a5c00',
                 }}>
-                  Базовые поля <strong>Название</strong>, <strong>Описание</strong> и шаги приготовления
+                  Базовые поля <strong>Название</strong>, <strong>Описание</strong>, блоки советов и шаги приготовления
                   являются единственным источником исходного текста. В переводах храните только
                   отличающиеся версии для других языков.
                 </div>
@@ -2448,6 +2711,78 @@ export default function RecipesPage() {
                       className="input"
                       value={activeTranslation.description}
                       onChange={(e) => updateTranslationDraft(activeTranslationLang, { description: e.target.value })}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      marginBottom: 'var(--spacing-xs)',
+                      color: 'var(--text-primary)',
+                    }}>
+                      Нюансы и советы
+                    </label>
+                    <textarea
+                      className="input"
+                      value={activeTranslation.tips}
+                      onChange={(e) => updateTranslationDraft(activeTranslationLang, { tips: e.target.value })}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      marginBottom: 'var(--spacing-xs)',
+                      color: 'var(--text-primary)',
+                    }}>
+                      Подача
+                    </label>
+                    <textarea
+                      className="input"
+                      value={activeTranslation.serving_tips}
+                      onChange={(e) => updateTranslationDraft(activeTranslationLang, { serving_tips: e.target.value })}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      marginBottom: 'var(--spacing-xs)',
+                      color: 'var(--text-primary)',
+                    }}>
+                      Хранение
+                    </label>
+                    <textarea
+                      className="input"
+                      value={activeTranslation.storage_tips}
+                      onChange={(e) => updateTranslationDraft(activeTranslationLang, { storage_tips: e.target.value })}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      marginBottom: 'var(--spacing-xs)',
+                      color: 'var(--text-primary)',
+                    }}>
+                      Заметка
+                    </label>
+                    <textarea
+                      className="input"
+                      value={activeTranslation.recipe_note}
+                      onChange={(e) => updateTranslationDraft(activeTranslationLang, { recipe_note: e.target.value })}
                       rows={3}
                     />
                   </div>
