@@ -307,7 +307,7 @@ REQUIRED OUTPUT FORMAT (copy structure exactly):
   "cookTime": 30,
   "servings": 4,
   "cuisine": "international",
-  "tags": ["quick", "dinner"],
+  "tags": ["quick", "easy"],
   "ingredients": [
     { "name": "ingredient name", "amount": "100", "unit": "г", "note": "" }
   ],
@@ -325,14 +325,7 @@ CRITICAL RULES:
 3. If cooking mentioned but amounts unclear: use "по вкусу" or estimate typical amounts
 4. If only dish name known: infer typical ingredients and basic cooking steps
 5. Keep ORIGINAL language
-6. confidence: "high" if clear recipe, "medium" if inferred, "low" if mostly guessed
-7. TAGS — choose only from this list (pick all that apply):
-   Time: "quick" (≤20 min total), "special occasion" (>60 min total)
-   Calories: "light" (<300 kcal/serving), "hearty" (>650 kcal/serving)
-   Meal: "breakfast", "lunch", "dinner", "snack"
-   Diet: "vegetarian", "vegan", "gluten-free", "dairy-free"
-   Type: "soup", "salad", "pasta", "grill", "baking", "raw"
-   If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.`;
+6. confidence: "high" if clear recipe, "medium" if inferred, "low" if mostly guessed`;
 
     const aiResponse = await fetch(OPENAI_URL, {
       method: "POST",

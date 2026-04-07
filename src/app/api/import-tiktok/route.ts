@@ -78,6 +78,19 @@ function getDomain(url: string) {
   }
 }
 
+function truncateLog(value: string | null | undefined, max = 1000) {
+  if (!value) return "";
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function logProcessResult(label: string, result: { code: number; stdout: string; stderr: string }) {
+  console.info(label, {
+    code: result.code,
+    stdout: truncateLog(result.stdout, 300),
+    stderr: truncateLog(result.stderr, 1200),
+  });
+}
+
 function extractJson(content: string) {
   const match = content.match(/\{[\s\S]*\}/);
   return match ? match[0] : content;
@@ -255,6 +268,14 @@ export async function POST(request: Request) {
       "python",
     ].filter(Boolean) as string[];
 
+    console.info("[tiktok] request", {
+      url: url.trim(),
+      outputDir,
+      scriptPath,
+      pythonCandidates,
+      ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+    });
+
     // Step 1: Extract metadata (caption only, no video download)
     let extraction = { code: 127, stdout: "", stderr: "Python not found" };
     let pythonUsed = "";
@@ -264,6 +285,7 @@ export async function POST(request: Request) {
         [scriptPath, "--url", url.trim(), "--output", outputDir],
         cwd
       );
+      logProcessResult("[tiktok] extractor attempt", result);
       pythonUsed = candidate;
       if (result.code === 0) {
         extraction = result;
@@ -273,6 +295,7 @@ export async function POST(request: Request) {
     }
 
     if (extraction.code !== 0) {
+      logProcessResult("[tiktok] extractor failed", extraction);
       return NextResponse.json(
         {
           error: "TikTok extract failed",
@@ -287,6 +310,7 @@ export async function POST(request: Request) {
     try {
       extracted = JSON.parse(extraction.stdout.trim());
     } catch {
+      logProcessResult("[tiktok] extractor invalid json", extraction);
       return NextResponse.json(
         { error: "Invalid extractor response", details: extraction.stdout },
         { status: 500 }
@@ -371,6 +395,7 @@ export async function POST(request: Request) {
         [scriptPath, "--url", url.trim(), "--output", outputDir, "--video"],
         cwd
       );
+      logProcessResult("[tiktok] video extractor attempt", result);
       if (result.code === 0) {
         videoExtraction = result;
         break;

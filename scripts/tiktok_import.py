@@ -4,17 +4,39 @@ import json
 import os
 import subprocess
 import sys
+from typing import Any
+
+
+def debug_log(event: str, **fields: Any) -> None:
+    payload = {"event": event, **fields}
+    print(f"[tiktok_import] {json.dumps(payload, ensure_ascii=True)}", file=sys.stderr)
+
+
+def format_command(command: list[str]) -> str:
+    return " ".join(command)
 
 
 def find_ytdlp():
     """Find yt-dlp executable."""
-    candidates = ["yt-dlp", "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"]
-    for c in candidates:
+    candidates = [
+        ["yt-dlp"],
+        [os.path.expanduser("~/.local/bin/yt-dlp")],
+        ["/usr/local/bin/yt-dlp"],
+        ["/usr/bin/yt-dlp"],
+        [sys.executable, "-m", "yt_dlp"],
+    ]
+    for candidate in candidates:
         try:
-            subprocess.run([c, "--version"], capture_output=True, check=True)
-            return c
+            version = subprocess.run(candidate + ["--version"], capture_output=True, text=True, check=True)
+            debug_log(
+                "ytdlp_found",
+                command=format_command(candidate),
+                version=(version.stdout.strip() or version.stderr.strip() or "")[:80],
+            )
+            return candidate
         except Exception:
             continue
+    debug_log("ytdlp_missing", python=sys.executable)
     return None
 
 
@@ -31,33 +53,58 @@ def main() -> int:
         return 2
 
     os.makedirs(args.output, exist_ok=True)
+    debug_log(
+        "start",
+        url=args.url,
+        output=args.output,
+        video=args.video,
+        ytdlp=format_command(ytdlp),
+    )
 
     # Step 1: Extract metadata (always)
+    metadata_cmd = ytdlp + ["--dump-json", "--no-download", "--no-warnings", args.url]
     try:
         result = subprocess.run(
-            [
-                ytdlp,
-                "--dump-json",
-                "--no-download",
-                "--no-warnings",
-                args.url,
-            ],
+            metadata_cmd,
             capture_output=True,
             text=True,
             timeout=30,
         )
         if result.returncode != 0:
+            debug_log(
+                "metadata_failed",
+                code=result.returncode,
+                stderr=(result.stderr or "")[:800],
+                command=format_command(metadata_cmd),
+            )
             print(json.dumps({
                 "error": "fetch_failed",
                 "message": result.stderr.strip() or "Failed to fetch TikTok metadata",
             }))
             return 3
+        if not result.stdout.strip():
+            debug_log(
+                "metadata_empty",
+                stderr=(result.stderr or "")[:800],
+                command=format_command(metadata_cmd),
+            )
+            print(json.dumps({
+                "error": "empty_result",
+                "message": "yt-dlp returned no TikTok metadata",
+            }))
+            return 3
 
         meta = json.loads(result.stdout.strip())
     except subprocess.TimeoutExpired:
+        debug_log("metadata_timeout", command=format_command(metadata_cmd))
         print(json.dumps({"error": "timeout", "message": "TikTok metadata fetch timed out"}))
         return 3
     except json.JSONDecodeError:
+        debug_log(
+            "metadata_parse_failed",
+            stdout=(result.stdout or "")[:800],
+            stderr=(result.stderr or "")[:800],
+        )
         print(json.dumps({"error": "parse_failed", "message": "Failed to parse TikTok metadata"}))
         return 3
 
@@ -72,24 +119,31 @@ def main() -> int:
     if args.video:
         video_path = os.path.join(args.output, f"{video_id}.mp4")
         try:
+            download_cmd = ytdlp + [
+                "-f", "mp4/best",
+                "-o", video_path,
+                "--no-warnings",
+                "--no-playlist",
+                args.url,
+            ]
             dl_result = subprocess.run(
-                [
-                    ytdlp,
-                    "-f", "mp4/best",
-                    "-o", video_path,
-                    "--no-warnings",
-                    "--no-playlist",
-                    args.url,
-                ],
+                download_cmd,
                 capture_output=True,
                 text=True,
                 timeout=120,
             )
             if dl_result.returncode != 0:
                 video_error = dl_result.stderr.strip() or "Download failed"
+                debug_log(
+                    "download_failed",
+                    code=dl_result.returncode,
+                    stderr=(dl_result.stderr or "")[:800],
+                    command=format_command(download_cmd),
+                )
                 video_path = None
         except subprocess.TimeoutExpired:
             video_error = "Video download timed out"
+            debug_log("download_timeout", video_id=video_id)
             video_path = None
 
     payload = {
@@ -102,6 +156,14 @@ def main() -> int:
         "video_error": video_error,
     }
 
+    debug_log(
+        "success",
+        video_id=video_id,
+        has_caption=bool(caption),
+        has_thumbnail=bool(thumbnail_url),
+        has_video=bool(video_path),
+        has_video_error=bool(video_error),
+    )
     print(json.dumps(payload, ensure_ascii=True))
     return 0
 

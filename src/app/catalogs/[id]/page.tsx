@@ -157,21 +157,6 @@ export default function CatalogDetailPage() {
     router.push(`/recipes?edit=${recipeId}`);
   }
 
-  async function deleteRecipe(recipeId: string, title: string) {
-    if (!confirm(`Удалить рецепт «${title}»? Это действие необратимо.`)) return;
-    try {
-      const res = await fetch(`/api/admin/recipes/${recipeId}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json();
-        alert(`Ошибка: ${data.error ?? "не удалось удалить"}`);
-        return;
-      }
-      setRecipes((prev) => prev.filter((r) => r.id !== recipeId));
-    } catch {
-      alert("Ошибка соединения");
-    }
-  }
-
   function createRecipe() {
     router.push(`/recipes?new=true&cuisine=${cuisineId}`);
   }
@@ -581,32 +566,8 @@ export default function CatalogDetailPage() {
             onClick={() => openRecipe(recipe.id)}
             style={{
               padding: 'var(--spacing-md)',
-              position: 'relative',
             }}
           >
-            <button
-              onClick={(e) => { e.stopPropagation(); deleteRecipe(recipe.id, recipe.title); }}
-              title="Удалить рецепт"
-              style={{
-                position: 'absolute',
-                top: '8px',
-                right: '8px',
-                background: 'rgba(255,59,48,0.1)',
-                border: 'none',
-                borderRadius: '6px',
-                color: 'var(--accent-danger)',
-                width: '28px',
-                height: '28px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1,
-              }}
-            >
-              ✕
-            </button>
             {recipe.image_url && (
               <div style={{
                 width: '100%',

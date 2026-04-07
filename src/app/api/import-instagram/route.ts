@@ -99,6 +99,19 @@ function getDomain(url: string) {
   }
 }
 
+function truncateLog(value: string | null | undefined, max = 1000) {
+  if (!value) return "";
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function logProcessResult(label: string, result: { code: number; stdout: string; stderr: string }) {
+  console.info(label, {
+    code: result.code,
+    stdout: truncateLog(result.stdout, 300),
+    stderr: truncateLog(result.stderr, 1200),
+  });
+}
+
 function normalizeInstagramUrl(rawUrl: string) {
   try {
     const parsed = new URL(rawUrl);
@@ -353,10 +366,11 @@ async function runInstagramExtraction(
       cwd,
       metaOnly ? META_EXTRACT_TIMEOUT_MS : FULL_EXTRACT_TIMEOUT_MS
     );
+    logProcessResult("[instagram] extractor attempt", result);
     attempts.push({
       command: candidate,
       code: result.code,
-      stderr: result.stderr?.slice(0, 300) || "",
+      stderr: truncateLog(result.stderr, 300),
     });
     pythonUsed = candidate;
     if (result.code === 0) {
@@ -375,6 +389,7 @@ async function runInstagramExtraction(
   }
 
   if (extraction.code !== 0) {
+    logProcessResult("[instagram] extractor failed", extraction);
     const structuredFailure = parseStructuredFailure(extraction.stdout, extraction.stderr);
     throw new Error(
       JSON.stringify({
@@ -391,6 +406,7 @@ async function runInstagramExtraction(
   try {
     extracted = JSON.parse(extraction.stdout.trim());
   } catch {
+    logProcessResult("[instagram] extractor invalid json", extraction);
     throw new Error(
       JSON.stringify({
         error: "Invalid extractor response",
@@ -452,6 +468,14 @@ export async function POST(request: Request) {
     const normalizedUrl = normalizeInstagramUrl(url.trim());
 
     const cwd = process.cwd();
+    console.info("[instagram] request", {
+      url: normalizedUrl,
+      metaOnly,
+      ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+      hasSessionId: Boolean(process.env.INSTAGRAM_SESSION_ID),
+      hasCookiesJson: Boolean(process.env.INSTAGRAM_COOKIES_JSON),
+      hasProxy: Boolean(process.env.INSTAGRAM_PROXY),
+    });
     const extractedMeta = await getCachedInstagramMeta(normalizedUrl, cwd);
 
     console.info("[instagram] extracted", {
@@ -601,6 +625,7 @@ export async function POST(request: Request) {
           "instagram_rate_limited",
           "instagram_challenge_required",
           "instagram_fetch_blocked",
+          "empty_result",
         ].includes(errorCode);
         const status =
           isInstagramAccessError

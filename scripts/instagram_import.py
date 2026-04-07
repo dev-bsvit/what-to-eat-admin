@@ -3,11 +3,9 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
-import urllib.request
-from typing import Optional
-
-import instaloader
+from typing import Any
 
 
 def extract_shortcode(url: str) -> str:
@@ -17,204 +15,190 @@ def extract_shortcode(url: str) -> str:
     return match.group(2)
 
 
-def download_video(video_url: str, output_path: str) -> None:
-    urllib.request.urlretrieve(video_url, output_path)
+def debug_log(event: str, **fields: Any) -> None:
+    payload = {"event": event, **fields}
+    print(f"[instagram_import] {json.dumps(payload, ensure_ascii=True)}", file=sys.stderr)
 
 
-def set_cookie(session, name: str, value: str) -> bool:
-    normalized = value.strip()
-    if not normalized:
-        return False
-    session.cookies.set(name, normalized, domain=".instagram.com")
-    session.cookies.set(name, normalized, domain="www.instagram.com")
-    return True
+def format_command(command: list[str]) -> str:
+    return " ".join(command)
 
 
-def load_instagram_cookies(loader: instaloader.Instaloader):
-    session = loader.context._session
-    applied = []
+def find_ytdlp():
+    candidates = [
+        ["yt-dlp"],
+        [os.path.expanduser("~/.local/bin/yt-dlp")],
+        ["/usr/local/bin/yt-dlp"],
+        ["/usr/bin/yt-dlp"],
+        [sys.executable, "-m", "yt_dlp"],
+    ]
+    for candidate in candidates:
+        try:
+            version = subprocess.run(candidate + ["--version"], capture_output=True, text=True, check=True)
+            debug_log(
+                "ytdlp_found",
+                command=format_command(candidate),
+                version=(version.stdout.strip() or version.stderr.strip() or "")[:80],
+            )
+            return candidate
+        except Exception:
+            continue
+    debug_log("ytdlp_missing", python=sys.executable)
+    return None
 
+
+def build_cookie_file(output_dir: str) -> str | None:
+    """Write cookies to Netscape format file, return path or None."""
     cookies_json = os.environ.get("INSTAGRAM_COOKIES_JSON", "").strip()
+    session_id = os.environ.get("INSTAGRAM_SESSION_ID", "").strip()
+
+    cookie_path = os.path.join(output_dir, "ig_cookies.txt")
+
     if cookies_json:
         try:
-            parsed = json.loads(cookies_json)
-        except json.JSONDecodeError as exc:
-            return applied, f"Invalid INSTAGRAM_COOKIES_JSON: {exc}"
+            cookies = json.loads(cookies_json)
+            with open(cookie_path, "w") as f:
+                f.write("# Netscape HTTP Cookie File\n")
+                for c in cookies:
+                    domain = c.get("domain", ".instagram.com")
+                    if not domain.startswith("."):
+                        domain = "." + domain
+                    secure = "TRUE" if c.get("secure") else "FALSE"
+                    expires = int(c.get("expirationDate", 0))
+                    name = c.get("name", "")
+                    value = c.get("value", "")
+                    f.write(f"{domain}\tTRUE\t/\t{secure}\t{expires}\t{name}\t{value}\n")
+            return cookie_path
+        except Exception:
+            pass
 
-        if not isinstance(parsed, dict):
-            return applied, "INSTAGRAM_COOKIES_JSON must be a JSON object"
+    if session_id:
+        with open(cookie_path, "w") as f:
+            f.write("# Netscape HTTP Cookie File\n")
+            f.write(f".instagram.com\tTRUE\t/\tTRUE\t0\tsessionid\t{session_id}\n")
+        return cookie_path
 
-        for name, value in parsed.items():
-            if isinstance(name, str) and isinstance(value, str) and set_cookie(session, name, value):
-                applied.append(name)
-
-    cookie_env = {
-        "sessionid": os.environ.get("INSTAGRAM_SESSION_ID", ""),
-        "csrftoken": os.environ.get("INSTAGRAM_CSRF_TOKEN", ""),
-        "ds_user_id": os.environ.get("INSTAGRAM_DS_USER_ID", ""),
-        "mid": os.environ.get("INSTAGRAM_MID", ""),
-        "ig_did": os.environ.get("INSTAGRAM_IG_DID", ""),
-    }
-    for name, value in cookie_env.items():
-        if set_cookie(session, name, value) and name not in applied:
-            applied.append(name)
-
-    username = os.environ.get("INSTAGRAM_USERNAME", "").strip()
-    if username:
-        loader.context.username = username
-
-    return applied, None
-
-
-def test_login(loader: instaloader.Instaloader):
-    try:
-        return loader.test_login(), None
-    except Exception as exc:
-        primary_error = str(exc)
-
-    try:
-        return loader.context.test_login(), primary_error
-    except Exception:
-        return None, primary_error
-
-
-def classify_fetch_error(message: str, has_auth_cookies: bool, logged_in_username: Optional[str]):
-    lower = message.lower()
-
-    if (
-        "challenge_required" in lower
-        or "checkpoint_required" in lower
-        or "feedback_required" in lower
-        or "/challenge/" in lower
-        or '302 found' in lower and 'instagram.com/challenge/' in lower
-    ):
-        return (
-            "instagram_challenge_required",
-            "Instagram requested an account challenge/checkpoint. Refresh the Instagram session cookies on the server.",
-        )
-
-    if "please wait a few minutes" in lower or "401 unauthorized" in lower:
-        return (
-            "instagram_rate_limited",
-            "Instagram temporarily blocked requests for this session or server IP. Wait and refresh the session cookies.",
-        )
-
-    if "403 forbidden" in lower:
-        if has_auth_cookies and not logged_in_username:
-            return (
-                "instagram_auth_invalid",
-                "Instagram rejected the configured session cookies with 403 Forbidden. Refresh the Instagram cookies on the server.",
-            )
-        if not has_auth_cookies:
-            return (
-                "instagram_auth_required",
-                "Instagram rejected unauthenticated access with 403 Forbidden. Configure Instagram session cookies.",
-            )
-        return (
-            "instagram_fetch_blocked",
-            "Instagram rejected this server request with 403 Forbidden. The account may be limited or the server IP may be blocked.",
-        )
-
-    if "graphql/query" in lower and "expecting value" in lower:
-        if has_auth_cookies and not logged_in_username:
-            return (
-                "instagram_auth_invalid",
-                "Instagram returned HTML instead of JSON. The configured Instagram session cookies are invalid or expired.",
-            )
-        if not has_auth_cookies:
-            return (
-                "instagram_auth_required",
-                "Instagram returned HTML instead of JSON. Public unauthenticated extraction is blocked; configure Instagram session cookies.",
-            )
-        return (
-            "instagram_fetch_blocked",
-            "Instagram returned HTML instead of JSON. The session may be rate-limited, challenged, or blocked from this server.",
-        )
-
-    return ("fetch_failed", message)
+    return None
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--meta-only", action="store_true", help="Return only metadata without downloading video")
+    parser.add_argument("--meta-only", action="store_true")
     args = parser.parse_args()
 
     shortcode = extract_shortcode(args.url)
     if not shortcode:
+        debug_log("invalid_url", url=args.url)
         print(json.dumps({"error": "invalid_url", "message": "Unsupported Instagram URL"}))
+        return 2
+
+    ytdlp = find_ytdlp()
+    if not ytdlp:
+        print(json.dumps({"error": "not_found", "message": "yt-dlp not installed"}))
         return 2
 
     os.makedirs(args.output, exist_ok=True)
 
-    loader = instaloader.Instaloader(
-        download_pictures=False,
-        download_videos=False,
-        download_video_thumbnails=False,
-        download_comments=False,
-        save_metadata=False,
-        compress_json=False,
-        max_connection_attempts=1,
-        request_timeout=8.0,
-        fatal_status_codes=[302, 400, 401, 403, 429],
-        quiet=True,
+    cookie_file = build_cookie_file(args.output)
+    cookie_args = ["--cookies", cookie_file] if cookie_file else []
+    cookie_mode = "cookies_json" if os.environ.get("INSTAGRAM_COOKIES_JSON", "").strip() else (
+        "session_id" if os.environ.get("INSTAGRAM_SESSION_ID", "").strip() else "none"
     )
 
-    cookie_names, cookie_error = load_instagram_cookies(loader)
-    if cookie_error:
-        print(json.dumps({"error": "invalid_config", "message": cookie_error}))
-        return 4
+    proxy = os.environ.get("INSTAGRAM_PROXY", "").strip()
+    proxy_args = ["--proxy", proxy] if proxy else []
+    debug_log(
+        "start",
+        url=args.url,
+        shortcode=shortcode,
+        output=args.output,
+        meta_only=args.meta_only,
+        ytdlp=format_command(ytdlp),
+        cookie_mode=cookie_mode,
+        has_proxy=bool(proxy),
+    )
 
-    logged_in_username = None
-    login_error = None
-    if cookie_names:
-        logged_in_username, login_error = test_login(loader)
-        if not logged_in_username and login_error:
-            error, message = classify_fetch_error(login_error, True, None)
-            print(
-                json.dumps(
-                    {
-                        "error": error,
-                        "message": message,
-                        "raw_message": login_error,
-                        "auth_cookie_names": cookie_names,
-                        "logged_in_username": None,
-                    }
-                )
-            )
-            return 3
-
+    # Fetch metadata only (no download)
+    cmd = ytdlp + ["--dump-json", "--no-download", "--no-warnings"] + cookie_args + proxy_args + [args.url]
     try:
-        post = instaloader.Post.from_shortcode(loader.context, shortcode)
-    except Exception as exc:
-        error, message = classify_fetch_error(str(exc), bool(cookie_names), logged_in_username)
-        print(
-            json.dumps(
-                {
-                    "error": error,
-                    "message": message,
-                    "raw_message": str(exc),
-                    "auth_cookie_names": cookie_names,
-                    "logged_in_username": logged_in_username,
-                }
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
+        if result.returncode != 0:
+            debug_log(
+                "metadata_failed",
+                code=result.returncode,
+                stderr=(result.stderr or "")[:800],
+                command=format_command(cmd),
             )
+            print(json.dumps({
+                "error": "instagram_fetch_blocked",
+                "message": result.stderr.strip() or "Failed to fetch Instagram post",
+            }))
+            return 3
+        if not result.stdout.strip():
+            debug_log(
+                "metadata_empty",
+                stderr=(result.stderr or "")[:800],
+                command=format_command(cmd),
+            )
+            print(json.dumps({
+                "error": "empty_result",
+                "message": "yt-dlp returned no Instagram metadata; post may be blocked, private, or rate-limited",
+            }))
+            return 3
+        meta = json.loads(result.stdout.strip())
+    except subprocess.TimeoutExpired:
+        debug_log("metadata_timeout", command=format_command(cmd))
+        print(json.dumps({"error": "timeout", "message": "Instagram fetch timed out"}))
+        return 3
+    except json.JSONDecodeError:
+        debug_log(
+            "metadata_parse_failed",
+            stdout=(result.stdout or "")[:800],
+            stderr=(result.stderr or "")[:800],
         )
+        print(json.dumps({"error": "parse_failed", "message": "Failed to parse yt-dlp response"}))
         return 3
 
-    caption = post.caption or ""
-    thumbnail_url = getattr(post, "url", None)
-    owner_username = getattr(post, "owner_username", None)
+    caption = meta.get("description", "") or meta.get("title", "") or ""
+    thumbnail_url = meta.get("thumbnail", None)
+    owner_username = meta.get("uploader", None) or meta.get("channel", None)
 
     video_path = None
     video_error = None
-    if not args.meta_only and post.is_video and post.video_url:
-        video_path = os.path.join(args.output, f"{shortcode}.mp4")
-        try:
-            download_video(post.video_url, video_path)
-        except Exception as exc:
-            video_error = str(exc)
-            video_path = None
+
+    if not args.meta_only:
+        has_video = meta.get("duration") is not None or meta.get("ext") in ("mp4", "m4v", "mov")
+        if has_video:
+            video_path = os.path.join(args.output, f"{shortcode}.mp4")
+            try:
+                download_cmd = (
+                    ytdlp
+                    + ["-f", "mp4/best", "-o", video_path, "--no-warnings", "--no-playlist"]
+                    + cookie_args
+                    + proxy_args
+                    + [args.url]
+                )
+                dl_result = subprocess.run(
+                    download_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                if dl_result.returncode != 0:
+                    video_error = dl_result.stderr.strip() or "Download failed"
+                    debug_log(
+                        "download_failed",
+                        code=dl_result.returncode,
+                        stderr=(dl_result.stderr or "")[:800],
+                        command=format_command(download_cmd),
+                    )
+                    video_path = None
+            except subprocess.TimeoutExpired:
+                video_error = "Video download timed out"
+                debug_log("download_timeout", shortcode=shortcode)
+                video_path = None
 
     payload = {
         "shortcode": shortcode,
@@ -224,9 +208,14 @@ def main() -> int:
         "source_url": args.url,
         "owner_username": owner_username,
         "video_error": video_error,
-        "logged_in_username": logged_in_username,
     }
-
+    debug_log(
+        "success",
+        has_caption=bool(caption),
+        has_thumbnail=bool(thumbnail_url),
+        has_video=bool(video_path),
+        has_video_error=bool(video_error),
+    )
     print(json.dumps(payload, ensure_ascii=True))
     return 0
 

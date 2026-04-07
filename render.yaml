@@ -2,9 +2,11 @@ services:
   - type: web
     name: what-to-eat-admin
     runtime: node
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: PUPPETEER_SKIP_DOWNLOAD=true npm install && python3 -m pip install --user --no-cache-dir -r requirements.txt && npm run build
+    startCommand: export PATH="$HOME/.local/bin:$PATH" && npm start
     envVars:
+      - key: OPENAI_API_KEY
+        sync: false
       - key: NODE_VERSION
         value: "20"
       - key: NEXT_PUBLIC_SUPABASE_URL
@@ -12,4 +14,10 @@ services:
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: INSTAGRAM_SESSION_ID
+        sync: false
+      - key: INSTAGRAM_COOKIES_JSON
+        sync: false
+      - key: INSTAGRAM_PROXY
         sync: false

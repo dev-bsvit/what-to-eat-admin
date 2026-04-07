@@ -80,6 +80,19 @@ function getDomain(url: string) {
   }
 }
 
+function truncateLog(value: string | null | undefined, max = 1000) {
+  if (!value) return "";
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function logProcessResult(label: string, result: { code: number; stdout: string; stderr: string }) {
+  console.info(label, {
+    code: result.code,
+    stdout: truncateLog(result.stdout, 300),
+    stderr: truncateLog(result.stderr, 1200),
+  });
+}
+
 function extractJson(content: string) {
   const match = content.match(/\{[\s\S]*\}/);
   return match ? match[0] : content;
@@ -234,6 +247,14 @@ export async function POST(request: Request) {
       "python",
     ].filter(Boolean) as string[];
 
+    console.info("[youtube] request", {
+      url: url.trim(),
+      outputDir,
+      scriptPath,
+      pythonCandidates,
+      ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+    });
+
     // Step 1: Extract metadata + subtitles (no audio)
     let extraction = { code: 127, stdout: "", stderr: "Python not found" };
     let pythonUsed = "";
@@ -243,6 +264,7 @@ export async function POST(request: Request) {
         [scriptPath, "--url", url.trim(), "--output", outputDir],
         cwd
       );
+      logProcessResult("[youtube] extractor attempt", result);
       pythonUsed = candidate;
       if (result.code === 0) {
         extraction = result;
@@ -252,6 +274,7 @@ export async function POST(request: Request) {
     }
 
     if (extraction.code !== 0) {
+      logProcessResult("[youtube] extractor failed", extraction);
       return NextResponse.json(
         {
           error: "YouTube extract failed",
@@ -266,6 +289,7 @@ export async function POST(request: Request) {
     try {
       extracted = JSON.parse(extraction.stdout.trim());
     } catch {
+      logProcessResult("[youtube] extractor invalid json", extraction);
       return NextResponse.json(
         { error: "Invalid extractor response", details: extraction.stdout },
         { status: 500 }
@@ -358,6 +382,7 @@ export async function POST(request: Request) {
         [scriptPath, "--url", url.trim(), "--output", outputDir, "--audio"],
         cwd
       );
+      logProcessResult("[youtube] audio extractor attempt", result);
       if (result.code === 0) {
         audioExtraction = result;
         break;
