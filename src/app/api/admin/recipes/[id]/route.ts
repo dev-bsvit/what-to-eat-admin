@@ -54,3 +54,62 @@ export async function GET(
     );
   }
 }
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: recipeId } = await params;
+    const body = await request.json();
+
+    if (!Array.isArray(body.tags)) {
+      return NextResponse.json({ error: "tags must be an array" }, { status: 400 });
+    }
+
+    const tags = (body.tags as unknown[])
+      .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+      .map((t) => t.trim().toLowerCase());
+
+    const { error } = await supabaseAdmin
+      .from("recipes")
+      .update({ tags, updated_at: new Date().toISOString() })
+      .eq("id", recipeId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ ok: true, tags });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: recipeId } = await params;
+
+    const { error } = await supabaseAdmin
+      .from("recipes")
+      .delete()
+      .eq("id", recipeId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
