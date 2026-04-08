@@ -93,6 +93,33 @@ function logProcessResult(label: string, result: { code: number; stdout: string;
   });
 }
 
+function isInterpreterMissing(result: { code: number; stderr: string }) {
+  if (result.code === 127) return true;
+  return /enoent|not found/i.test(result.stderr);
+}
+
+function parseStructuredFailure(stdout: string, stderr: string) {
+  try {
+    const parsed = JSON.parse(stdout.trim());
+    if (parsed && typeof parsed === "object" && (parsed.error || parsed.message)) {
+      return {
+        error: String(parsed.error || "YouTube extract failed"),
+        details: String(parsed.message || stderr || stdout).trim(),
+      };
+    }
+  } catch {
+    // Not structured JSON, fall back to stderr/stdout.
+  }
+
+  const details = (stderr || stdout).trim();
+  if (!details) return null;
+
+  return {
+    error: "YouTube extract failed",
+    details,
+  };
+}
+
 function extractJson(content: string) {
   const match = content.match(/\{[\s\S]*\}/);
   return match ? match[0] : content;
@@ -239,13 +266,29 @@ export async function POST(request: Request) {
     await fs.mkdir(outputDir, { recursive: true });
 
     const scriptPath = path.join(cwd, "scripts", "youtube_import.py");
-    const pythonCandidates = [
-      process.env.PYTHON_PATH,
-      "/usr/bin/python3",
-      "/usr/local/bin/python3",
-      "python3",
-      "python",
-    ].filter(Boolean) as string[];
+    try {
+      await fs.access(scriptPath);
+    } catch {
+      return NextResponse.json(
+        {
+          error: "YouTube extractor script is missing",
+          details: scriptPath,
+        },
+        { status: 500 }
+      );
+    }
+
+    const pythonCandidates = Array.from(
+      new Set(
+        [
+          process.env.PYTHON_PATH,
+          "/usr/bin/python3",
+          "/usr/local/bin/python3",
+          "python3",
+          "python",
+        ].filter(Boolean) as string[]
+      )
+    );
 
     console.info("[youtube] request", {
       url: url.trim(),
@@ -257,6 +300,7 @@ export async function POST(request: Request) {
 
     // Step 1: Extract metadata + subtitles (no audio)
     let extraction = { code: 127, stdout: "", stderr: "Python not found" };
+    const attempts: Array<{ command: string; code: number; stderr: string }> = [];
     let pythonUsed = "";
     for (const candidate of pythonCandidates) {
       const result = await runProcess(
@@ -265,21 +309,35 @@ export async function POST(request: Request) {
         cwd
       );
       logProcessResult("[youtube] extractor attempt", result);
+      attempts.push({
+        command: candidate,
+        code: result.code,
+        stderr: truncateLog(result.stderr, 300),
+      });
       pythonUsed = candidate;
       if (result.code === 0) {
         extraction = result;
         break;
       }
+
+      if (!isInterpreterMissing(result) && parseStructuredFailure(result.stdout, result.stderr)) {
+        extraction = result;
+        break;
+      }
+
       extraction = result;
     }
 
     if (extraction.code !== 0) {
       logProcessResult("[youtube] extractor failed", extraction);
+      const structuredFailure = parseStructuredFailure(extraction.stdout, extraction.stderr);
       return NextResponse.json(
         {
-          error: "YouTube extract failed",
-          details: extraction.stderr || extraction.stdout,
-          python: pythonUsed,
+          error: structuredFailure?.error || "YouTube extract failed",
+          details: structuredFailure?.details || extraction.stderr || extraction.stdout,
+          python: pythonUsed || pythonCandidates[0],
+          candidates: pythonCandidates,
+          attempts,
         },
         { status: 500 }
       );
@@ -375,7 +433,8 @@ export async function POST(request: Request) {
     // Step 3: Fallback — download audio and transcribe
     console.info("[youtube] description insufficient, downloading audio for transcription");
 
-    let audioExtraction = { code: 127, stdout: "", stderr: "" };
+    let audioExtraction = { code: 127, stdout: "", stderr: "Python not found" };
+    const audioAttempts: Array<{ command: string; code: number; stderr: string }> = [];
     for (const candidate of pythonCandidates) {
       const result = await runProcess(
         candidate,
@@ -383,11 +442,27 @@ export async function POST(request: Request) {
         cwd
       );
       logProcessResult("[youtube] audio extractor attempt", result);
+      audioAttempts.push({
+        command: candidate,
+        code: result.code,
+        stderr: truncateLog(result.stderr, 300),
+      });
       if (result.code === 0) {
         audioExtraction = result;
         break;
       }
+
+      if (!isInterpreterMissing(result) && parseStructuredFailure(result.stdout, result.stderr)) {
+        audioExtraction = result;
+        break;
+      }
+
       audioExtraction = result;
+    }
+
+    if (audioExtraction.code !== 0) {
+      logProcessResult("[youtube] audio extractor failed", audioExtraction);
+      console.info("[youtube] audio extractor attempts", audioAttempts);
     }
 
     let audioExtracted: YouTubeExtraction | null = null;
