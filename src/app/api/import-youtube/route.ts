@@ -41,6 +41,14 @@ interface YouTubeExtraction {
   audio_error?: string | null;
 }
 
+interface YouTubePreview {
+  video_id?: string | null;
+  title: string;
+  thumbnail_url?: string | null;
+  source_url: string;
+  uploader?: string | null;
+}
+
 const MODEL = "gpt-4o-mini";
 const TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
 
@@ -123,6 +131,79 @@ function parseStructuredFailure(stdout: string, stderr: string) {
 function extractJson(content: string) {
   const match = content.match(/\{[\s\S]*\}/);
   return match ? match[0] : content;
+}
+
+function extractYouTubeVideoId(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.replace(/^www\./, "");
+
+    if (host === "youtu.be") {
+      const id = parsed.pathname.split("/").filter(Boolean)[0];
+      return id || null;
+    }
+
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      if (parsed.pathname === "/watch") {
+        return parsed.searchParams.get("v");
+      }
+
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      if (parts[0] === "shorts" || parts[0] === "embed" || parts[0] === "live") {
+        return parts[1] || null;
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function buildYouTubeWatchUrl(rawUrl: string) {
+  const videoId = extractYouTubeVideoId(rawUrl);
+  if (!videoId) return rawUrl;
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
+async function fetchYouTubePreview(rawUrl: string): Promise<YouTubePreview | null> {
+  const normalizedUrl = buildYouTubeWatchUrl(rawUrl);
+  const videoId = extractYouTubeVideoId(normalizedUrl);
+  const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(normalizedUrl)}&format=json`;
+
+  try {
+    const response = await fetch(oembedUrl, {
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!response.ok) {
+      console.warn("[youtube] oembed failed", { status: response.status, url: normalizedUrl });
+      return null;
+    }
+
+    const data = await response.json();
+    const title = data?.title ? String(data.title).trim() : "";
+    const thumbnailUrl = data?.thumbnail_url ? String(data.thumbnail_url).trim() : null;
+    const uploader = data?.author_name ? String(data.author_name).trim() : null;
+
+    if (!title && !thumbnailUrl) {
+      return null;
+    }
+
+    return {
+      video_id: videoId,
+      title: title || "YouTube video",
+      thumbnail_url: thumbnailUrl,
+      source_url: normalizedUrl,
+      uploader,
+    };
+  } catch (error) {
+    console.warn("[youtube] oembed error", {
+      url: normalizedUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): ImportedRecipe {
@@ -251,14 +332,15 @@ CRITICAL RULES:
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
-    }
-
-    const { url } = await request.json();
+    const body = await request.json();
+    const { url, metaOnly = false } = body;
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!metaOnly && !apiKey) {
+      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
 
     const cwd = process.cwd();
@@ -292,6 +374,7 @@ export async function POST(request: Request) {
 
     console.info("[youtube] request", {
       url: url.trim(),
+      metaOnly,
       outputDir,
       scriptPath,
       pythonCandidates,
@@ -331,6 +414,18 @@ export async function POST(request: Request) {
     if (extraction.code !== 0) {
       logProcessResult("[youtube] extractor failed", extraction);
       const structuredFailure = parseStructuredFailure(extraction.stdout, extraction.stderr);
+      if (metaOnly) {
+        const preview = await fetchYouTubePreview(url.trim());
+        if (preview) {
+          console.info("[youtube] metaOnly fallback preview", {
+            videoId: preview.video_id,
+            title: preview.title.slice(0, 60),
+            thumbnailUrl: preview.thumbnail_url || null,
+            uploader: preview.uploader || null,
+          });
+          return NextResponse.json(preview);
+        }
+      }
       return NextResponse.json(
         {
           error: structuredFailure?.error || "YouTube extract failed",
@@ -366,6 +461,16 @@ export async function POST(request: Request) {
       thumbnailUrl: extracted.thumbnail_url || null,
       uploader: extracted.uploader || null,
     });
+
+    if (metaOnly) {
+      return NextResponse.json({
+        video_id: extracted.video_id,
+        title: extracted.title || "YouTube video",
+        thumbnail_url: extracted.thumbnail_url || null,
+        source_url: extracted.source_url,
+        uploader: extracted.uploader || null,
+      });
+    }
 
     // Step 2: Try description + subtitles first
     const descriptionText = (extracted.description || "").trim();
