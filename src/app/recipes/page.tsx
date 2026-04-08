@@ -82,6 +82,23 @@ type BaseTextContent = {
 const isPlainObject = (value: unknown): value is Record<string, any> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+/** Парсит теги из любого формата: массив, Postgres строка {a,b}, строка "a, b" */
+const parseTagsField = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map(t => t.trim());
+  }
+  if (typeof value === "string" && value.trim()) {
+    const trimmed = value.trim();
+    // Postgres array format: {tag1,tag2}
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      return trimmed.slice(1, -1).split(",").map(t => t.trim().replace(/^"|"$/g, "")).filter(Boolean);
+    }
+    // Comma-separated string: "tag1, tag2"
+    return trimmed.split(",").map(t => t.trim()).filter(Boolean);
+  }
+  return [];
+};
+
 const stringArraysEqual = (left: string[], right: string[]) =>
   left.length === right.length && left.every((item, index) => item === right[index]);
 
@@ -489,6 +506,7 @@ ${availableCuisines}
 - Если исходный язык не удаётся определить уверенно, считай базовым языком "ru".
 - Используй только языки: ${languagesLine}.
 - Для units используй только: ${unitsLine}.
+- tags — обязательный массив строк. Выбери из: quick, special occasion, light, hearty, breakfast, lunch, dinner, snack, vegetarian, vegan, gluten-free, dairy-free, soup, salad, pasta, grill, baking, raw. Правила: quick если totalTime ≤ 20 мин; special occasion если > 60 мин или праздничное блюдо; light если < 300 ккал; hearty если > 650 ккал; breakfast/lunch/dinner/snack — тип приёма пищи (обязателен хотя бы один). Пример: ["dinner","hearty","soup"].
 - ingredients — массив объектов {id,name,quantity,unit}. Если UUID продукта неизвестен, ставь id пустым "" и заполняй name.
 - Все числовые поля возвращай как number или null, без строк, без единиц измерения и без поясняющего текста.
 - Верхние поля calories / protein / fat / carbs / fiber / sugar / salt / saturated_fat / cholesterol / sodium не оставляй пустыми без причины. Если точных значений нет, рассчитай или реалистично оцени по ингредиентам и количеству порций.
@@ -524,6 +542,7 @@ ${availableCuisines}
   "prep_time": 20,
   "cook_time": 25,
   "difficulty": "${difficultyPlaceholder}",
+  "tags": ["dinner", "hearty", "soup"],
   "diet_tags": ["pescatarian"],
   "allergen_tags": ["seafood"],
   "cuisine_tags": ["thai"],
@@ -920,8 +939,8 @@ export default function RecipesPage() {
       difficulty: normalized.difficulty || prev.difficulty,
       diet_tags: Array.isArray(normalized.diet_tags) ? normalized.diet_tags.join(", ") : toText(normalized.diet_tags),
       allergen_tags: Array.isArray(normalized.allergen_tags) ? normalized.allergen_tags.join(", ") : toText(normalized.allergen_tags),
-      tags: Array.isArray(normalized.tags)
-        ? normalized.tags.filter((t: unknown) => typeof t === "string")
+      tags: parseTagsField(normalized.tags).length > 0
+        ? parseTagsField(normalized.tags)
         : prev.tags,
       cuisine_tags: Array.isArray(normalized.cuisine_tags)
         ? normalized.cuisine_tags.join(", ")
@@ -1139,7 +1158,7 @@ export default function RecipesPage() {
           prep_time: recipe.prep_time?.toString() || "",
           cook_time: recipe.cook_time?.toString() || "",
           difficulty: recipe.difficulty || "medium",
-          tags: Array.isArray(recipe.tags) ? recipe.tags : [],
+          tags: parseTagsField(recipe.tags),
           diet_tags: Array.isArray(recipe.diet_tags) ? recipe.diet_tags.join(", ") : "",
           allergen_tags: Array.isArray(recipe.allergen_tags) ? recipe.allergen_tags.join(", ") : "",
           cuisine_tags: Array.isArray(recipe.cuisine_tags) ? recipe.cuisine_tags.join(", ") : "",
@@ -1268,10 +1287,15 @@ export default function RecipesPage() {
       return;
     }
 
-    const mealTags = ["breakfast", "lunch", "dinner", "snack"];
-    const hasMealTag = form.tags.some(t => mealTags.includes(t));
+    const mealTagAliases = [
+      "breakfast", "завтрак", "сніданок", "brunch",
+      "lunch", "обед", "обід",
+      "dinner", "supper", "ужин", "вечеря",
+      "snack",
+    ];
+    const hasMealTag = form.tags.some(t => mealTagAliases.includes(t.toLowerCase()));
     if (!hasMealTag) {
-      alert("Укажите хотя бы один тег приёма пищи: breakfast, lunch, dinner или snack");
+      alert("Укажите хотя бы один тег приёма пищи:\nbreakfast / lunch / dinner / snack\n\nЕсли вставили JSON с тегами — убедитесь что поле \"tags\" есть в JSON и содержит один из этих тегов.");
       return;
     }
 
