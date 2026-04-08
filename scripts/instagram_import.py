@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Any
+from typing import Any, List, Optional
 
 
 def extract_shortcode(url: str) -> str:
@@ -20,7 +20,7 @@ def debug_log(event: str, **fields: Any) -> None:
     print(f"[instagram_import] {json.dumps(payload, ensure_ascii=True)}", file=sys.stderr)
 
 
-def format_command(command: list[str]) -> str:
+def format_command(command: List[str]) -> str:
     return " ".join(command)
 
 
@@ -47,7 +47,7 @@ def find_ytdlp():
     return None
 
 
-def build_cookie_file(output_dir: str) -> str | None:
+def build_cookie_file(output_dir: str) -> Optional[str]:
     """Write cookies to Netscape format file, return path or None."""
     cookies_json = os.environ.get("INSTAGRAM_COOKIES_JSON", "").strip()
     session_id = os.environ.get("INSTAGRAM_SESSION_ID", "").strip()

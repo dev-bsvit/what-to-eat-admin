@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from typing import Any
+from typing import Any, List
 
 
 def debug_log(event: str, **fields: Any) -> None:
@@ -12,7 +12,7 @@ def debug_log(event: str, **fields: Any) -> None:
     print(f"[tiktok_import] {json.dumps(payload, ensure_ascii=True)}", file=sys.stderr)
 
 
-def format_command(command: list[str]) -> str:
+def format_command(command: List[str]) -> str:
     return " ".join(command)
 
 
