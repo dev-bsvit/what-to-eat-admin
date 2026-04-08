@@ -7,7 +7,7 @@ import subprocess
 import sys
 import glob as globmod
 import tempfile
-from typing import Any
+from typing import Any, List, Optional, Tuple
 
 
 def debug_log(event: str, **fields: Any) -> None:
@@ -15,7 +15,7 @@ def debug_log(event: str, **fields: Any) -> None:
     print(f"[youtube_import] {json.dumps(payload, ensure_ascii=True)}", file=sys.stderr)
 
 
-def format_command(command: list[str]) -> str:
+def format_command(command: List[str]) -> str:
     return " ".join(command)
 
 
@@ -43,10 +43,10 @@ def find_ytdlp():
     return None
 
 
-def build_ytdlp_base_args() -> tuple[list[str], str | None]:
+def build_ytdlp_base_args() -> Tuple[List[str], Optional[str]]:
     """Build shared yt-dlp args from environment and return cleanup path if needed."""
-    args: list[str] = []
-    cookies_path: str | None = None
+    args: List[str] = []
+    cookies_path: Optional[str] = None
 
     cookies_file = os.getenv("YOUTUBE_COOKIES_FILE", "").strip()
     cookies_raw = os.getenv("YOUTUBE_COOKIES", "")
