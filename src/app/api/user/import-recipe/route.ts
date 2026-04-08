@@ -41,6 +41,14 @@ interface InstagramExtraction {
   owner_username?: string;
 }
 
+interface YouTubePreview {
+  video_id?: string | null;
+  title: string;
+  thumbnail_url?: string | null;
+  source_url: string;
+  uploader?: string | null;
+}
+
 type LinkSource = "instagram" | "tiktok" | "youtube" | "pinterest" | "web";
 
 // ============================================================================
@@ -625,14 +633,63 @@ async function importViaDedicatedEndpoint(
 
   console.log(`📡 Calling dedicated endpoint: ${endpointUrl}`);
 
+  const requestPayload = { url };
   const response = await fetch(endpointUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify(requestPayload),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+
+    if (endpointPath === "/api/import-youtube") {
+      const previewResponse = await fetch(endpointUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, metaOnly: true }),
+      });
+
+      if (previewResponse.ok) {
+        const previewData = await previewResponse.json();
+        if ((previewData as any)?.title) {
+          const preview = previewData as YouTubePreview;
+          console.info("[youtube:user] preview fallback", {
+            videoId: preview.video_id || null,
+            title: preview.title.slice(0, 60),
+            thumbnailUrl: preview.thumbnail_url || null,
+            uploader: preview.uploader || null,
+          });
+          return {
+            title: preview.title.trim(),
+            description: preview.uploader ? `Источник: ${preview.uploader}` : "Черновик из YouTube",
+            imageUrl: preview.thumbnail_url || undefined,
+            prepTime: undefined,
+            cookTime: undefined,
+            servings: undefined,
+            cuisine: "international",
+            tags: [],
+            ingredients: [
+              {
+                name: "Смотрите оригинальное видео",
+                amount: "",
+                unit: "",
+                note: "YouTube preview only",
+              },
+            ],
+            steps: [
+              {
+                text: "Откройте оригинальное видео и добавьте ингредиенты и шаги вручную.",
+              },
+            ],
+            sourceUrl: preview.source_url || url,
+            sourceDomain: getDomain(preview.source_url || url),
+            confidence: "low",
+          };
+        }
+      }
+    }
+
     throw new Error(
       (errorData as any)?.error || (errorData as any)?.message || `Endpoint ${endpointPath} returned ${response.status}`
     );
