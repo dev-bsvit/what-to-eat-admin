@@ -3,7 +3,7 @@ services:
     name: what-to-eat-admin
     runtime: node
     buildCommand: PUPPETEER_SKIP_DOWNLOAD=true npm install && python3 -m pip install --user --no-cache-dir -r requirements.txt && npm run build
-    startCommand: export PATH="$HOME/.local/bin:$PATH" && npm start
+    startCommand: export PATH="$HOME/.local/bin:$PATH" && ./node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-10000}
     envVars:
       - key: OPENAI_API_KEY
         sync: false
