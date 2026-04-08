@@ -352,6 +352,7 @@ const initialState = {
   prep_time: "",
   cook_time: "",
   difficulty: "medium",
+  tags: [] as string[],
   diet_tags: "",
   allergen_tags: "",
   cuisine_tags: "",
@@ -919,11 +920,12 @@ export default function RecipesPage() {
       difficulty: normalized.difficulty || prev.difficulty,
       diet_tags: Array.isArray(normalized.diet_tags) ? normalized.diet_tags.join(", ") : toText(normalized.diet_tags),
       allergen_tags: Array.isArray(normalized.allergen_tags) ? normalized.allergen_tags.join(", ") : toText(normalized.allergen_tags),
+      tags: Array.isArray(normalized.tags)
+        ? normalized.tags.filter((t: unknown) => typeof t === "string")
+        : prev.tags,
       cuisine_tags: Array.isArray(normalized.cuisine_tags)
         ? normalized.cuisine_tags.join(", ")
-        : Array.isArray(normalized.tags)
-          ? normalized.tags.join(", ")
-          : toText(normalized.cuisine_tags),
+        : toText(normalized.cuisine_tags),
       equipment: Array.isArray(normalized.equipment) ? normalized.equipment.join(", ") : toText(normalized.equipment),
       tools_optional: Array.isArray(normalized.tools_optional) ? normalized.tools_optional.join(", ") : toText(normalized.tools_optional),
       calories: toText(normalized.calories ?? normalizedRecipeNutrition?.calories),
@@ -1137,6 +1139,7 @@ export default function RecipesPage() {
           prep_time: recipe.prep_time?.toString() || "",
           cook_time: recipe.cook_time?.toString() || "",
           difficulty: recipe.difficulty || "medium",
+          tags: Array.isArray(recipe.tags) ? recipe.tags : [],
           diet_tags: Array.isArray(recipe.diet_tags) ? recipe.diet_tags.join(", ") : "",
           allergen_tags: Array.isArray(recipe.allergen_tags) ? recipe.allergen_tags.join(", ") : "",
           cuisine_tags: Array.isArray(recipe.cuisine_tags) ? recipe.cuisine_tags.join(", ") : "",
@@ -1265,6 +1268,13 @@ export default function RecipesPage() {
       return;
     }
 
+    const mealTags = ["breakfast", "lunch", "dinner", "snack"];
+    const hasMealTag = form.tags.some(t => mealTags.includes(t));
+    if (!hasMealTag) {
+      alert("Укажите хотя бы один тег приёма пищи: breakfast, lunch, dinner или snack");
+      return;
+    }
+
     setLoading(true);
     try {
       let translationsJson: string | null = null;
@@ -1321,6 +1331,7 @@ export default function RecipesPage() {
         prep_time: form.prep_time ? parseInt(form.prep_time) : null,
         cook_time: form.cook_time ? parseInt(form.cook_time) : null,
         difficulty: form.difficulty,
+        tags: form.tags,
         diet_tags: form.diet_tags ? form.diet_tags.split(",").map(t => t.trim()) : [],
         allergen_tags: form.allergen_tags ? form.allergen_tags.split(",").map(t => t.trim()) : [],
         cuisine_tags: form.cuisine_tags ? form.cuisine_tags.split(",").map(t => t.trim()) : [],
@@ -2097,6 +2108,95 @@ export default function RecipesPage() {
           {showTagsSection && (
             <>
               <div style={{ marginBottom: 'var(--spacing-lg)' }} />
+
+              {/* ── Рулеточные теги (tags[]) ── */}
+              <div style={{
+                background: 'var(--bg-surface)',
+                border: '2px solid var(--color-primary, #f97316)',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                marginBottom: 'var(--spacing-lg)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: 18 }}>🎰</span>
+                  <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>
+                    Теги для рулетки
+                  </strong>
+                  <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 600 }}>* обязательно</span>
+                </div>
+                {[
+                  {
+                    label: 'Приём пищи (обязательно ≥1)',
+                    required: true,
+                    tags: ['breakfast', 'lunch', 'dinner', 'snack'],
+                  },
+                  {
+                    label: 'Скорость / Повод',
+                    required: false,
+                    tags: ['quick', 'special occasion'],
+                  },
+                  {
+                    label: 'Сытность',
+                    required: false,
+                    tags: ['light', 'hearty'],
+                  },
+                  {
+                    label: 'Тип блюда',
+                    required: false,
+                    tags: ['soup', 'salad', 'pasta', 'grill', 'baking', 'raw'],
+                  },
+                  {
+                    label: 'Диета',
+                    required: false,
+                    tags: ['vegetarian', 'vegan', 'gluten-free', 'dairy-free'],
+                  },
+                ].map(group => (
+                  <div key={group.label} style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 500 }}>
+                      {group.label}
+                      {group.required && !group.tags.some(t => form.tags.includes(t)) && (
+                        <span style={{ color: '#ef4444', marginLeft: 6 }}>← выберите</span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {group.tags.map(tag => {
+                        const active = form.tags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setForm(prev => ({
+                              ...prev,
+                              tags: active
+                                ? prev.tags.filter(t => t !== tag)
+                                : [...prev.tags, tag],
+                            }))}
+                            style={{
+                              padding: '4px 12px',
+                              borderRadius: 20,
+                              border: active ? '2px solid var(--color-primary, #f97316)' : '1px solid var(--border-light)',
+                              background: active ? 'var(--color-primary, #f97316)' : 'var(--bg-base)',
+                              color: active ? '#fff' : 'var(--text-primary)',
+                              fontSize: 13,
+                              fontWeight: active ? 600 : 400,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s',
+                            }}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {form.tags.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                    Выбрано: <strong>{form.tags.join(', ')}</strong>
+                  </div>
+                )}
+              </div>
+
               <div style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',

@@ -181,6 +181,7 @@ export async function POST(request: Request) {
       prep_time: parseNumber(body.prep_time),
       cook_time: parseNumber(body.cook_time),
       difficulty: normalizeText(body.difficulty),
+      tags: parseTextArray(body.tags),
       diet_tags: parseTextArray(body.diet_tags),
       allergen_tags: parseTextArray(body.allergen_tags),
       cuisine_tags: parseTextArray(body.cuisine_tags),

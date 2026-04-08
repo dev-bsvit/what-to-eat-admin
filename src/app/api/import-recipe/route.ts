@@ -149,30 +149,43 @@ export async function POST(request: Request) {
       );
     }
 
-    // 5. AI доработка - если данные неполные или грязные
+    // 5. Авто-теги на основе числовых данных (всегда, без AI)
+    const autoTags = autoClassifyTagsFromData(recipe);
+    for (const t of autoTags) {
+      if (!recipe.tags.includes(t)) recipe.tags.push(t);
+    }
+
+    // 6. AI доработка — запускаем если данные неполные ИЛИ нет семантических тегов
     const needsAiCleanup =
       recipe.ingredients.length === 0 ||
       recipe.steps.length === 0 ||
       recipe.confidence === "low";
 
-    if (needsAiCleanup && process.env.OPENAI_API_KEY) {
+    const missingSemanticTags = !SEMANTIC_TAGS.some((t: string) => recipe.tags.includes(t));
+    const needsAiTags = missingSemanticTags;
+
+    if ((needsAiCleanup || needsAiTags) && process.env.OPENAI_API_KEY) {
       console.log("🤖 Запуск AI доработки рецепта...");
       try {
-        const aiResult = await cleanupRecipeWithAI(recipe);
+        const aiResult = await cleanupRecipeWithAI(recipe, needsAiCleanup);
         if (aiResult) {
-          // Обновляем только те поля, которые AI улучшил
-          if (aiResult.ingredients.length > recipe.ingredients.length) {
-            recipe.ingredients = aiResult.ingredients;
+          if (needsAiCleanup) {
+            if (aiResult.ingredients.length > recipe.ingredients.length) {
+              recipe.ingredients = aiResult.ingredients;
+            }
+            if (aiResult.steps.length > recipe.steps.length) {
+              recipe.steps = aiResult.steps;
+            }
+            if (recipe.ingredients.length > 0 && recipe.steps.length > 0) {
+              recipe.confidence = "medium";
+            }
           }
-          if (aiResult.steps.length > recipe.steps.length) {
-            recipe.steps = aiResult.steps;
+          // Мёрджим теги из AI (не дублируем)
+          for (const t of aiResult.tags) {
+            if (!recipe.tags.includes(t)) recipe.tags.push(t);
           }
-          // Повышаем confidence если AI успешно доработал
-          if (recipe.ingredients.length > 0 && recipe.steps.length > 0) {
-            recipe.confidence = "medium";
-          }
-          method = method + " + AI cleanup";
-          console.log("✅ AI доработка завершена");
+          method = method + (needsAiCleanup ? " + AI cleanup" : "") + (aiResult.tags.length ? " + AI tags" : "");
+          console.log("✅ AI доработка завершена, теги:", aiResult.tags);
         }
       } catch (aiError) {
         console.log("⚠️ AI доработка не удалась:", aiError);
@@ -199,48 +212,109 @@ export async function POST(request: Request) {
 }
 
 // ============================================================================
+// Теги: константы и авто-классификация
+// ============================================================================
+
+// Теги, которые AI определяет по смыслу (тип блюда, диета, приём пищи)
+const SEMANTIC_TAGS = [
+  "breakfast", "lunch", "dinner", "snack",
+  "vegetarian", "vegan", "gluten-free", "dairy-free",
+  "soup", "salad", "pasta", "grill", "baking", "raw",
+  "light", "hearty",
+];
+
+// Все допустимые теги (включая временны́е)
+const ALLOWED_TAGS = [
+  "quick", "special occasion",
+  ...SEMANTIC_TAGS,
+];
+
+/** Авто-теги на основе числовых полей рецепта — без AI, работает всегда */
+function autoClassifyTagsFromData(recipe: ImportedRecipe): string[] {
+  const tags: string[] = [];
+  const totalTime = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
+
+  if (totalTime > 0) {
+    if (totalTime <= 20) tags.push("quick");
+    if (totalTime > 60) tags.push("special occasion");
+  }
+
+  return tags;
+}
+
+// ============================================================================
 // AI Cleanup функция
 // ============================================================================
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
-async function cleanupRecipeWithAI(recipe: ImportedRecipe): Promise<{
+async function cleanupRecipeWithAI(
+  recipe: ImportedRecipe,
+  fixContent: boolean
+): Promise<{
   ingredients: Array<{ name: string; amount: string; unit: string }>;
   steps: Array<{ text: string }>;
+  tags: string[];
 } | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
   const hasIngredients = recipe.ingredients.length > 0;
   const hasSteps = recipe.steps.length > 0;
+  const totalTime = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
 
-  // Определяем задачу
-  let task = "";
-  if (!hasIngredients && !hasSteps) {
-    task = "Extract OR INFER ingredients and cooking steps from title/description. If not enough info, CREATE typical recipe for this dish.";
-  } else if (!hasIngredients) {
-    task = "Extract ingredients from steps. If unclear, INFER typical ingredients for this dish with estimated amounts.";
-  } else if (!hasSteps) {
-    task = "Create cooking steps based on ingredients. Make 3-6 logical steps.";
-  } else {
-    task = "Clean data: remove duplicates, fix formatting, fill missing amounts with estimates.";
+  // Задача для контентной части
+  let contentTask = "";
+  if (fixContent) {
+    if (!hasIngredients && !hasSteps) {
+      contentTask = "1. Extract OR infer ingredients and steps. If not enough info — create a typical recipe for this dish.";
+    } else if (!hasIngredients) {
+      contentTask = "1. Extract/infer ingredients with amounts from steps or dish name.";
+    } else if (!hasSteps) {
+      contentTask = "1. Create 3-6 logical cooking steps based on the ingredients.";
+    } else {
+      contentTask = "1. Clean ingredients/steps: remove duplicates, fix formatting, fill missing amounts.";
+    }
   }
 
-  // Промпт с обязательным заполнением данных
-  const prompt = `${task}
+  const prompt = `You are a recipe data assistant. Complete ALL tasks below for the given recipe.
+
+${fixContent ? contentTask + "\n" : ""}2. Pick tags from this exact list ONLY: ${ALLOWED_TAGS.join(", ")}
+
+Tag rules:
+- quick: total cooking time ≤ 20 min
+- special occasion: total cooking time > 60 min OR fancy/gourmet dish
+- light: salads, soups, low-calorie dishes (< 300 kcal)
+- hearty: filling, high-calorie dishes (> 650 kcal), stews, meat mains
+- breakfast: morning dishes — oatmeal, eggs, pancakes, smoothies
+- lunch/dinner: main meals — meat, fish, pasta, rice dishes
+- snack: small bites, appetizers, dips
+- vegetarian: no meat or fish (eggs/dairy OK)
+- vegan: no animal products at all
+- gluten-free: no wheat/rye/barley
+- dairy-free: no milk/cheese/cream/butter
+- soup: any liquid dish, broth, stew, chowder
+- salad: cold mixed dishes with greens or vegetables
+- pasta: pasta, noodles, spaghetti, lasagna
+- grill: grilled, BBQ, skewers, open-fire cooking
+- baking: cakes, cookies, bread, oven dishes
+- raw: no cooking required
 
 Recipe: ${recipe.title}
-${recipe.description ? `Desc: ${recipe.description.slice(0, 300)}` : ""}
-Ingr: ${hasIngredients ? JSON.stringify(recipe.ingredients.slice(0, 15).map(i => ({ n: i.name, a: i.amount, u: i.unit }))) : "[]"}
-Steps: ${hasSteps ? recipe.steps.slice(0, 10).map(s => s.text.slice(0, 150)).join("; ") : ""}
+${recipe.description ? `Description: ${recipe.description.slice(0, 400)}` : ""}
+Total time: ${totalTime > 0 ? `${totalTime} min` : "unknown"}
+${hasIngredients ? `Ingredients: ${JSON.stringify(recipe.ingredients.slice(0, 15).map(i => ({ n: i.name, a: i.amount, u: i.unit })))}` : ""}
+${hasSteps ? `Steps: ${recipe.steps.slice(0, 8).map(s => s.text.slice(0, 200)).join(" | ")}` : ""}
 
-CRITICAL: Return valid JSON. NEVER return empty arrays!
-- If ingredients unknown: infer typical ones for "${recipe.title}" with amounts like "100 г", "1 шт", "по вкусу"
-- If steps unknown: create 3-5 basic cooking steps
-- Keep ORIGINAL language (Russian/English) - do NOT translate
-
-Return JSON only:
-{"ingredients":[{"name":"продукт","amount":"100","unit":"г"}],"steps":[{"text":"Шаг приготовления"}]}`;
+CRITICAL: Return valid JSON only. Keep ORIGINAL language (Russian/English) — do NOT translate.
+${fixContent ? `NEVER return empty ingredients or steps arrays — infer if needed.
+` : ""}
+Return format:
+{
+  "ingredients": [{"name": "...", "amount": "...", "unit": "..."}],
+  "steps": [{"text": "..."}],
+  "tags": ["...", "..."]
+}`;
 
   try {
     const response = await fetch(OPENAI_URL, {
@@ -251,33 +325,43 @@ Return JSON only:
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        input: prompt,
+        messages: [{ role: "user", content: prompt }],
         temperature: 0.1,
+        max_tokens: 1200,
       }),
     });
 
     if (!response.ok) return null;
 
     const data = await response.json();
-    const content = data?.output?.[0]?.content?.[0]?.text;
+    const content = data?.choices?.[0]?.message?.content;
     if (!content) return null;
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
 
+    const validTags = Array.isArray(parsed.tags)
+      ? parsed.tags
+          .map((t: unknown) => String(t).trim().toLowerCase())
+          .filter((t: string) => ALLOWED_TAGS.includes(t))
+      : [];
+
     return {
       ingredients: Array.isArray(parsed.ingredients)
-        ? parsed.ingredients.map((i: any) => ({
-            name: String(i.name || "").trim(),
-            amount: String(i.amount || "").trim(),
-            unit: String(i.unit || "").trim(),
-          })).filter((i: any) => i.name.length > 0)
-        : [],
+        ? parsed.ingredients
+            .map((i: any) => ({
+              name: String(i.name || "").trim(),
+              amount: String(i.amount || "").trim(),
+              unit: String(i.unit || "").trim(),
+            }))
+            .filter((i: any) => i.name.length > 0)
+        : recipe.ingredients,
       steps: Array.isArray(parsed.steps)
-        ? parsed.steps.map((s: any) => ({
-            text: String(s.text || s || "").trim(),
-          })).filter((s: any) => s.text.length > 0)
-        : [],
+        ? parsed.steps
+            .map((s: any) => ({ text: String(s.text || s || "").trim() }))
+            .filter((s: any) => s.text.length > 0)
+        : recipe.steps,
+      tags: validTags,
     };
   } catch (error) {
     console.error("AI cleanup error:", error);
