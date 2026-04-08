@@ -342,6 +342,7 @@ export async function POST(request: Request) {
     if (!metaOnly && !apiKey) {
       return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
+    const ensuredApiKey = apiKey ?? "";
 
     const cwd = process.cwd();
     const outputDir = path.join(cwd, "tmp", "youtube");
@@ -492,10 +493,10 @@ export async function POST(request: Request) {
         extracted.thumbnail_url || undefined
       );
 
-      const descAiResponse = await fetch(OPENAI_URL, {
+          const descAiResponse = await fetch(OPENAI_URL, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${ensuredApiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ model: MODEL, input: descPrompt, temperature: 0.2 }),
@@ -597,7 +598,7 @@ export async function POST(request: Request) {
       console.info("[youtube] transcribing audio", { path: pathToTranscribe });
 
       try {
-        transcript = await transcribeAudio(apiKey, pathToTranscribe);
+        transcript = await transcribeAudio(ensuredApiKey, pathToTranscribe);
         console.info("[youtube] transcript length", { length: transcript.length });
       } catch (err) {
         console.error("[youtube] transcription error", err);
@@ -626,7 +627,7 @@ export async function POST(request: Request) {
     const aiResponse = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${ensuredApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ model: MODEL, input: prompt, temperature: 0.2 }),
