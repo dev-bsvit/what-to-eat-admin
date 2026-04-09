@@ -99,6 +99,66 @@ const parseTagsField = (value: unknown): string[] => {
   return [];
 };
 
+/** Авто-вывод тегов из других полей JSON когда поле tags отсутствует или пустое */
+const inferTagsFromRecipeData = (data: Record<string, any>): string[] => {
+  const tags: string[] = [];
+
+  // Время → quick / special occasion
+  const prepTime = Number(data.prep_time ?? data.prepTime ?? 0);
+  const cookTime = Number(data.cook_time ?? data.cookTime ?? 0);
+  const totalTime = prepTime + cookTime;
+  if (totalTime > 0) {
+    if (totalTime <= 20) tags.push("quick");
+    if (totalTime > 60) tags.push("special occasion");
+  } else if (data.difficulty === "easy") {
+    tags.push("quick");
+  } else if (data.difficulty === "hard") {
+    tags.push("special occasion");
+  }
+
+  // Калории → light / hearty
+  const calories = Number(data.calories ?? 0);
+  if (calories > 0) {
+    if (calories < 300) tags.push("light");
+    if (calories > 650) tags.push("hearty");
+  }
+
+  // course → meal tag
+  const courseMap: Record<string, string> = {
+    breakfast: "breakfast", завтрак: "breakfast", сніданок: "breakfast", brunch: "breakfast",
+    lunch: "lunch", обед: "lunch", обід: "lunch",
+    dinner: "dinner", ужин: "dinner", вечеря: "dinner", supper: "dinner",
+    snack: "snack", закуска: "snack",
+    main: "lunch", "main course": "lunch", "основное": "lunch",
+  };
+  const course = String(data.course ?? "").toLowerCase().trim();
+  if (course && courseMap[course]) tags.push(courseMap[course]);
+
+  // dish_type → тип блюда
+  const dishTypeMap: Record<string, string> = {
+    soup: "soup", stew: "soup", брoth: "soup",
+    salad: "salad",
+    pasta: "pasta", noodles: "pasta",
+    bread: "baking", cake: "baking", pastry: "baking", baking: "baking", dessert: "baking",
+    grill: "grill", bbq: "grill",
+  };
+  const dishType = String(data.dish_type ?? "").toLowerCase().trim();
+  if (dishType && dishTypeMap[dishType]) tags.push(dishTypeMap[dishType]);
+
+  // diet_tags → vegetarian / vegan / gluten-free / dairy-free
+  const dietTags = parseTagsField(data.diet_tags).map(t => t.toLowerCase());
+  const dietMap: Record<string, string> = {
+    vegetarian: "vegetarian", vegan: "vegan",
+    "gluten-free": "gluten-free", gluten_free: "gluten-free",
+    "dairy-free": "dairy-free", dairy_free: "dairy-free",
+  };
+  for (const dt of dietTags) {
+    if (dietMap[dt]) tags.push(dietMap[dt]);
+  }
+
+  return [...new Set(tags)]; // убираем дубли
+};
+
 const stringArraysEqual = (left: string[], right: string[]) =>
   left.length === right.length && left.every((item, index) => item === right[index]);
 
@@ -939,9 +999,12 @@ export default function RecipesPage() {
       difficulty: normalized.difficulty || prev.difficulty,
       diet_tags: Array.isArray(normalized.diet_tags) ? normalized.diet_tags.join(", ") : toText(normalized.diet_tags),
       allergen_tags: Array.isArray(normalized.allergen_tags) ? normalized.allergen_tags.join(", ") : toText(normalized.allergen_tags),
-      tags: parseTagsField(normalized.tags).length > 0
-        ? parseTagsField(normalized.tags)
-        : prev.tags,
+      tags: (() => {
+        const explicit = parseTagsField(normalized.tags);
+        if (explicit.length > 0) return explicit;
+        const inferred = inferTagsFromRecipeData(normalized);
+        return inferred.length > 0 ? inferred : prev.tags;
+      })(),
       cuisine_tags: Array.isArray(normalized.cuisine_tags)
         ? normalized.cuisine_tags.join(", ")
         : toText(normalized.cuisine_tags),
