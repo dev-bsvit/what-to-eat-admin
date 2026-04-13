@@ -9,6 +9,10 @@ import {
   parseTextArray,
   parseUuidArray,
 } from "@/lib/parseFields";
+import {
+  translateRecipeToAllLanguages,
+  type RecipeContent,
+} from "@/lib/translate";
 
 const isUuid = (value: string | null | undefined) => {
   if (!value) return false;
@@ -287,6 +291,60 @@ export async function POST(request: Request) {
         if (stepsError) {
           return NextResponse.json({ error: stepsError.message }, { status: 400 });
         }
+      }
+    }
+
+    // ── Auto-translate if source_language is provided ─────────────────────
+    const sourceLang = normalizeText(body.source_language);
+    if (sourceLang && process.env.DEEPL_API_KEY) {
+      try {
+        const instructionTexts = Array.isArray(parsedInstructions)
+          ? parsedInstructions
+              .map((s: unknown) => (typeof s === "string" ? s : (s as { text?: string })?.text))
+              .filter((t): t is string => Boolean(t))
+          : [];
+
+        const content: RecipeContent = {
+          title: normalizeText(body.title) ?? "",
+          description: normalizeText(body.description),
+          tips: normalizeText(body.tips),
+          serving_tips: normalizeText(body.serving_tips),
+          storage_tips: normalizeText(body.storage_tips),
+          recipe_note: normalizeText(body.recipe_note),
+          instructions: instructionTexts,
+        };
+
+        const allTranslations = await translateRecipeToAllLanguages(content, sourceLang);
+
+        const translationRows = Object.entries(allTranslations).map(([lang, t]) => ({
+          recipe_id: savedRecipeId,
+          language_code: lang,
+          title: t.title,
+          description: t.description ?? null,
+          dish_type: null,
+          course: null,
+        }));
+
+        await supabaseAdmin
+          .from("recipe_translations")
+          .upsert(translationRows, { onConflict: "recipe_id,language_code" });
+
+        const instructionRows = Object.entries(allTranslations)
+          .filter(([, t]) => t.instructions?.length)
+          .map(([lang, t]) => ({
+            recipe_id: savedRecipeId,
+            language_code: lang,
+            instructions: t.instructions,
+          }));
+
+        if (instructionRows.length) {
+          await supabaseAdmin
+            .from("recipe_instruction_translations")
+            .upsert(instructionRows, { onConflict: "recipe_id,language_code" });
+        }
+      } catch (translateErr) {
+        // Translation failure must not block the recipe save response
+        console.error("[auto-translate]", translateErr);
       }
     }
 
