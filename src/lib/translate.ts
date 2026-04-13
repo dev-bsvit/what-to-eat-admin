@@ -110,19 +110,19 @@ export async function translateRecipe(
     sourceLang
   );
 
-  const result: RecipeTranslationResult = { title: "" };
+  const result = { title: "" } as Record<string, unknown>;
   const instructions: string[] = [];
 
   pairs.forEach(({ key }, i) => {
     if (key.startsWith("instruction_")) {
       instructions.push(translated[i]);
     } else {
-      (result as Record<string, string>)[key] = translated[i];
+      result[key] = translated[i];
     }
   });
 
   if (instructions.length) result.instructions = instructions;
-  return result;
+  return result as unknown as RecipeTranslationResult;
 }
 
 /**
@@ -192,19 +192,19 @@ export async function translateProduct(
     sourceLang
   );
 
-  const result: ProductTranslationResult = { name: "" };
+  const result = { name: "" } as Record<string, unknown>;
   const synonyms: string[] = [];
 
   pairs.forEach(({ key }, i) => {
     if (key.startsWith("synonym_")) {
       synonyms.push(translated[i]);
     } else {
-      (result as Record<string, string>)[key] = translated[i];
+      result[key] = translated[i];
     }
   });
 
   if (synonyms.length) result.synonyms = synonyms;
-  return result;
+  return result as unknown as ProductTranslationResult;
 }
 
 export async function translateProductToAllLanguages(
