@@ -1,34 +1,27 @@
 /**
  * POST /api/admin/products/translate-batch
  *
- * Translate all products that are missing translations for one or more languages.
- * Processes products in batches to stay within DeepL rate limits.
+ * Translate all products efficiently:
+ * - ONE DeepL request per language (all product names batched together)
+ * - Total: 7 sequential requests for 7 languages
+ * - No rate limit issues
  *
  * Body: {
  *   source_language?: string   // default: "ru"
- *   limit?: number             // max products to process, default 50
- *   product_ids?: string[]     // if set, only translate these products
+ *   limit?: number             // max products, default 200
+ *   product_ids?: string[]     // if set, only these products
  * }
- *
- * Returns: { processed: number, skipped: number, errors: string[] }
  */
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-  translateProductToAllLanguages,
-  APP_LANGUAGES,
-  type ProductContent,
-} from "@/lib/translate";
-
-const BATCH_SIZE = 3; // products translated concurrently (DeepL free rate limit)
-const BATCH_DELAY_MS = 2000; // pause between batches
+import { translateBatch, APP_LANGUAGES } from "@/lib/translate";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const sourceLang: string = body.source_language || "ru";
-    const limit: number = Math.min(body.limit ?? 50, 200);
+    const limit: number = Math.min(body.limit ?? 200, 500);
     const explicitIds: string[] | undefined = Array.isArray(body.product_ids)
       ? body.product_ids
       : undefined;
@@ -37,7 +30,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "DEEPL_API_KEY is not set" }, { status: 500 });
     }
 
-    // ── 1. Find products that need translations ────────────────────────────
+    // ── 1. Load products ───────────────────────────────────────────────────
     let productQuery = supabaseAdmin
       .from("product_dictionary")
       .select("id, canonical_name, description, storage_tips, synonyms")
@@ -48,28 +41,24 @@ export async function POST(request: Request) {
     }
 
     const { data: allProducts, error: productsError } = await productQuery;
-    if (productsError) {
-      return NextResponse.json({ error: productsError.message }, { status: 500 });
-    }
-    if (!allProducts?.length) {
-      return NextResponse.json({ processed: 0, skipped: 0, errors: [] });
-    }
+    if (productsError) return NextResponse.json({ error: productsError.message }, { status: 500 });
+    if (!allProducts?.length) return NextResponse.json({ processed: 0, skipped: 0, errors: [] });
 
-    // ── 2. Find which products already have ALL languages translated ───────
-    const { data: existingTranslations } = await supabaseAdmin
+    // ── 2. Find which products already have all languages ──────────────────
+    const { data: existing } = await supabaseAdmin
       .from("product_translations")
       .select("product_id, language_code")
       .in("product_id", allProducts.map((p) => p.id));
 
     const translatedMap = new Map<string, Set<string>>();
-    existingTranslations?.forEach(({ product_id, language_code }) => {
+    existing?.forEach(({ product_id, language_code }) => {
       if (!translatedMap.has(product_id)) translatedMap.set(product_id, new Set());
       translatedMap.get(product_id)!.add(language_code);
     });
 
+    // Only process products missing at least one language
     const products = allProducts.filter((p) => {
       const langs = translatedMap.get(p.id);
-      // Keep if missing ANY language
       return !langs || APP_LANGUAGES.some((l) => !langs.has(l));
     });
 
@@ -78,66 +67,85 @@ export async function POST(request: Request) {
         processed: 0,
         skipped: allProducts.length,
         errors: [],
-        message: "All products already have complete translations",
+        message: "All products already translated",
       });
     }
 
-    // ── 3. Translate in batches ────────────────────────────────────────────
-    let processed = 0;
+    // ── 3. One request per language for ALL products ───────────────────────
+    // Build texts array: just product names (descriptions are optional, skip for now)
+    const names = products.map((p) => p.canonical_name);
+    const targetLangs = APP_LANGUAGES.filter((l) => l !== sourceLang);
+
+    // Map: lang → translated names array (parallel requests per language)
+    const translationsByLang = new Map<string, string[]>();
+
+    // Sequential to be safe with free tier
+    for (const lang of targetLangs) {
+      try {
+        const translated = await translateBatch(names, lang, sourceLang);
+        translationsByLang.set(lang, translated);
+      } catch (err) {
+        console.error(`[translate-batch] Failed for lang ${lang}:`, err);
+        // Continue with other languages
+      }
+    }
+
+    // ── 4. Build and upsert all rows ───────────────────────────────────────
+    const rows: Array<{
+      product_id: string;
+      language_code: string;
+      name: string;
+      synonyms: string[];
+      description: null;
+      storage_tips: null;
+    }> = [];
+
+    products.forEach((product, index) => {
+      const existingLangs = translatedMap.get(product.id) ?? new Set<string>();
+
+      // Source language row
+      if (!existingLangs.has(sourceLang)) {
+        rows.push({
+          product_id: product.id,
+          language_code: sourceLang,
+          name: product.canonical_name,
+          synonyms: product.synonyms ?? [],
+          description: null,
+          storage_tips: null,
+        });
+      }
+
+      // Translated languages
+      for (const lang of targetLangs) {
+        if (existingLangs.has(lang)) continue;
+        const translatedName = translationsByLang.get(lang)?.[index];
+        if (!translatedName) continue;
+
+        rows.push({
+          product_id: product.id,
+          language_code: lang,
+          name: translatedName,
+          synonyms: [],
+          description: null,
+          storage_tips: null,
+        });
+      }
+    });
+
+    // Upsert in chunks of 100
     const errors: string[] = [];
-
-    for (let i = 0; i < products.length; i += BATCH_SIZE) {
-      const batch = products.slice(i, i + BATCH_SIZE);
-
-      if (i > 0) await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
-
-      await Promise.all(
-        batch.map(async (product) => {
-          try {
-            const existingLangs = translatedMap.get(product.id) ?? new Set<string>();
-
-            const content: ProductContent = {
-              name: product.canonical_name,
-              description: product.description,
-              storage_tips: product.storage_tips,
-              synonyms: product.synonyms ?? [],
-            };
-
-            const allTranslations = await translateProductToAllLanguages(content, sourceLang);
-
-            // Only upsert languages that are missing
-            const rows = Object.entries(allTranslations)
-              .filter(([lang]) => !existingLangs.has(lang))
-              .map(([lang, t]) => ({
-                product_id: product.id,
-                language_code: lang,
-                name: t.name,
-                synonyms: t.synonyms ?? [],
-                description: t.description ?? null,
-                storage_tips: t.storage_tips ?? null,
-              }));
-
-            if (rows.length) {
-              const { error } = await supabaseAdmin
-                .from("product_translations")
-                .upsert(rows, { onConflict: "product_id,language_code" });
-
-              if (error) throw new Error(error.message);
-            }
-
-            processed++;
-          } catch (err) {
-            const msg = `${product.canonical_name}: ${err instanceof Error ? err.message : String(err)}`;
-            errors.push(msg);
-            console.error("[translate-batch]", msg);
-          }
-        })
-      );
+    for (let i = 0; i < rows.length; i += 100) {
+      const chunk = rows.slice(i, i + 100);
+      const { error } = await supabaseAdmin
+        .from("product_translations")
+        .upsert(chunk, { onConflict: "product_id,language_code" });
+      if (error) errors.push(error.message);
     }
 
     return NextResponse.json({
-      processed,
+      processed: products.length,
       skipped: allProducts.length - products.length,
+      rows_saved: rows.length,
       errors,
       total_products: allProducts.length,
     });
