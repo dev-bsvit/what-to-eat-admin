@@ -21,7 +21,8 @@ import {
   type ProductContent,
 } from "@/lib/translate";
 
-const BATCH_SIZE = 10; // products translated concurrently
+const BATCH_SIZE = 3; // products translated concurrently (DeepL free rate limit)
+const BATCH_DELAY_MS = 2000; // pause between batches
 
 export async function POST(request: Request) {
   try {
@@ -87,6 +88,8 @@ export async function POST(request: Request) {
 
     for (let i = 0; i < products.length; i += BATCH_SIZE) {
       const batch = products.slice(i, i + BATCH_SIZE);
+
+      if (i > 0) await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
 
       await Promise.all(
         batch.map(async (product) => {
