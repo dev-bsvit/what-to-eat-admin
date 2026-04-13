@@ -19,10 +19,10 @@ import {
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const recipeId = params.id;
+    const { id: recipeId } = await params;
     const body = await request.json();
     const sourceLang: string = body.source_language || "ru";
 
