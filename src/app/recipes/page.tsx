@@ -454,6 +454,7 @@ const initialState = {
   comments_enabled: "true",
   comments_count: "",
   translations: "",
+  source_language: "ru",
 };
 
 type RecipeFormState = typeof initialState;
@@ -987,6 +988,7 @@ export default function RecipesPage() {
       description: toText(normalized.description),
       image_url: toText(normalized.image_url || normalized.imageUrl),
       cuisine_id: normalized.cuisine_id || prev.cuisine_id,
+      source_language: toText(normalized.source_language || prev.source_language || "ru"),
       dish_type: toText(normalized.dish_type),
       course: toText(normalized.course),
       owner_id: toText(normalized.owner_id),
@@ -1444,6 +1446,7 @@ export default function RecipesPage() {
         comments_enabled: form.comments_enabled === "true",
         comments_count: form.comments_count ? parseInt(form.comments_count) : null,
         translations: translationsJson,
+        source_language: form.source_language || "ru",
       };
 
       console.log("💾 Saving recipe nutrition:", {
