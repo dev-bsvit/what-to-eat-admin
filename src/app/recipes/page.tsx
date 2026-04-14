@@ -1249,6 +1249,7 @@ export default function RecipesPage() {
           instructions: typeof recipe.instructions === 'string' ? recipe.instructions : JSON.stringify(recipe.instructions),
           comments_enabled: String(recipe.comments_enabled ?? true),
           comments_count: recipe.comments_count?.toString() || "",
+          source_language: recipe.source_language || "ru",
           translations: Object.keys(normalizedTranslations).length
             ? JSON.stringify(normalizedTranslations, null, 2)
             : "",
