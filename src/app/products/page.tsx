@@ -80,6 +80,8 @@ export default function ProductsPage() {
   const [mergeResults, setMergeResults] = useState<Product[]>([]);
   const [mergeLoading, setMergeLoading] = useState(false);
   const [mergeStatus, setMergeStatus] = useState("");
+  const [translatingProductId, setTranslatingProductId] = useState<string | null>(null);
+  const [translateStatus, setTranslateStatus] = useState("");
 
   const [formData, setFormData] = useState({
     id: "",
@@ -531,6 +533,28 @@ export default function ProductsPage() {
       }
     } catch (error) {
       setMergeStatus("Ошибка: не удалось объединить");
+    }
+  }
+
+  async function handleTranslateProduct(productId: string, sourceLang = "ru") {
+    setTranslatingProductId(productId);
+    setTranslateStatus("");
+    try {
+      const response = await fetch(`/api/admin/products/${productId}/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_language: sourceLang }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setTranslateStatus(`❌ Ошибка: ${result.error}`);
+      } else {
+        setTranslateStatus(`✅ Переведено на ${result.languages?.length || 0} языков`);
+      }
+    } catch {
+      setTranslateStatus("❌ Ошибка соединения");
+    } finally {
+      setTranslatingProductId(null);
     }
   }
 
@@ -999,6 +1023,12 @@ export default function ProductsPage() {
           </div>
         )}
 
+        {translateStatus && (
+          <div style={{ marginBottom: 'var(--spacing-sm)', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            {translateStatus}
+          </div>
+        )}
+
         <div className="modal-footer">
           <button
             className="btn btn-primary"
@@ -1007,6 +1037,16 @@ export default function ProductsPage() {
           >
             {editingProduct ? "Сохранить" : "Создать"}
           </button>
+          {editingProduct && (
+            <button
+              className="btn btn-secondary"
+              disabled={translatingProductId === editingProduct.id}
+              onClick={() => void handleTranslateProduct(editingProduct.id)}
+              style={{ flex: 1 }}
+            >
+              {translatingProductId === editingProduct.id ? "⏳ Перевод..." : "🌐 Перевести"}
+            </button>
+          )}
           <button
             className="btn btn-secondary"
             onClick={() => {
@@ -1358,6 +1398,19 @@ export default function ProductsPage() {
                   {product.carbohydrates && <span>У: {product.carbohydrates}г</span>}
                 </div>
               )}
+              <div style={{ marginTop: 'var(--spacing-sm)', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ fontSize: '12px', padding: '4px 10px' }}
+                  disabled={translatingProductId === product.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleTranslateProduct(product.id);
+                  }}
+                >
+                  {translatingProductId === product.id ? "⏳ Перевод..." : "🌐 Перевести"}
+                </button>
+              </div>
             </div>
           ))}
         </div>

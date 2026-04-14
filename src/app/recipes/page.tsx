@@ -783,6 +783,8 @@ export default function RecipesPage() {
   const [showTranslationsSection, setShowTranslationsSection] = useState(true);
   const [showIngredientsSection, setShowIngredientsSection] = useState(true);
   const [showInstructionsSection, setShowInstructionsSection] = useState(true);
+  const [translating, setTranslating] = useState(false);
+  const [translateStatus, setTranslateStatus] = useState("");
 
   useEffect(() => {
     loadCuisines();
@@ -1480,6 +1482,29 @@ export default function RecipesPage() {
     }
   }
 
+  async function handleTranslateRecipe() {
+    if (!editId) return;
+    setTranslating(true);
+    setTranslateStatus("");
+    try {
+      const response = await fetch(`/api/admin/recipes/${editId}/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_language: form.source_language || "ru" }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setTranslateStatus(`❌ Ошибка: ${result.error}`);
+      } else {
+        setTranslateStatus(`✅ Переведено на ${result.languages?.length || 0} языков`);
+      }
+    } catch {
+      setTranslateStatus("❌ Ошибка соединения");
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   const selectedCuisine = cuisines.find(c => c.id === form.cuisine_id);
   const importPrompt = buildRecipeImportPrompt({
     selectedCuisine,
@@ -1727,8 +1752,32 @@ export default function RecipesPage() {
             >
               {loading ? 'Сохранение...' : 'Сохранить'}
             </button>
+            {editId && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleTranslateRecipe}
+                disabled={translating}
+                title="Перевести рецепт на все языки через DeepL"
+                style={{ minWidth: '130px' }}
+              >
+                {translating ? '⏳ Перевод...' : '🌐 Перевести'}
+              </button>
+            )}
           </div>
         </div>
+        {translateStatus && (
+          <div style={{
+            padding: '8px 16px',
+            fontSize: '13px',
+            color: translateStatus.startsWith('✅') ? '#22c55e' : '#ef4444',
+            background: 'var(--bg-surface)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-light)',
+            marginTop: '8px',
+          }}>
+            {translateStatus}
+          </div>
+        )}
 
         {/* Основное */}
         <div style={{
