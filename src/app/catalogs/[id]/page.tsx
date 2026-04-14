@@ -110,7 +110,7 @@ export default function CatalogDetailPage() {
     try {
       const [cuisineRes, recipesRes] = await Promise.all([
         fetch(`/api/admin/cuisines?id=${cuisineId}`),
-        fetch("/api/admin/recipes"),
+        fetch(`/api/admin/recipes?cuisine_id=${cuisineId}`),
       ]);
 
       const cuisineData = await cuisineRes.json();
@@ -118,7 +118,7 @@ export default function CatalogDetailPage() {
 
       const loadedCuisine = cuisineData.data?.[0] || null;
       setCuisine(loadedCuisine);
-      setRecipes((recipesData.data || []).filter((r: Recipe) => r.cuisine_id === cuisineId));
+      setRecipes(recipesData.data || []);
       if (loadedCuisine) {
         setEditForm({
           id: loadedCuisine.id || "",

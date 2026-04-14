@@ -81,17 +81,22 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search");
   const id = searchParams.get("id");
+  const cuisineId = searchParams.get("cuisine_id");
 
   let query = supabaseAdmin
     .from("recipes")
     .select("*")
-    .order("updated_at", { ascending: false })
-    .limit(50);
+    .order("updated_at", { ascending: false });
 
   if (id) {
     query = query.eq("id", id);
+  } else if (cuisineId) {
+    query = query.eq("cuisine_id", cuisineId);
   } else if (search) {
     query = query.ilike("title", `%${search}%`);
+    query = query.limit(50);
+  } else {
+    query = query.limit(50);
   }
 
   const { data, error } = await query;
