@@ -7,6 +7,7 @@ interface Cuisine {
   id: string;
   name: string;
   image_url?: string;
+  landing_image_url?: string;
   recipe_count?: number;
   is_user_generated?: boolean;
   owner_id?: string;
@@ -23,6 +24,7 @@ export default function CatalogsPage() {
     id: "",
     name: "",
     image_url: "",
+    landing_image_url: "",
   });
 
   useEffect(() => {
@@ -63,6 +65,7 @@ export default function CatalogsPage() {
         id: newCuisine.id.trim(),
         name: newCuisine.name.trim(),
         image_url: newCuisine.image_url.trim() || null,
+        landing_image_url: newCuisine.landing_image_url.trim() || null,
       };
 
       console.log("Отправка данных:", payload);
@@ -75,7 +78,7 @@ export default function CatalogsPage() {
 
       if (response.ok) {
         setShowAddModal(false);
-        setNewCuisine({ id: "", name: "", image_url: "" });
+        setNewCuisine({ id: "", name: "", image_url: "", landing_image_url: "" });
         loadCuisines();
       } else {
         const error = await response.json();
@@ -384,13 +387,24 @@ export default function CatalogsPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">URL изображения</label>
+              <label className="form-label">URL мини-изображения</label>
               <input
                 type="text"
                 className="input"
                 placeholder="https://..."
                 value={newCuisine.image_url}
                 onChange={(e) => setNewCuisine({ ...newCuisine, image_url: e.target.value })}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">URL landing-изображения</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="https://..."
+                value={newCuisine.landing_image_url}
+                onChange={(e) => setNewCuisine({ ...newCuisine, landing_image_url: e.target.value })}
               />
             </div>
 

@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       name: normalizeText(body.name),
       description: normalizeText(body.description),
       image_url: normalizeText(body.image_url),
+      landing_image_url: normalizeText(body.landing_image_url),
       catalog_id: normalizeText(body.catalog_id),
       type: normalizeText(body.type),
       price: parseNumber(body.price),

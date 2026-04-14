@@ -22,6 +22,7 @@ interface Cuisine {
   description?: string | null;
   translations?: Record<string, unknown> | null;
   image_url?: string;
+  landing_image_url?: string;
   catalog_id?: string | null;
   type?: string | null;
   price?: number | null;
@@ -51,6 +52,7 @@ export default function CatalogDetailPage() {
     name: "",
     description: "",
     image_url: "",
+    landing_image_url: "",
     catalog_id: "",
     type: "free",
     price: "",
@@ -123,6 +125,7 @@ export default function CatalogDetailPage() {
           name: loadedCuisine.name || "",
           description: loadedCuisine.description || "",
           image_url: loadedCuisine.image_url || "",
+          landing_image_url: loadedCuisine.landing_image_url || "",
           catalog_id: loadedCuisine.catalog_id || "",
           type: loadedCuisine.type || "free",
           price: loadedCuisine.price?.toString() || "",
@@ -202,6 +205,7 @@ export default function CatalogDetailPage() {
         name: editForm.name,
         description: editForm.description || null,
         image_url: editForm.image_url || null,
+        landing_image_url: editForm.landing_image_url || null,
         catalog_id: nextCatalogId || null,
         type: editForm.type || null,
         price: editForm.price ? parseFloat(editForm.price) : null,
@@ -370,11 +374,20 @@ export default function CatalogDetailPage() {
           </div>
 
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">URL изображения</label>
+            <label className="form-label">URL мини-изображения</label>
             <input
               className="input"
               value={editForm.image_url}
               onChange={(e) => setEditForm({ ...editForm, image_url: e.target.value })}
+            />
+          </div>
+
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">URL landing-изображения</label>
+            <input
+              className="input"
+              value={editForm.landing_image_url}
+              onChange={(e) => setEditForm({ ...editForm, landing_image_url: e.target.value })}
             />
           </div>
 
