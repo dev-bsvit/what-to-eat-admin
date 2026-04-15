@@ -632,6 +632,7 @@ export default function CatalogDetailPage() {
             cuisineId={cuisineId}
             cuisineName={editForm.name}
             cuisineDescription={editForm.description}
+            cuisinePrice={editForm.price ? `$${editForm.price}` : undefined}
           />
         </div>
       )}

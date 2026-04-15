@@ -219,15 +219,19 @@ interface Props {
   cuisineId: string;
   cuisineName: string;
   cuisineDescription?: string | null;
+  cuisinePrice?: string | null;
 }
 
-export default function LandingEditor({ cuisineId, cuisineName, cuisineDescription }: Props) {
+export default function LandingEditor({ cuisineId, cuisineName, cuisineDescription, cuisinePrice }: Props) {
   const [data, setData] = useState<LandingData | null>(null);
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [aiUserPrompt, setAiUserPrompt] = useState("");
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
 
@@ -255,6 +259,39 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
     const draft = defaultLanding(cuisineId, cuisineName, cuisineDescription);
     setData(draft);
     setJsonText(JSON.stringify(draft, null, 2));
+  }
+
+  async function generateWithAi() {
+    setIsAiLoading(true);
+    setSaveStatus("AI генерирует лендинг...");
+    try {
+      const res = await fetch("/api/admin/ai/landing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cuisineName,
+          cuisineDescription,
+          price: cuisinePrice || "$2",
+          userPrompt: aiUserPrompt,
+          existingJson: data ? JSON.stringify(data) : "",
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setSaveStatus(`AI ошибка: ${result.error}`);
+        return;
+      }
+      const generated = { ...result.data, cuisine_id: cuisineId };
+      setData(generated);
+      setJsonText(JSON.stringify(generated, null, 2));
+      setShowAiPrompt(false);
+      setAiUserPrompt("");
+      setSaveStatus("AI заполнил лендинг ✨ — проверь и сохрани");
+    } catch {
+      setSaveStatus("Ошибка соединения с AI");
+    } finally {
+      setIsAiLoading(false);
+    }
   }
 
   function switchToJson() {
@@ -337,6 +374,35 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 
   return (
     <div>
+      {/* ── AI Prompt panel ── */}
+      {showAiPrompt && (
+        <div style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "14px", padding: "16px", marginBottom: "14px" }}>
+          <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "8px" }}>✨ AI заполнит лендинг</div>
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "10px", lineHeight: 1.5 }}>
+            AI сгенерирует все секции на основе названия и описания каталога. Опционально уточни пожелания ниже.
+          </p>
+          <textarea
+            className="input"
+            rows={3}
+            placeholder={`Например: акцент на быстрые блюда до 30 минут, аудитория — занятые люди 25–40 лет, цвета в тёмно-зелёном стиле`}
+            value={aiUserPrompt}
+            onChange={(e) => setAiUserPrompt(e.target.value)}
+            style={{ fontFamily: "inherit", fontSize: "13px", marginBottom: "10px", resize: "vertical" }}
+          />
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              className="btn btn-primary"
+              onClick={generateWithAi}
+              disabled={isAiLoading}
+              style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", border: "none", opacity: isAiLoading ? 0.6 : 1 }}
+            >
+              {isAiLoading ? "Генерирую..." : "✨ Сгенерировать"}
+            </button>
+            <button className="btn btn-secondary" onClick={() => { setShowAiPrompt(false); setAiUserPrompt(""); }}>Отмена</button>
+          </div>
+        </div>
+      )}
+
       {/* ── Toolbar ── */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
         {/* Mode tabs */}
@@ -363,8 +429,17 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
           {data.is_published ? "Опубликован" : "Черновик"}
         </label>
 
+        {/* AI */}
+        <button
+          className="btn btn-secondary"
+          onClick={() => setShowAiPrompt((v) => !v)}
+          disabled={isAiLoading}
+          style={{ marginLeft: "auto", background: showAiPrompt ? "rgba(99,102,241,0.12)" : undefined, color: "#6366f1", borderColor: "rgba(99,102,241,0.3)", fontWeight: 700 }}
+        >
+          ✨ AI заполнить
+        </button>
         {/* Save */}
-        <button className="btn btn-primary" onClick={saveLanding} style={{ marginLeft: "auto" }}>Сохранить</button>
+        <button className="btn btn-primary" onClick={saveLanding}>Сохранить</button>
         <button className="btn btn-secondary" onClick={deleteLanding} style={{ color: "var(--accent-danger)" }}>Удалить</button>
 
         {saveStatus && <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{saveStatus}</span>}
