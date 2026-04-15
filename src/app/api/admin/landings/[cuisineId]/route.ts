@@ -24,7 +24,7 @@ export async function POST(
     const { cuisineId } = await params;
     const body = await request.json();
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       cuisine_id: cuisineId,
       preview_card: body.preview_card ?? {},
       hero: body.hero ?? {},
@@ -41,6 +41,11 @@ export async function POST(
       sort_order: body.sort_order ?? 0,
       updated_at: new Date().toISOString(),
     };
+
+    // Include translations if provided (e.g. after AI generation)
+    if (body.translations !== undefined) {
+      payload.translations = body.translations;
+    }
 
     const { data, error } = await supabaseAdmin
       .from("catalog_landings")

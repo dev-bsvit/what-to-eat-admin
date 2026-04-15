@@ -279,7 +279,7 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 
   async function generateWithAi() {
     setIsAiLoading(true);
-    setSaveStatus("AI генерирует лендинг...");
+    setSaveStatus("AI генерирует лендинг + переводит на 8 языков...");
     try {
       const res = await fetch("/api/admin/ai/landing", {
         method: "POST",
@@ -288,7 +288,7 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
           cuisineName,
           cuisineDescription,
           price: cuisinePrice || "$2",
-          language: activeLang,
+          language: "ru",
           userPrompt: aiUserPrompt,
           existingJson: data ? JSON.stringify(data) : "",
         }),
@@ -301,9 +301,13 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       const generated = { ...result.data, cuisine_id: cuisineId };
       setData(generated);
       setJsonText(JSON.stringify(generated, null, 2));
+      if (result.translations && Object.keys(result.translations).length > 0) {
+        setTranslations(result.translations);
+      }
       setShowAiPrompt(false);
       setAiUserPrompt("");
-      setSaveStatus("AI заполнил лендинг ✨ — проверь и сохрани");
+      const langCount = result.translations ? Object.keys(result.translations).length : 1;
+      setSaveStatus(`AI заполнил лендинг на ${langCount} языках ✨ — проверь и сохрани`);
     } catch {
       setSaveStatus("Ошибка соединения с AI");
     } finally {
@@ -338,17 +342,11 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
   }
 
   function buildCopyPrompt(): string {
-    const langLabel = TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label ?? activeLang;
-    const isBaseLang = activeLang === "ru";
-    const langNote = isBaseLang
-      ? `Язык контента: русский (${activeLang}). Все тексты пиши на русском.`
-      : `Язык контента: ${langLabel} (${activeLang}). Все тексты в JSON пиши ТОЛЬКО на ${langLabel} — не на русском, не на английском.`;
-
     return `Ты конвертируешь текст лендинга в строгий JSON для мобильного приложения.
 
 ЗАДАЧА: Возьми текст ниже и заполни JSON-структуру. Не придумывай ничего от себя — только переноси текст из описания в нужные поля. Если какого-то блока нет в тексте — оставь разумный минимум.
 
-ЯЗЫК: ${langNote}
+ЯЗЫК: Все тексты пиши на РУССКОМ языке. Переводы на другие 7 языков (en, de, fr, it, es, pt-BR, uk) будут сделаны автоматически через DeepL при вставке JSON в систему.
 
 ПРАВИЛА:
 - Верни ТОЛЬКО валидный JSON, без markdown-обёртки, без комментариев
@@ -500,10 +498,13 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
 
     setSaveStatus("Сохраняю...");
     try {
+      const savePayload = Object.keys(translations).length > 0
+        ? { ...payload, translations }
+        : payload;
       const res = await fetch(`/api/admin/landings/${cuisineId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(savePayload),
       });
       const result = await res.json();
       if (!res.ok) {
@@ -592,9 +593,9 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
       {/* ── AI Prompt panel ── */}
       {showAiPrompt && (
         <div style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "14px", padding: "16px", marginBottom: "14px" }}>
-          <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "8px" }}>✨ AI заполнит лендинг</div>
+          <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "8px" }}>✨ AI заполнит лендинг на всех 8 языках</div>
           <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "10px", lineHeight: 1.5 }}>
-            AI сгенерирует все секции на основе названия и описания каталога. Опционально уточни пожелания ниже.
+            AI создаст контент на русском, затем DeepL автоматически переведёт на English, Deutsch, Français, Italiano, Español, Português и Українська.
           </p>
           <textarea
             className="input"

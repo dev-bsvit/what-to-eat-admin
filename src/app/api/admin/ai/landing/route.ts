@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { translateLandingToAllLanguages } from "@/lib/translate";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
@@ -161,7 +162,7 @@ ${SCHEMA_DESCRIPTION}`;
       return NextResponse.json({ error: "Empty response from AI" }, { status: 500 });
     }
 
-    let parsed: unknown;
+    let parsed: Record<string, unknown>;
     try {
       const cleaned = stripMarkdown(content);
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
@@ -170,7 +171,15 @@ ${SCHEMA_DESCRIPTION}`;
       return NextResponse.json({ error: "Invalid JSON from AI", raw: content }, { status: 500 });
     }
 
-    return NextResponse.json({ data: parsed });
+    // Translate to all 7 other languages via DeepL right after AI generation
+    let translations: Record<string, unknown> = {};
+    try {
+      translations = await translateLandingToAllLanguages(parsed, language);
+    } catch (translateErr) {
+      console.warn("[ai/landing] DeepL translation failed, returning base only:", translateErr);
+    }
+
+    return NextResponse.json({ data: parsed, translations });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
