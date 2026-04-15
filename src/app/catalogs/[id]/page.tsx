@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import LandingEditor from "./LandingEditor";
 
 interface Recipe {
   id: string;
@@ -72,6 +73,7 @@ export default function CatalogDetailPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("");
+  const [activeTab, setActiveTab] = useState<"settings" | "landing" | "recipes">("settings");
 
   const resolveCatalogId = (name: string) => {
     const normalized = name.trim().toLowerCase();
@@ -318,7 +320,44 @@ export default function CatalogDetailPage() {
         </button>
       </div>
 
+      {/* Tab navigation */}
       <div style={{
+        display: 'flex',
+        gap: '4px',
+        marginBottom: 'var(--spacing-xl)',
+        background: 'var(--bg-hover)',
+        borderRadius: '12px',
+        padding: '4px',
+        width: 'fit-content',
+      }}>
+        {([
+          { key: 'settings', label: '⚙️ Настройки' },
+          { key: 'landing', label: `📄 Лендинг${editForm.type !== 'premium' ? ' (только premium)' : ''}` },
+          { key: 'recipes', label: `🍳 Рецепты (${recipes.length})` },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            style={{
+              padding: '8px 18px',
+              border: 'none',
+              borderRadius: '9px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 600,
+              background: activeTab === key ? 'var(--bg-surface)' : 'transparent',
+              color: activeTab === key ? 'var(--text-primary)' : 'var(--text-secondary)',
+              boxShadow: activeTab === key ? '0 1px 4px rgba(0,0,0,0.12)' : 'none',
+              transition: 'all 0.15s',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab: Settings */}
+      {activeTab === 'settings' && <div style={{
         background: 'var(--bg-surface)',
         borderRadius: 'var(--radius-lg)',
         border: '1px solid var(--border-light)',
@@ -579,8 +618,26 @@ export default function CatalogDetailPage() {
             Сохранить каталог
           </button>
         </div>
-      </div>
+      </div>}
 
+      {/* Tab: Landing */}
+      {activeTab === 'landing' && (
+        <div style={{ background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-light)', padding: 'var(--spacing-lg)' }}>
+          {editForm.type !== 'premium' && (
+            <div style={{ padding: '12px 16px', background: 'rgba(255,159,10,0.1)', borderRadius: '10px', color: '#ff9f0a', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
+              ⚠️ Лендинг показывается в приложении только для каталогов с типом «premium». Текущий тип: {editForm.type || 'не задан'}.
+            </div>
+          )}
+          <LandingEditor
+            cuisineId={cuisineId}
+            cuisineName={editForm.name}
+            cuisineDescription={editForm.description}
+          />
+        </div>
+      )}
+
+      {/* Tab: Recipes */}
+      {activeTab === 'recipes' && <>
       {/* Recipe Grid - small cards */}
       <div style={{
         display: 'grid',
@@ -709,6 +766,7 @@ export default function CatalogDetailPage() {
           </button>
         </div>
       )}
+      </>}
     </div>
   );
 }
