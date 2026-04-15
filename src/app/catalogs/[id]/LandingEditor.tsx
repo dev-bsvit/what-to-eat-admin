@@ -294,6 +294,129 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
     }
   }
 
+  function buildCopyPrompt(): string {
+    return `Ты конвертируешь текст лендинга в строгий JSON для мобильного приложения.
+
+ЗАДАЧА: Возьми текст ниже и заполни JSON-структуру. Не придумывай ничего от себя — только переноси текст из описания в нужные поля. Если какого-то блока нет в тексте — оставь разумный минимум.
+
+ПРАВИЛА:
+- Верни ТОЛЬКО валидный JSON, без markdown-обёртки, без комментариев
+- Все "id" поля замени на реальные UUID v4 (формат: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)
+- HEX-цвета без символа # (например: FF375F, не #FF375F)
+- Подбери цвета под тему каталога: pageBackgroundHex — очень тёмный (0B0B0D..1A1A2E), heroBackgroundHex — насыщенный под тему
+- "imageUrl" всегда null
+- "recipe_preview_ids" всегда []
+- "is_published" всегда false
+- "sort_order" всегда 0
+- Язык текста в JSON должен совпадать с языком исходного текста
+
+JSON-СТРУКТУРА (заполни все поля):
+{
+  "preview_card": {
+    "title": "короткий заголовок для карточки в списке (до 40 символов)",
+    "subtitle": "1-2 предложения о пользе",
+    "badges": ["метка 1", "метка 2", "метка 3"],
+    "imageUrl": null,
+    "backgroundHex": "RRGGBB",
+    "overlayHex": "RRGGBB",
+    "accentHex": "RRGGBB"
+  },
+  "hero": {
+    "title": "заголовок лендинга (можно с \\n для переноса)",
+    "subtitle": "1-2 предложения подзаголовка",
+    "badges": ["метка 1", "метка 2", "метка 3"],
+    "imageUrl": null,
+    "backgroundHex": "RRGGBB",
+    "overlayHex": "RRGGBB"
+  },
+  "inside_section": {
+    "title": "Что внутри",
+    "subtitle": "подзаголовок секции",
+    "items": [
+      {"id": "uuid", "emoji": "🍜", "title": "заголовок пункта или null", "text": "текст пункта"},
+      {"id": "uuid", "emoji": "🧾", "title": null, "text": "текст пункта"},
+      {"id": "uuid", "emoji": "🛒", "title": null, "text": "текст пункта"}
+    ]
+  },
+  "recipe_showcase": {
+    "title": "заголовок секции примеров рецептов",
+    "subtitle": "подзаголовок"
+  },
+  "audience_section": {
+    "title": "Кому подойдёт",
+    "subtitle": "подзаголовок",
+    "items": [
+      {"id": "uuid", "emoji": "✨", "title": null, "text": "текст"},
+      {"id": "uuid", "emoji": "⏱", "title": null, "text": "текст"},
+      {"id": "uuid", "emoji": "📚", "title": null, "text": "текст"}
+    ]
+  },
+  "transformation_section": {
+    "title": "Узнаёшь себя?",
+    "subtitle": null,
+    "beforeLabel": "До",
+    "afterLabel": "После",
+    "pairs": [
+      {"id": "uuid", "beforeText": "боль/проблема", "afterText": "решение"},
+      {"id": "uuid", "beforeText": "боль/проблема", "afterText": "решение"},
+      {"id": "uuid", "beforeText": "боль/проблема", "afterText": "решение"}
+    ]
+  },
+  "benefits_section": {
+    "title": "Преимущества",
+    "subtitle": "подзаголовок",
+    "cards": [
+      {"id": "uuid", "eyebrow": "короткая метка", "title": "заголовок карточки", "text": "описание"},
+      {"id": "uuid", "eyebrow": "короткая метка", "title": "заголовок карточки", "text": "описание"},
+      {"id": "uuid", "eyebrow": "короткая метка", "title": "заголовок карточки", "text": "описание"}
+    ]
+  },
+  "faq_items": [
+    {"id": "uuid", "question": "вопрос?", "answer": "ответ"},
+    {"id": "uuid", "question": "вопрос?", "answer": "ответ"},
+    {"id": "uuid", "question": "вопрос?", "answer": "ответ"},
+    {"id": "uuid", "question": "вопрос?", "answer": "ответ"}
+  ],
+  "purchase_cta": {
+    "title": "Открыть каталог",
+    "subtitle": "краткое описание что входит",
+    "priceBadge": "$4",
+    "features": [
+      {"id": "uuid", "icon": "book.closed", "title": "N рецептов", "subtitle": "внутри каталога"},
+      {"id": "uuid", "icon": "list.bullet.rectangle", "title": "Пошаговые инструкции", "subtitle": "без лишней теории"},
+      {"id": "uuid", "icon": "arrow.clockwise", "title": "Обновления", "subtitle": "бесплатно навсегда"}
+    ],
+    "buttonTitle": "Открыть каталог"
+  },
+  "theme": {
+    "pageBackgroundHex": "0E0E11",
+    "heroBackgroundHex": "RRGGBB",
+    "heroOverlayHex": "RRGGBB",
+    "cardBackgroundHex": "F2F2F7",
+    "accentHex": "RRGGBB",
+    "secondaryAccentHex": "F4D000",
+    "textOnDarkHex": "FFFFFF"
+  },
+  "recipe_preview_ids": [],
+  "is_published": false,
+  "sort_order": 0
+}
+
+ТЕКСТ ЛЕНДИНГА:
+${cuisineName ? `Каталог: ${cuisineName}` : ""}
+${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
+
+[ВСТАВЬ СЮДА ПОЛНЫЙ ТЕКСТ ЛЕНДИНГА]`;
+  }
+
+  function copyPrompt() {
+    const prompt = buildCopyPrompt();
+    navigator.clipboard.writeText(prompt).then(() => {
+      setSaveStatus("Промпт скопирован ✅ — вставь в AI-чат");
+      setTimeout(() => setSaveStatus(""), 4000);
+    });
+  }
+
   function switchToJson() {
     if (data) setJsonText(JSON.stringify(data, null, 2));
     setJsonError("");
@@ -429,12 +552,21 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
           {data.is_published ? "Опубликован" : "Черновик"}
         </label>
 
+        {/* Copy prompt */}
+        <button
+          className="btn btn-secondary"
+          onClick={copyPrompt}
+          style={{ marginLeft: "auto", fontSize: "13px" }}
+          title="Скопировать промпт для заполнения через внешний AI-чат"
+        >
+          📋 Копировать промпт
+        </button>
         {/* AI */}
         <button
           className="btn btn-secondary"
           onClick={() => setShowAiPrompt((v) => !v)}
           disabled={isAiLoading}
-          style={{ marginLeft: "auto", background: showAiPrompt ? "rgba(99,102,241,0.12)" : undefined, color: "#6366f1", borderColor: "rgba(99,102,241,0.3)", fontWeight: 700 }}
+          style={{ background: showAiPrompt ? "rgba(99,102,241,0.12)" : undefined, color: "#6366f1", borderColor: "rgba(99,102,241,0.3)", fontWeight: 700 }}
         >
           ✨ AI заполнить
         </button>
