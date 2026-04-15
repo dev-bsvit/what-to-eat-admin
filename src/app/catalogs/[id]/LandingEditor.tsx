@@ -288,6 +288,7 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
           cuisineName,
           cuisineDescription,
           price: cuisinePrice || "$2",
+          language: activeLang,
           userPrompt: aiUserPrompt,
           existingJson: data ? JSON.stringify(data) : "",
         }),
@@ -337,9 +338,17 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
   }
 
   function buildCopyPrompt(): string {
+    const langLabel = TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label ?? activeLang;
+    const isBaseLang = activeLang === "ru";
+    const langNote = isBaseLang
+      ? `Язык контента: русский (${activeLang}). Все тексты пиши на русском.`
+      : `Язык контента: ${langLabel} (${activeLang}). Все тексты в JSON пиши ТОЛЬКО на ${langLabel} — не на русском, не на английском.`;
+
     return `Ты конвертируешь текст лендинга в строгий JSON для мобильного приложения.
 
 ЗАДАЧА: Возьми текст ниже и заполни JSON-структуру. Не придумывай ничего от себя — только переноси текст из описания в нужные поля. Если какого-то блока нет в тексте — оставь разумный минимум.
+
+ЯЗЫК: ${langNote}
 
 ПРАВИЛА:
 - Верни ТОЛЬКО валидный JSON, без markdown-обёртки, без комментариев
@@ -350,7 +359,6 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 - "recipe_preview_ids" всегда []
 - "is_published" всегда false
 - "sort_order" всегда 0
-- Язык текста в JSON должен совпадать с языком исходного текста
 
 JSON-СТРУКТУРА (заполни все поля):
 {

@@ -94,6 +94,7 @@ export async function POST(request: Request) {
     const cuisineName: string = String(body.cuisineName || "").trim();
     const cuisineDescription: string = String(body.cuisineDescription || "").trim();
     const price: string = String(body.price || "$2").trim();
+    const language: string = String(body.language || "ru").trim();
     const userPrompt: string = String(body.userPrompt || "").trim();
     const existingJson: string = String(body.existingJson || "").trim();
 
@@ -101,10 +102,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "cuisineName is required" }, { status: 400 });
     }
 
+    const languageNames: Record<string, string> = {
+      ru: "русском", en: "English", de: "Deutsch", fr: "français",
+      it: "italiano", es: "español", "pt-BR": "português (BR)", uk: "українській",
+    };
+    const langInstruction = language === "ru"
+      ? "Все тексты пиши на русском языке."
+      : `Все тексты в JSON пиши ТОЛЬКО на языке: ${languageNames[language] ?? language}. Не используй русский и не используй английский — только указанный язык.`;
+
     const contextBlock = [
       `Название каталога: ${cuisineName}`,
       cuisineDescription ? `Описание: ${cuisineDescription}` : "",
       `Цена: ${price}`,
+      `Язык контента: ${language} — ${langInstruction}`,
       userPrompt ? `Дополнительные пожелания: ${userPrompt}` : "",
       existingJson ? `Текущие данные (используй как основу, улучши): ${existingJson.slice(0, 2000)}` : "",
     ].filter(Boolean).join("\n");
@@ -114,6 +124,7 @@ export async function POST(request: Request) {
 ${contextBlock}
 
 ТРЕБОВАНИЯ:
+- ${langInstruction}
 - Текст живой, дружелюбный, без канцелярита
 - Заголовки короткие и ёмкие
 - Секции transformation_section и benefits_section — обязательны, они продают
