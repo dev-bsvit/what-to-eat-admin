@@ -1,6 +1,17 @@
 "use client";
 import { useState, useEffect } from "react";
 
+const TRANSLATION_LANGUAGES = [
+  { code: "ru", label: "Русский" },
+  { code: "en", label: "English" },
+  { code: "de", label: "Deutsch" },
+  { code: "fr", label: "Français" },
+  { code: "it", label: "Italiano" },
+  { code: "es", label: "Español" },
+  { code: "pt-BR", label: "Português" },
+  { code: "uk", label: "Українська" },
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types (camelCase inside JSONB — matches Swift Codable without custom keys)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,6 +243,9 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showAiPrompt, setShowAiPrompt] = useState(false);
   const [aiUserPrompt, setAiUserPrompt] = useState("");
+  const [activeLang, setActiveLang] = useState("ru");
+  const [translations, setTranslations] = useState<Record<string, unknown>>({});
+  const [isTranslating, setIsTranslating] = useState(false);
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
 
@@ -244,9 +258,11 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       if (loaded) {
         setData(loaded);
         setJsonText(JSON.stringify(loaded, null, 2));
+        setTranslations(((loaded as unknown) as Record<string, unknown>).translations as Record<string, unknown> ?? {});
       } else {
         setData(null);
         setJsonText("");
+        setTranslations({});
       }
     } catch {
       setData(null);
@@ -291,6 +307,32 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       setSaveStatus("Ошибка соединения с AI");
     } finally {
       setIsAiLoading(false);
+    }
+  }
+
+  async function translateAll() {
+    setIsTranslating(true);
+    setSaveStatus("Переводю на 7 языков через DeepL...");
+    try {
+      // First save current state so DB has latest content
+      await saveLanding();
+      const res = await fetch(`/api/admin/landings/${cuisineId}/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_language: activeLang }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setSaveStatus(`Ошибка перевода: ${result.error}`);
+        return;
+      }
+      // Reload to get updated translations
+      await loadLanding();
+      setSaveStatus(`Переведено на ${result.languages_translated?.length ?? 7} языков ✅`);
+    } catch {
+      setSaveStatus("Ошибка соединения при переводе");
+    } finally {
+      setIsTranslating(false);
     }
   }
 
@@ -497,6 +539,48 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
 
   return (
     <div>
+      {/* ── Language tabs ── */}
+      <div style={{ marginBottom: "14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 600, marginRight: "4px" }}>Язык:</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", flex: 1 }}>
+            {TRANSLATION_LANGUAGES.map(({ code, label }) => {
+              const hasTranslation = code !== "ru" && !!translations[code];
+              return (
+                <button
+                  key={code}
+                  onClick={() => setActiveLang(code)}
+                  style={{
+                    padding: "5px 12px", border: "1px solid", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600,
+                    background: activeLang === code ? "var(--accent-primary, #007aff)" : "var(--bg-surface)",
+                    color: activeLang === code ? "#fff" : hasTranslation ? "var(--accent-primary, #007aff)" : "var(--text-secondary)",
+                    borderColor: activeLang === code ? "var(--accent-primary, #007aff)" : hasTranslation ? "rgba(0,122,255,0.35)" : "var(--border-light)",
+                  }}
+                >
+                  {label}{hasTranslation ? " ✓" : ""}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            className="btn btn-secondary"
+            onClick={translateAll}
+            disabled={isTranslating}
+            style={{ fontSize: "12px", whiteSpace: "nowrap", opacity: isTranslating ? 0.6 : 1 }}
+            title="Автоматически перевести все секции через DeepL на 7 языков"
+          >
+            {isTranslating ? "Перевожу..." : "🌐 Перевести через DeepL"}
+          </button>
+        </div>
+        {activeLang !== "ru" && (
+          <div style={{ marginTop: "8px", padding: "8px 12px", background: "rgba(0,122,255,0.06)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+            {translations[activeLang]
+              ? `Показан перевод на ${TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label}. Базовый контент редактируется на вкладке «Русский».`
+              : `Перевод на ${TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label} ещё не создан. Нажми «Перевести через DeepL».`}
+          </div>
+        )}
+      </div>
+
       {/* ── AI Prompt panel ── */}
       {showAiPrompt && (
         <div style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "14px", padding: "16px", marginBottom: "14px" }}>
