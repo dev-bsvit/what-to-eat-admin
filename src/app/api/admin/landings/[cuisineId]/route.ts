@@ -1,18 +1,41 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  isLandingTableMissingError,
+  LANDING_TABLE_MISSING_WARNING,
+} from "@/lib/landingErrors";
+import { resolveLandingTable } from "@/lib/landingStorage";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ cuisineId: string }> }
 ) {
   const { cuisineId } = await params;
+  const landingTable = await resolveLandingTable();
+  if (!landingTable) {
+    return NextResponse.json({
+      data: null,
+      warning: LANDING_TABLE_MISSING_WARNING,
+      message: "Таблица catalog_landings отсутствует в текущей БД.",
+    });
+  }
+
   const { data, error } = await supabaseAdmin
-    .from("catalog_landings")
+    .from(landingTable)
     .select("*")
     .eq("cuisine_id", cuisineId)
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    if (isLandingTableMissingError(error)) {
+      return NextResponse.json({
+        data: null,
+        warning: LANDING_TABLE_MISSING_WARNING,
+        message: "Таблица catalog_landings отсутствует в текущей БД.",
+      });
+    }
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
   return NextResponse.json({ data });
 }
 
@@ -23,6 +46,14 @@ export async function POST(
   try {
     const { cuisineId } = await params;
     const body = await request.json();
+    const landingTable = await resolveLandingTable();
+    if (!landingTable) {
+      return NextResponse.json({
+        data: null,
+        warning: LANDING_TABLE_MISSING_WARNING,
+        message: "Таблица catalog_landings отсутствует в текущей БД.",
+      });
+    }
 
     const payload: Record<string, unknown> = {
       cuisine_id: cuisineId,
@@ -48,12 +79,21 @@ export async function POST(
     }
 
     const { data, error } = await supabaseAdmin
-      .from("catalog_landings")
+      .from(landingTable)
       .upsert(payload, { onConflict: "cuisine_id" })
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) {
+      if (isLandingTableMissingError(error)) {
+        return NextResponse.json({
+          data: null,
+          warning: LANDING_TABLE_MISSING_WARNING,
+          message: "Таблица catalog_landings отсутствует в текущей БД.",
+        });
+      }
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json({ data });
   } catch (error) {
     return NextResponse.json(
@@ -68,11 +108,29 @@ export async function DELETE(
   { params }: { params: Promise<{ cuisineId: string }> }
 ) {
   const { cuisineId } = await params;
+  const landingTable = await resolveLandingTable();
+  if (!landingTable) {
+    return NextResponse.json({
+      success: true,
+      warning: LANDING_TABLE_MISSING_WARNING,
+      message: "Таблица catalog_landings отсутствует в текущей БД.",
+    });
+  }
+
   const { error } = await supabaseAdmin
-    .from("catalog_landings")
+    .from(landingTable)
     .delete()
     .eq("cuisine_id", cuisineId);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    if (isLandingTableMissingError(error)) {
+      return NextResponse.json({
+        success: true,
+        warning: LANDING_TABLE_MISSING_WARNING,
+        message: "Таблица catalog_landings отсутствует в текущей БД.",
+      });
+    }
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
   return NextResponse.json({ success: true });
 }

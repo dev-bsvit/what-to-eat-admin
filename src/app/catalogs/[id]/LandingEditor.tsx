@@ -1,5 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
+import {
+  isLandingTableMissingError,
+  LANDING_TABLE_MISSING_WARNING,
+} from "@/lib/landingErrors";
 
 const TRANSLATION_LANGUAGES = [
   { code: "ru", label: "Русский" },
@@ -50,6 +54,12 @@ interface LandingData {
   recipe_preview_ids: string[];
   is_published: boolean;
   sort_order: number;
+}
+
+interface LocalLandingDraft {
+  data: LandingData;
+  translations: Record<string, unknown>;
+  updatedAt: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,7 +121,7 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
       textOnDarkHex: "FFFFFF",
     },
     recipe_preview_ids: [],
-    is_published: false,
+    is_published: true,
     sort_order: 0,
   };
 }
@@ -249,32 +259,117 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
 
+  const localDraftKey = `catalog-landing-draft:${cuisineId}`;
+
+  const applyLanding = (nextData: LandingData, nextTranslations: Record<string, unknown> = {}) => {
+    setData(nextData);
+    setJsonText(JSON.stringify(nextData, null, 2));
+    setTranslations(nextTranslations);
+  };
+
+  const createDraftData = () => defaultLanding(cuisineId, cuisineName, cuisineDescription);
+
+  const readLocalDraft = (): LocalLandingDraft | null => {
+    try {
+      const raw = localStorage.getItem(localDraftKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as LocalLandingDraft;
+      if (!parsed?.data) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeLocalDraft = (nextData: LandingData, nextTranslations: Record<string, unknown>) => {
+    try {
+      const payload: LocalLandingDraft = {
+        data: nextData,
+        translations: nextTranslations,
+        updatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(localDraftKey, JSON.stringify(payload));
+    } catch {
+      // ignore localStorage errors
+    }
+  };
+
+  const clearLocalDraft = () => {
+    try {
+      localStorage.removeItem(localDraftKey);
+    } catch {
+      // ignore localStorage errors
+    }
+  };
+
+  const isTableMissingResponse = (result: any) => {
+    if (result?.warning === LANDING_TABLE_MISSING_WARNING) return true;
+    return isLandingTableMissingError({ message: result?.error, code: result?.code });
+  };
+
   async function loadLanding() {
     setIsLoading(true);
     try {
       const res = await fetch(`/api/admin/landings/${cuisineId}`);
-      const result = await res.json();
-      const loaded = result.data as LandingData | null;
+      const result = await res.json().catch(() => ({}));
+
+      const tableMissing = isTableMissingResponse(result);
+      const loaded = (result?.data ?? null) as LandingData | null;
+
       if (loaded) {
-        setData(loaded);
-        setJsonText(JSON.stringify(loaded, null, 2));
-        setTranslations(((loaded as unknown) as Record<string, unknown>).translations as Record<string, unknown> ?? {});
+        const loadedTranslations = ((loaded as unknown) as Record<string, unknown>).translations as Record<string, unknown> ?? {};
+        applyLanding(loaded, loadedTranslations);
+        writeLocalDraft(loaded, loadedTranslations);
+        setSaveStatus("");
+        return;
+      }
+
+      if (tableMissing) {
+        const localDraft = readLocalDraft();
+        if (localDraft) {
+          applyLanding(localDraft.data, localDraft.translations ?? {});
+          setSaveStatus("⚠️ Таблица catalog_landings не найдена. Загружен локальный черновик браузера.");
+          return;
+        }
+
+        const draft = createDraftData();
+        applyLanding(draft, {});
+        setSaveStatus("⚠️ Таблица catalog_landings не найдена. Создан локальный черновик.");
+        return;
+      }
+
+      if (!res.ok) {
+        setData(null);
+        setJsonText("");
+        setTranslations({});
+        setSaveStatus(`Ошибка загрузки: ${result?.error ?? "не удалось загрузить лендинг"}`);
+        return;
+      }
+
+      const draft = createDraftData();
+      applyLanding(draft, {});
+      setSaveStatus("Лендинг в БД не найден. Создан новый черновик.");
+    } catch {
+      const localDraft = readLocalDraft();
+      if (localDraft) {
+        applyLanding(localDraft.data, localDraft.translations ?? {});
+        setSaveStatus("⚠️ Ошибка сети. Загружен локальный черновик браузера.");
       } else {
         setData(null);
         setJsonText("");
         setTranslations({});
+        setSaveStatus("Ошибка загрузки лендинга");
       }
-    } catch {
-      setData(null);
     } finally {
       setIsLoading(false);
     }
   }
 
   function createDraft() {
-    const draft = defaultLanding(cuisineId, cuisineName, cuisineDescription);
-    setData(draft);
-    setJsonText(JSON.stringify(draft, null, 2));
+    const draft = createDraftData();
+    applyLanding(draft, {});
+    writeLocalDraft(draft, {});
+    setSaveStatus("Черновик создан");
   }
 
   async function generateWithAi() {
@@ -317,18 +412,28 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 
   async function translateAll() {
     setIsTranslating(true);
-    setSaveStatus("Переводю на 7 языков через DeepL...");
+    setSaveStatus("Перевожу на 7 языков через DeepL...");
     try {
       // First save current state so DB has latest content
-      await saveLanding();
+      const saveResult = await saveLanding();
+      if (saveResult !== "saved") {
+        if (saveResult === "local") {
+          setSaveStatus("Перевод через DeepL недоступен: лендинг сохранён только локально (таблица catalog_landings не найдена).");
+        }
+        return;
+      }
       const res = await fetch(`/api/admin/landings/${cuisineId}/translate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source_language: activeLang }),
       });
-      const result = await res.json();
+      const result = await res.json().catch(() => ({}));
       if (!res.ok) {
         setSaveStatus(`Ошибка перевода: ${result.error}`);
+        return;
+      }
+      if (isTableMissingResponse(result)) {
+        setSaveStatus("Перевод через DeepL недоступен: таблица catalog_landings не найдена в текущей БД.");
         return;
       }
       // Reload to get updated translations
@@ -482,7 +587,7 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
     }
   }
 
-  async function saveLanding() {
+  async function saveLanding(): Promise<"saved" | "local" | "error"> {
     let payload = data;
     if (mode === "json") {
       try {
@@ -491,10 +596,10 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
         setJsonError("");
       } catch {
         setJsonError("Невалидный JSON — исправь ошибки перед сохранением");
-        return;
+        return "error";
       }
     }
-    if (!payload) return;
+    if (!payload) return "error";
 
     setSaveStatus("Сохраняю...");
     try {
@@ -506,24 +611,51 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(savePayload),
       });
-      const result = await res.json();
+      const result = await res.json().catch(() => ({}));
+
+      if (isTableMissingResponse(result)) {
+        applyLanding(payload, translations);
+        writeLocalDraft(payload, translations);
+        setSaveStatus(`Сохранено локально ⚠️ (${new Date().toLocaleTimeString()}) — таблица catalog_landings не найдена в БД`);
+        return "local";
+      }
+
       if (!res.ok) {
         setSaveStatus(`Ошибка: ${result.error ?? "не удалось сохранить"}`);
-        return;
+        return "error";
       }
-      setData(result.data);
-      setJsonText(JSON.stringify(result.data, null, 2));
-      setSaveStatus(`Готово ✅ (${new Date().toLocaleTimeString()})`);
+
+      if (result.data) {
+        const saved = result.data as LandingData;
+        const savedTranslations = ((saved as unknown) as Record<string, unknown>).translations as Record<string, unknown> ?? translations;
+        applyLanding(saved, savedTranslations);
+        writeLocalDraft(saved, savedTranslations);
+      } else {
+        applyLanding(payload, translations);
+        writeLocalDraft(payload, translations);
+      }
+
+      if ((result.data as LandingData | undefined)?.is_published === false || payload.is_published === false) {
+        setSaveStatus(`Готово ✅ (${new Date().toLocaleTimeString()}) — лендинг не опубликован и не показывается в приложении`);
+      } else {
+        setSaveStatus(`Готово ✅ (${new Date().toLocaleTimeString()})`);
+      }
+      return "saved";
     } catch {
-      setSaveStatus("Ошибка соединения");
+      applyLanding(payload, translations);
+      writeLocalDraft(payload, translations);
+      setSaveStatus(`Сохранено локально ⚠️ (${new Date().toLocaleTimeString()}) — ошибка соединения`);
+      return "local";
     }
   }
 
   async function deleteLanding() {
     if (!confirm("Удалить лендинг? Это действие необратимо.")) return;
-    await fetch(`/api/admin/landings/${cuisineId}`, { method: "DELETE" });
+    await fetch(`/api/admin/landings/${cuisineId}`, { method: "DELETE" }).catch(() => null);
+    clearLocalDraft();
     setData(null);
     setJsonText("");
+    setTranslations({});
     setSaveStatus("Удалено");
   }
 
@@ -644,6 +776,11 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
           <input type="checkbox" checked={data.is_published} onChange={(e) => upd({ is_published: e.target.checked })} style={{ width: "15px", height: "15px" }} />
           {data.is_published ? "Опубликован" : "Черновик"}
         </label>
+        {!data.is_published && (
+          <span style={{ fontSize: "12px", color: "#ff9f0a", fontWeight: 600 }}>
+            В приложении показываются только опубликованные лендинги
+          </span>
+        )}
 
         {/* Copy prompt */}
         <button

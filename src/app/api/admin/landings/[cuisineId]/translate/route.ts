@@ -11,6 +11,11 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { translateLandingToAllLanguages } from "@/lib/translate";
+import {
+  isLandingTableMissingError,
+  LANDING_TABLE_MISSING_WARNING,
+} from "@/lib/landingErrors";
+import { resolveLandingTable } from "@/lib/landingStorage";
 
 export async function POST(
   request: Request,
@@ -20,13 +25,30 @@ export async function POST(
     const { cuisineId } = await params;
     const body = await request.json();
     const sourceLang: string = body.source_language || "ru";
+    const landingTable = await resolveLandingTable();
+
+    if (!landingTable) {
+      return NextResponse.json({
+        success: false,
+        warning: LANDING_TABLE_MISSING_WARNING,
+        message: "Таблица catalog_landings отсутствует в текущей БД.",
+      });
+    }
 
     // ── 1. Load landing ────────────────────────────────────────────────────
     const { data: landing, error } = await supabaseAdmin
-      .from("catalog_landings")
+      .from(landingTable)
       .select("*")
       .eq("cuisine_id", cuisineId)
       .maybeSingle();
+
+    if (error && isLandingTableMissingError(error)) {
+      return NextResponse.json({
+        success: false,
+        warning: LANDING_TABLE_MISSING_WARNING,
+        message: "Таблица catalog_landings отсутствует в текущей БД.",
+      });
+    }
 
     if (error || !landing) {
       return NextResponse.json({ error: "Landing not found" }, { status: 404 });
@@ -40,12 +62,20 @@ export async function POST(
 
     // ── 3. Save translations back to DB ───────────────────────────────────
     const { error: saveError } = await supabaseAdmin
-      .from("catalog_landings")
+      .from(landingTable)
       .update({
         translations: allTranslations,
         updated_at: new Date().toISOString(),
       })
       .eq("cuisine_id", cuisineId);
+
+    if (saveError && isLandingTableMissingError(saveError)) {
+      return NextResponse.json({
+        success: false,
+        warning: LANDING_TABLE_MISSING_WARNING,
+        message: "Таблица catalog_landings отсутствует в текущей БД.",
+      });
+    }
 
     if (saveError) {
       return NextResponse.json({ error: saveError.message }, { status: 500 });
