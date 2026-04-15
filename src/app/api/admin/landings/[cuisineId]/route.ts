@@ -3,12 +3,13 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { cuisineId: string } }
+  { params }: { params: Promise<{ cuisineId: string }> }
 ) {
+  const { cuisineId } = await params;
   const { data, error } = await supabaseAdmin
     .from("catalog_landings")
     .select("*")
-    .eq("cuisine_id", params.cuisineId)
+    .eq("cuisine_id", cuisineId)
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -17,13 +18,14 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  { params }: { params: { cuisineId: string } }
+  { params }: { params: Promise<{ cuisineId: string }> }
 ) {
   try {
+    const { cuisineId } = await params;
     const body = await request.json();
 
     const payload = {
-      cuisine_id: params.cuisineId,
+      cuisine_id: cuisineId,
       preview_card: body.preview_card ?? {},
       hero: body.hero ?? {},
       inside_section: body.inside_section ?? null,
@@ -58,12 +60,13 @@ export async function POST(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { cuisineId: string } }
+  { params }: { params: Promise<{ cuisineId: string }> }
 ) {
+  const { cuisineId } = await params;
   const { error } = await supabaseAdmin
     .from("catalog_landings")
     .delete()
-    .eq("cuisine_id", params.cuisineId);
+    .eq("cuisine_id", cuisineId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ success: true });
