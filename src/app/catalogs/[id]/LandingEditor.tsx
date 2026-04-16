@@ -946,88 +946,98 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
           {/* ── Секция «Что внутри» ── */}
           <SectionBlock title="📦 Секция «Что внутри»" open={!!data.inside_section}>
             <OptionalSection label="Секция" enabled={!!data.inside_section} onToggle={(v) => upd({ inside_section: v ? { title: "Что внутри", subtitle: "", items: [] } : null })}>
-              <Field label="Заголовок">
-                <input className="input" value={data.inside_section!.title} onChange={(e) => upd({ inside_section: { ...data.inside_section!, title: e.target.value } })} />
-              </Field>
-              <Field label="Подзаголовок">
-                <input className="input" value={data.inside_section!.subtitle ?? ""} onChange={(e) => upd({ inside_section: { ...data.inside_section!, subtitle: e.target.value } })} />
-              </Field>
-              <BulletItemsList items={data.inside_section!.items} onChange={(items) => upd({ inside_section: { ...data.inside_section!, items } })} />
+              {data.inside_section && <>
+                <Field label="Заголовок">
+                  <input className="input" value={data.inside_section.title} onChange={(e) => upd({ inside_section: { ...data.inside_section!, title: e.target.value } })} />
+                </Field>
+                <Field label="Подзаголовок">
+                  <input className="input" value={data.inside_section.subtitle ?? ""} onChange={(e) => upd({ inside_section: { ...data.inside_section!, subtitle: e.target.value } })} />
+                </Field>
+                <BulletItemsList items={data.inside_section.items} onChange={(items) => upd({ inside_section: { ...data.inside_section!, items } })} />
+              </>}
             </OptionalSection>
           </SectionBlock>
 
           {/* ── Витрина рецептов ── */}
           <SectionBlock title="🍽️ Витрина рецептов" open={!!data.recipe_showcase}>
             <OptionalSection label="Секция" enabled={!!data.recipe_showcase} onToggle={(v) => upd({ recipe_showcase: v ? { title: "Примеры рецептов", subtitle: "" } : null })}>
-              <Field label="Заголовок">
-                <input className="input" value={data.recipe_showcase!.title} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, title: e.target.value } })} />
-              </Field>
-              <Field label="Подзаголовок">
-                <input className="input" value={data.recipe_showcase!.subtitle ?? ""} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, subtitle: e.target.value } })} />
-              </Field>
+              {data.recipe_showcase && <>
+                <Field label="Заголовок">
+                  <input className="input" value={data.recipe_showcase.title} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, title: e.target.value } })} />
+                </Field>
+                <Field label="Подзаголовок">
+                  <input className="input" value={data.recipe_showcase.subtitle ?? ""} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, subtitle: e.target.value } })} />
+                </Field>
+              </>}
             </OptionalSection>
           </SectionBlock>
 
           {/* ── Аудитория ── */}
           <SectionBlock title="👥 Секция «Кому подойдёт»" open={!!data.audience_section}>
             <OptionalSection label="Секция" enabled={!!data.audience_section} onToggle={(v) => upd({ audience_section: v ? { title: "Кому подойдёт", subtitle: "", items: [] } : null })}>
-              <Field label="Заголовок">
-                <input className="input" value={data.audience_section!.title} onChange={(e) => upd({ audience_section: { ...data.audience_section!, title: e.target.value } })} />
-              </Field>
-              <Field label="Подзаголовок">
-                <input className="input" value={data.audience_section!.subtitle ?? ""} onChange={(e) => upd({ audience_section: { ...data.audience_section!, subtitle: e.target.value } })} />
-              </Field>
-              <BulletItemsList items={data.audience_section!.items} onChange={(items) => upd({ audience_section: { ...data.audience_section!, items } })} />
+              {data.audience_section && <>
+                <Field label="Заголовок">
+                  <input className="input" value={data.audience_section.title} onChange={(e) => upd({ audience_section: { ...data.audience_section!, title: e.target.value } })} />
+                </Field>
+                <Field label="Подзаголовок">
+                  <input className="input" value={data.audience_section.subtitle ?? ""} onChange={(e) => upd({ audience_section: { ...data.audience_section!, subtitle: e.target.value } })} />
+                </Field>
+                <BulletItemsList items={data.audience_section.items} onChange={(items) => upd({ audience_section: { ...data.audience_section!, items } })} />
+              </>}
             </OptionalSection>
           </SectionBlock>
 
           {/* ── Трансформация ── */}
           <SectionBlock title="🔄 Секция «Узнаёшь себя?»" open={!!data.transformation_section}>
             <OptionalSection label="Секция" enabled={!!data.transformation_section} onToggle={(v) => upd({ transformation_section: v ? { title: "Узнаёшь себя?", beforeLabel: "До", afterLabel: "После", pairs: [] } : null })}>
-              <Field label="Заголовок">
-                <input className="input" value={data.transformation_section!.title} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, title: e.target.value } })} />
-              </Field>
-              <Field label="Метка «До»">
-                <input className="input" value={data.transformation_section!.beforeLabel ?? ""} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, beforeLabel: e.target.value } })} />
-              </Field>
-              <Field label="Метка «После»">
-                <input className="input" value={data.transformation_section!.afterLabel ?? ""} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, afterLabel: e.target.value } })} />
-              </Field>
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label className="form-label">Пары «До → После»</label>
-                {data.transformation_section!.pairs.map((pair, i) => (
-                  <div key={pair.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
-                    <input className="input" placeholder="До..." value={pair.beforeText} onChange={(e) => { const p = [...data.transformation_section!.pairs]; p[i] = { ...pair, beforeText: e.target.value }; upd({ transformation_section: { ...data.transformation_section!, pairs: p } }); }} />
-                    <input className="input" placeholder="После..." value={pair.afterText} onChange={(e) => { const p = [...data.transformation_section!.pairs]; p[i] = { ...pair, afterText: e.target.value }; upd({ transformation_section: { ...data.transformation_section!, pairs: p } }); }} />
-                    <button className="btn btn-secondary" onClick={() => upd({ transformation_section: { ...data.transformation_section!, pairs: data.transformation_section!.pairs.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
-                  </div>
-                ))}
-                <button className="btn btn-secondary" onClick={() => upd({ transformation_section: { ...data.transformation_section!, pairs: [...data.transformation_section!.pairs, { id: uid(), beforeText: "", afterText: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить пару</button>
-              </div>
+              {data.transformation_section && <>
+                <Field label="Заголовок">
+                  <input className="input" value={data.transformation_section.title} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, title: e.target.value } })} />
+                </Field>
+                <Field label="Метка «До»">
+                  <input className="input" value={data.transformation_section.beforeLabel ?? ""} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, beforeLabel: e.target.value } })} />
+                </Field>
+                <Field label="Метка «После»">
+                  <input className="input" value={data.transformation_section.afterLabel ?? ""} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, afterLabel: e.target.value } })} />
+                </Field>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className="form-label">Пары «До → После»</label>
+                  {data.transformation_section.pairs.map((pair, i) => (
+                    <div key={pair.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
+                      <input className="input" placeholder="До..." value={pair.beforeText} onChange={(e) => { const p = [...data.transformation_section!.pairs]; p[i] = { ...pair, beforeText: e.target.value }; upd({ transformation_section: { ...data.transformation_section!, pairs: p } }); }} />
+                      <input className="input" placeholder="После..." value={pair.afterText} onChange={(e) => { const p = [...data.transformation_section!.pairs]; p[i] = { ...pair, afterText: e.target.value }; upd({ transformation_section: { ...data.transformation_section!, pairs: p } }); }} />
+                      <button className="btn btn-secondary" onClick={() => upd({ transformation_section: { ...data.transformation_section!, pairs: data.transformation_section!.pairs.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
+                    </div>
+                  ))}
+                  <button className="btn btn-secondary" onClick={() => upd({ transformation_section: { ...data.transformation_section!, pairs: [...data.transformation_section!.pairs, { id: uid(), beforeText: "", afterText: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить пару</button>
+                </div>
+              </>}
             </OptionalSection>
           </SectionBlock>
 
           {/* ── Преимущества ── */}
           <SectionBlock title="✨ Преимущества" open={!!data.benefits_section}>
             <OptionalSection label="Секция" enabled={!!data.benefits_section} onToggle={(v) => upd({ benefits_section: v ? { title: "Преимущества", subtitle: "", cards: [] } : null })}>
-              <Field label="Заголовок">
-                <input className="input" value={data.benefits_section!.title} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, title: e.target.value } })} />
-              </Field>
-              <Field label="Подзаголовок">
-                <input className="input" value={data.benefits_section!.subtitle ?? ""} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, subtitle: e.target.value } })} />
-              </Field>
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label className="form-label">Карточки</label>
-                {data.benefits_section!.cards.map((card, i) => (
-                  <div key={card.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
-                    <input className="input" placeholder="Метка" value={card.eyebrow ?? ""} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, eyebrow: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
-                    <input className="input" placeholder="Заголовок *" value={card.title} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, title: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
-                    <input className="input" placeholder="Текст *" value={card.text} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, text: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
-                    <button className="btn btn-secondary" onClick={() => upd({ benefits_section: { ...data.benefits_section!, cards: data.benefits_section!.cards.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
-                  </div>
-                ))}
-                <button className="btn btn-secondary" onClick={() => upd({ benefits_section: { ...data.benefits_section!, cards: [...data.benefits_section!.cards, { id: uid(), eyebrow: "", title: "", text: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить карточку</button>
-              </div>
+              {data.benefits_section && <>
+                <Field label="Заголовок">
+                  <input className="input" value={data.benefits_section.title} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, title: e.target.value } })} />
+                </Field>
+                <Field label="Подзаголовок">
+                  <input className="input" value={data.benefits_section.subtitle ?? ""} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, subtitle: e.target.value } })} />
+                </Field>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className="form-label">Карточки</label>
+                  {data.benefits_section.cards.map((card, i) => (
+                    <div key={card.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
+                      <input className="input" placeholder="Метка" value={card.eyebrow ?? ""} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, eyebrow: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
+                      <input className="input" placeholder="Заголовок *" value={card.title} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, title: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
+                      <input className="input" placeholder="Текст *" value={card.text} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, text: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
+                      <button className="btn btn-secondary" onClick={() => upd({ benefits_section: { ...data.benefits_section!, cards: data.benefits_section!.cards.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
+                    </div>
+                  ))}
+                  <button className="btn btn-secondary" onClick={() => upd({ benefits_section: { ...data.benefits_section!, cards: [...data.benefits_section!.cards, { id: uid(), eyebrow: "", title: "", text: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить карточку</button>
+                </div>
+              </>}
             </OptionalSection>
           </SectionBlock>
 
@@ -1048,30 +1058,32 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
           {/* ── CTA покупки ── */}
           <SectionBlock title="💰 Кнопка покупки (CTA)" open={!!data.purchase_cta}>
             <OptionalSection label="Секция" enabled={!!data.purchase_cta} onToggle={(v) => upd({ purchase_cta: v ? { title: "Открыть каталог", subtitle: "", priceBadge: "$2", features: [], buttonTitle: "Открыть каталог" } : null })}>
-              <Field label="Заголовок">
-                <input className="input" value={data.purchase_cta!.title} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, title: e.target.value } })} />
-              </Field>
-              <Field label="Подзаголовок">
-                <input className="input" value={data.purchase_cta!.subtitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, subtitle: e.target.value } })} />
-              </Field>
-              <Field label="Значок цены">
-                <input className="input" placeholder="$2 / $4.99" value={data.purchase_cta!.priceBadge ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, priceBadge: e.target.value } })} />
-              </Field>
-              <Field label="Текст кнопки">
-                <input className="input" value={data.purchase_cta!.buttonTitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, buttonTitle: e.target.value } })} />
-              </Field>
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label className="form-label">Фичи (SF-иконка, заголовок, подзаголовок)</label>
-                {data.purchase_cta!.features.map((f, i) => (
-                  <div key={f.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
-                    <input className="input" placeholder="SF-иконка" value={f.icon ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, icon: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} style={{ fontFamily: "monospace", fontSize: "12px" }} />
-                    <input className="input" placeholder="Заголовок *" value={f.title} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, title: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
-                    <input className="input" placeholder="Подзаголовок" value={f.subtitle ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, subtitle: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
-                    <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: data.purchase_cta!.features.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
-                  </div>
-                ))}
-                <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: [...data.purchase_cta!.features, { id: uid(), icon: "", title: "", subtitle: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить</button>
-              </div>
+              {data.purchase_cta && <>
+                <Field label="Заголовок">
+                  <input className="input" value={data.purchase_cta.title} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, title: e.target.value } })} />
+                </Field>
+                <Field label="Подзаголовок">
+                  <input className="input" value={data.purchase_cta.subtitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, subtitle: e.target.value } })} />
+                </Field>
+                <Field label="Значок цены">
+                  <input className="input" placeholder="$2 / $4.99" value={data.purchase_cta.priceBadge ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, priceBadge: e.target.value } })} />
+                </Field>
+                <Field label="Текст кнопки">
+                  <input className="input" value={data.purchase_cta.buttonTitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, buttonTitle: e.target.value } })} />
+                </Field>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className="form-label">Фичи (SF-иконка, заголовок, подзаголовок)</label>
+                  {data.purchase_cta.features.map((f, i) => (
+                    <div key={f.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
+                      <input className="input" placeholder="SF-иконка" value={f.icon ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, icon: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} style={{ fontFamily: "monospace", fontSize: "12px" }} />
+                      <input className="input" placeholder="Заголовок *" value={f.title} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, title: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
+                      <input className="input" placeholder="Подзаголовок" value={f.subtitle ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, subtitle: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
+                      <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: data.purchase_cta!.features.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
+                    </div>
+                  ))}
+                  <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: [...data.purchase_cta!.features, { id: uid(), icon: "", title: "", subtitle: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить</button>
+                </div>
+              </>}
             </OptionalSection>
           </SectionBlock>
         </div>
