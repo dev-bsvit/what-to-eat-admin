@@ -121,7 +121,7 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
       textOnDarkHex: "FFFFFF",
     },
     recipe_preview_ids: [],
-    is_published: true,
+    is_published: false,
     sort_order: 0,
   };
 }
@@ -142,10 +142,18 @@ function SectionBlock({ title, children, open = true }: { title: string; childre
   );
 }
 
-function Field({ label, span, children }: { label: string; span?: boolean; children: React.ReactNode }) {
+function Field({ label, hint, span, counter, children }: { label: string; hint?: string; span?: boolean; counter?: { current: number; max: number }; children: React.ReactNode }) {
   return (
     <div className="form-group" style={span ? { gridColumn: "1 / -1" } : undefined}>
-      <label className="form-label">{label}</label>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "4px" }}>
+        <label className="form-label" style={{ marginBottom: 0 }}>{label}</label>
+        {counter && (
+          <span style={{ fontSize: "11px", color: counter.current > counter.max ? "var(--accent-danger)" : "var(--text-secondary)", fontFamily: "monospace" }}>
+            {counter.current}/{counter.max}
+          </span>
+        )}
+      </div>
+      {hint && <p style={{ fontSize: "11px", color: "var(--text-secondary)", marginBottom: "6px", marginTop: 0 }}>{hint}</p>}
       {children}
     </div>
   );
@@ -176,12 +184,12 @@ function ColorField({ label, value, onChange }: { label: string; value?: string;
   );
 }
 
-function BadgesField({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+function BadgesField({ label = "Значки", value, onChange }: { label?: string; value: string[]; onChange: (v: string[]) => void }) {
   const [newBadge, setNewBadge] = useState("");
   const add = () => { if (newBadge.trim()) { onChange([...value, newBadge.trim()]); setNewBadge(""); } };
   return (
     <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-      <label className="form-label">Значки</label>
+      <label className="form-label">{label}</label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px", minHeight: "28px" }}>
         {value.map((badge, i) => (
           <span key={i} style={{ background: "var(--bg-hover)", padding: "4px 10px", borderRadius: "20px", fontSize: "13px", display: "flex", alignItems: "center", gap: "4px" }}>
@@ -190,29 +198,37 @@ function BadgesField({ value, onChange }: { value: string[]; onChange: (v: strin
           </span>
         ))}
       </div>
-      <div style={{ display: "flex", gap: "8px" }}>
-        <input
-          className="input"
-          placeholder="Новый значок — нажми Enter"
-          value={newBadge}
-          onChange={(e) => setNewBadge(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { add(); e.preventDefault(); } }}
-          style={{ flex: 1 }}
-        />
-        <button className="btn btn-secondary" type="button" onClick={add}>+</button>
-      </div>
+      <input
+        className="input"
+        placeholder="Новый значок — Enter для добавления"
+        value={newBadge}
+        onChange={(e) => setNewBadge(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { add(); e.preventDefault(); } }}
+      />
     </div>
   );
 }
 
-function OptionalToggle({ label, enabled, onToggle }: { label: string; enabled: boolean; onToggle: (v: boolean) => void }) {
+function OptionalSection({ label, enabled, onToggle, children }: { label: string; enabled: boolean; onToggle: (v: boolean) => void; children?: React.ReactNode }) {
   return (
-    <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: "10px", paddingBottom: "12px", borderBottom: "1px solid var(--border-light)", marginBottom: "4px" }}>
-      <label style={{ fontWeight: 600, fontSize: "13px", color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}>
-        <input type="checkbox" checked={enabled} onChange={(e) => onToggle(e.target.checked)} style={{ width: "16px", height: "16px", cursor: "pointer" }} />
-        {label}
-      </label>
-    </div>
+    <>
+      <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: "12px", borderBottom: `1px solid ${enabled ? "var(--border-light)" : "transparent"}`, marginBottom: enabled ? "4px" : 0 }}>
+        <span style={{ fontWeight: 600, fontSize: "13px", color: "var(--text-secondary)" }}>{label}</span>
+        <button
+          type="button"
+          onClick={() => onToggle(!enabled)}
+          style={{
+            padding: "4px 12px", borderRadius: "6px", border: "1px solid", cursor: "pointer", fontSize: "12px", fontWeight: 700,
+            background: enabled ? "rgba(52,199,89,0.1)" : "var(--bg-hover)",
+            color: enabled ? "#34c759" : "var(--text-secondary)",
+            borderColor: enabled ? "rgba(52,199,89,0.4)" : "var(--border-light)",
+          }}
+        >
+          {enabled ? "Включено" : "Выключено"}
+        </button>
+      </div>
+      {enabled && children}
+    </>
   );
 }
 
@@ -221,9 +237,9 @@ function BulletItemsList({ items, onChange }: { items: BulletItem[]; onChange: (
     <div style={{ gridColumn: "1 / -1" }}>
       <label className="form-label">Пункты</label>
       {items.map((item, i) => (
-        <div key={item.id} style={{ display: "grid", gridTemplateColumns: "60px 1fr 1fr auto", gap: "6px", marginBottom: "6px", alignItems: "start" }}>
-          <input className="input" placeholder="😊" value={item.emoji ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, emoji: e.target.value }; onChange(next); }} style={{ fontSize: "20px", textAlign: "center" }} />
-          <input className="input" placeholder="Заголовок (необяз.)" value={item.title ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, title: e.target.value }; onChange(next); }} />
+        <div key={item.id} style={{ display: "grid", gridTemplateColumns: "52px 1fr 2fr auto", gap: "6px", marginBottom: "6px", alignItems: "start" }}>
+          <input className="input" placeholder="😊" value={item.emoji ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, emoji: e.target.value }; onChange(next); }} style={{ fontSize: "18px", textAlign: "center" }} />
+          <input className="input" placeholder="Заголовок" value={item.title ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, title: e.target.value }; onChange(next); }} />
           <input className="input" placeholder="Текст *" value={item.text} onChange={(e) => { const next = [...items]; next[i] = { ...item, text: e.target.value }; onChange(next); }} />
           <button className="btn btn-secondary" onClick={() => onChange(items.filter((_, j) => j !== i))} style={{ color: "var(--accent-danger)", minWidth: "36px" }}>×</button>
         </div>
@@ -447,11 +463,12 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
   }
 
   function buildCopyPrompt(): string {
-    return `Ты конвертируешь текст лендинга в строгий JSON для мобильного приложения.
+    return `Ты создаёшь JSON-контент для лендинга платного кулинарного каталога в мобильном приложении.
 
-ЗАДАЧА: Возьми текст ниже и заполни JSON-структуру. Не придумывай ничего от себя — только переноси текст из описания в нужные поля. Если какого-то блока нет в тексте — оставь разумный минимум.
+ЗАДАЧА: Сгенерируй заполненный JSON на основе названия и описания каталога. Все тексты должны быть живыми, дружелюбными, продающими.
 
-ЯЗЫК: Все тексты пиши на РУССКОМ языке. Переводы на другие 7 языков (en, de, fr, it, es, pt-BR, uk) будут сделаны автоматически через DeepL при вставке JSON в систему.
+ЯЗЫК: Все тексты пиши на РУССКОМ языке.
+После вставки JSON в систему нужно нажать «🌐 Перевести через DeepL» — переводы на 7 языков (en, de, fr, it, es, pt-BR, uk) создаются отдельной кнопкой в интерфейсе.
 
 ПРАВИЛА:
 - Верни ТОЛЬКО валидный JSON, без markdown-обёртки, без комментариев
@@ -752,7 +769,7 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
       )}
 
       {/* ── Toolbar ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
         {/* Mode tabs */}
         <div style={{ display: "flex", background: "var(--bg-hover)", borderRadius: "8px", padding: "3px", gap: "2px" }}>
           {(["form", "json"] as const).map((m) => (
@@ -771,16 +788,19 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
           ))}
         </div>
 
-        {/* Published badge */}
-        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 600, padding: "6px 12px", background: data.is_published ? "rgba(52,199,89,0.12)" : "var(--bg-hover)", borderRadius: "8px", color: data.is_published ? "#34c759" : "var(--text-secondary)" }}>
-          <input type="checkbox" checked={data.is_published} onChange={(e) => upd({ is_published: e.target.checked })} style={{ width: "15px", height: "15px" }} />
-          {data.is_published ? "Опубликован" : "Черновик"}
-        </label>
-        {!data.is_published && (
-          <span style={{ fontSize: "12px", color: "#ff9f0a", fontWeight: 600 }}>
-            В приложении показываются только опубликованные лендинги
-          </span>
-        )}
+        {/* Publish toggle */}
+        <button
+          onClick={() => upd({ is_published: !data.is_published })}
+          style={{
+            padding: "6px 14px", borderRadius: "8px", border: "1px solid", cursor: "pointer", fontSize: "13px", fontWeight: 700,
+            background: data.is_published ? "rgba(52,199,89,0.12)" : "var(--bg-hover)",
+            color: data.is_published ? "#34c759" : "var(--text-secondary)",
+            borderColor: data.is_published ? "rgba(52,199,89,0.4)" : "var(--border-light)",
+          }}
+          title={data.is_published ? "Нажми чтобы скрыть из приложения" : "Нажми чтобы опубликовать в приложении"}
+        >
+          {data.is_published ? "● Опубликован" : "○ Черновик"}
+        </button>
 
         {/* Copy prompt */}
         <button
@@ -789,8 +809,9 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
           style={{ marginLeft: "auto", fontSize: "13px" }}
           title="Скопировать промпт для заполнения через внешний AI-чат"
         >
-          📋 Копировать промпт
+          📋 Скопировать промпт
         </button>
+
         {/* AI */}
         <button
           className="btn btn-secondary"
@@ -800,12 +821,35 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
         >
           ✨ AI заполнить
         </button>
+
         {/* Save */}
         <button className="btn btn-primary" onClick={saveLanding}>Сохранить</button>
-        <button className="btn btn-secondary" onClick={deleteLanding} style={{ color: "var(--accent-danger)" }}>Удалить</button>
 
-        {saveStatus && <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{saveStatus}</span>}
+        {/* Delete — separated visually */}
+        <button
+          className="btn btn-secondary"
+          onClick={deleteLanding}
+          style={{ color: "var(--accent-danger)", borderColor: "rgba(255,59,48,0.3)", marginLeft: "4px" }}
+        >
+          Удалить
+        </button>
       </div>
+
+      {/* ── Status bar ── */}
+      {saveStatus && (
+        <div style={{
+          marginBottom: "12px", padding: "8px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 500,
+          background: saveStatus.includes("⚠️") ? "rgba(255,159,10,0.1)" : saveStatus.includes("Ошибка") ? "rgba(255,59,48,0.1)" : "rgba(52,199,89,0.1)",
+          color: saveStatus.includes("⚠️") ? "#ff9f0a" : saveStatus.includes("Ошибка") ? "var(--accent-danger)" : "var(--text-secondary)",
+          border: "1px solid",
+          borderColor: saveStatus.includes("⚠️") ? "rgba(255,159,10,0.25)" : saveStatus.includes("Ошибка") ? "rgba(255,59,48,0.25)" : "rgba(52,199,89,0.2)",
+        }}>
+          {saveStatus}
+          {mode === "json" && !saveStatus.includes("⚠️") && saveStatus.includes("Готово") && Object.keys(translations).length < 2 && (
+            <span style={{ marginLeft: "12px", color: "#ff9f0a" }}>— переводов нет, нажми 🌐 Перевести через DeepL</span>
+          )}
+        </div>
+      )}
 
       {jsonError && (
         <div style={{ padding: "10px 14px", background: "rgba(255,59,48,0.1)", borderRadius: "8px", color: "var(--accent-danger)", fontSize: "13px", marginBottom: "12px" }}>
@@ -815,178 +859,227 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
 
       {/* ── JSON mode ── */}
       {mode === "json" && (
-        <textarea
-          value={jsonText}
-          onChange={(e) => setJsonText(e.target.value)}
-          style={{ width: "100%", minHeight: "600px", fontFamily: "monospace", fontSize: "12px", padding: "16px", background: "var(--bg-surface)", border: "1px solid var(--border-light)", borderRadius: "var(--radius-md)", color: "var(--text-primary)", resize: "vertical", lineHeight: 1.5 }}
-          spellCheck={false}
-        />
+        <>
+          <div style={{ padding: "8px 12px", background: "rgba(0,122,255,0.06)", border: "1px solid rgba(0,122,255,0.15)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)", marginBottom: "8px" }}>
+            Вставь JSON → <strong>Сохранить</strong> → нажми <strong>🌐 Перевести через DeepL</strong> чтобы создать переводы на 7 языков
+          </div>
+          <textarea
+            value={jsonText}
+            onChange={(e) => setJsonText(e.target.value)}
+            style={{ width: "100%", minHeight: "600px", fontFamily: "monospace", fontSize: "12px", padding: "16px", background: "var(--bg-surface)", border: "1px solid var(--border-light)", borderRadius: "var(--radius-md)", color: "var(--text-primary)", resize: "vertical", lineHeight: 1.5 }}
+            spellCheck={false}
+          />
+        </>
       )}
 
       {/* ── Form mode ── */}
       {mode === "form" && (
         <div>
-          {/* Статус и порядок */}
-          <SectionBlock title="⚙️ Статус и порядок">
-            <Field label="Порядок отображения">
+          {/* ── Заголовок и описание (синхронизируются в preview_card + hero) ── */}
+          <SectionBlock title="📝 Заголовок и описание">
+            <Field
+              label="Заголовок *"
+              hint="Используется и в карточке каталога (список), и в шапке лендинга"
+              counter={{ current: data.preview_card.title.length, max: 40 }}
+            >
+              <input
+                className="input"
+                value={data.preview_card.title}
+                onChange={(e) => upd({
+                  preview_card: { ...data.preview_card, title: e.target.value },
+                  hero: { ...data.hero, title: e.target.value },
+                })}
+              />
+            </Field>
+            <Field label="Подзаголовок" hint="Краткое описание — что получит покупатель" span>
+              <textarea
+                className="input"
+                rows={2}
+                value={data.preview_card.subtitle ?? ""}
+                onChange={(e) => upd({
+                  preview_card: { ...data.preview_card, subtitle: e.target.value },
+                  hero: { ...data.hero, subtitle: e.target.value },
+                })}
+              />
+            </Field>
+            <Field label="URL изображения" hint="Обложка каталога (карточка + hero)" span>
+              <input
+                className="input"
+                placeholder="https://..."
+                value={data.preview_card.imageUrl ?? ""}
+                onChange={(e) => upd({
+                  preview_card: { ...data.preview_card, imageUrl: e.target.value },
+                  hero: { ...data.hero, imageUrl: e.target.value },
+                })}
+              />
+            </Field>
+          </SectionBlock>
+
+          {/* ── Цвета оформления (единый блок для всех трёх структур) ── */}
+          <SectionBlock title="🎨 Цвета оформления">
+            <ColorField
+              label="Основной фон (карточка + hero)"
+              value={data.preview_card.backgroundHex}
+              onChange={(v) => upd({
+                preview_card: { ...data.preview_card, backgroundHex: v },
+                hero: { ...data.hero, backgroundHex: v },
+                theme: { ...data.theme, heroBackgroundHex: v },
+              })}
+            />
+            <ColorField
+              label="Оверлей (поверх фона)"
+              value={data.preview_card.overlayHex}
+              onChange={(v) => upd({
+                preview_card: { ...data.preview_card, overlayHex: v },
+                hero: { ...data.hero, overlayHex: v },
+                theme: { ...data.theme, heroOverlayHex: v },
+              })}
+            />
+            <ColorField
+              label="Акцент (кнопки, значки)"
+              value={data.preview_card.accentHex ?? data.theme.accentHex}
+              onChange={(v) => upd({
+                preview_card: { ...data.preview_card, accentHex: v },
+                theme: { ...data.theme, accentHex: v },
+              })}
+            />
+            <ColorField
+              label="Доп. акцент (жёлтый/золотой)"
+              value={data.theme.secondaryAccentHex}
+              onChange={(v) => upd({ theme: { ...data.theme, secondaryAccentHex: v } })}
+            />
+            <ColorField
+              label="Фон страницы (очень тёмный)"
+              value={data.theme.pageBackgroundHex}
+              onChange={(v) => upd({ theme: { ...data.theme, pageBackgroundHex: v } })}
+            />
+            <ColorField
+              label="Фон карточек контента"
+              value={data.theme.cardBackgroundHex}
+              onChange={(v) => upd({ theme: { ...data.theme, cardBackgroundHex: v } })}
+            />
+          </SectionBlock>
+
+          {/* ── Значки карточки в списке ── */}
+          <SectionBlock title="🃏 Значки карточки (список в Исследовать)" open={false}>
+            <BadgesField
+              label="Значки на карточке (макс. 3)"
+              value={data.preview_card.badges}
+              onChange={(v) => upd({ preview_card: { ...data.preview_card, badges: v } })}
+            />
+          </SectionBlock>
+
+          {/* ── Значки Hero ── */}
+          <SectionBlock title="🦸 Значки Hero (верх лендинга)" open={false}>
+            <BadgesField
+              label="Значки в шапке лендинга (макс. 3)"
+              value={data.hero.badges}
+              onChange={(v) => upd({ hero: { ...data.hero, badges: v } })}
+            />
+          </SectionBlock>
+
+          {/* ── Порядок ── */}
+          <SectionBlock title="⚙️ Порядок отображения" open={false}>
+            <Field label="Порядок (меньше = выше в списке)">
               <input className="input" type="number" value={data.sort_order} onChange={(e) => upd({ sort_order: parseInt(e.target.value) || 0 })} style={{ maxWidth: "120px" }} />
             </Field>
           </SectionBlock>
 
-          {/* Превью карточка */}
-          <SectionBlock title="🃏 Превью карточка (список в Исследовать)">
-            <Field label="Заголовок *">
-              <input className="input" value={data.preview_card.title} onChange={(e) => upd({ preview_card: { ...data.preview_card, title: e.target.value } })} />
-            </Field>
-            <Field label="Подзаголовок">
-              <input className="input" value={data.preview_card.subtitle ?? ""} onChange={(e) => upd({ preview_card: { ...data.preview_card, subtitle: e.target.value } })} />
-            </Field>
-            <Field label="URL изображения" span>
-              <input className="input" placeholder="https://..." value={data.preview_card.imageUrl ?? ""} onChange={(e) => upd({ preview_card: { ...data.preview_card, imageUrl: e.target.value } })} />
-            </Field>
-            <BadgesField value={data.preview_card.badges} onChange={(v) => upd({ preview_card: { ...data.preview_card, badges: v } })} />
-            <ColorField label="Фон" value={data.preview_card.backgroundHex} onChange={(v) => upd({ preview_card: { ...data.preview_card, backgroundHex: v } })} />
-            <ColorField label="Оверлей" value={data.preview_card.overlayHex} onChange={(v) => upd({ preview_card: { ...data.preview_card, overlayHex: v } })} />
-            <ColorField label="Акцент" value={data.preview_card.accentHex} onChange={(v) => upd({ preview_card: { ...data.preview_card, accentHex: v } })} />
-          </SectionBlock>
-
-          {/* Hero секция */}
-          <SectionBlock title="🦸 Hero секция (верх лендинга)">
-            <Field label="Заголовок *">
-              <input className="input" value={data.hero.title} onChange={(e) => upd({ hero: { ...data.hero, title: e.target.value } })} />
-            </Field>
-            <Field label="Подзаголовок">
-              <textarea className="input" rows={2} value={data.hero.subtitle ?? ""} onChange={(e) => upd({ hero: { ...data.hero, subtitle: e.target.value } })} />
-            </Field>
-            <Field label="URL изображения" span>
-              <input className="input" placeholder="https://..." value={data.hero.imageUrl ?? ""} onChange={(e) => upd({ hero: { ...data.hero, imageUrl: e.target.value } })} />
-            </Field>
-            <BadgesField value={data.hero.badges} onChange={(v) => upd({ hero: { ...data.hero, badges: v } })} />
-            <ColorField label="Фон" value={data.hero.backgroundHex} onChange={(v) => upd({ hero: { ...data.hero, backgroundHex: v } })} />
-            <ColorField label="Оверлей" value={data.hero.overlayHex} onChange={(v) => upd({ hero: { ...data.hero, overlayHex: v } })} />
-          </SectionBlock>
-
-          {/* Тема */}
-          <SectionBlock title="🎨 Тема оформления">
-            <ColorField label="Фон страницы" value={data.theme.pageBackgroundHex} onChange={(v) => upd({ theme: { ...data.theme, pageBackgroundHex: v } })} />
-            <ColorField label="Фон hero" value={data.theme.heroBackgroundHex} onChange={(v) => upd({ theme: { ...data.theme, heroBackgroundHex: v } })} />
-            <ColorField label="Оверлей hero" value={data.theme.heroOverlayHex} onChange={(v) => upd({ theme: { ...data.theme, heroOverlayHex: v } })} />
-            <ColorField label="Фон карточек" value={data.theme.cardBackgroundHex} onChange={(v) => upd({ theme: { ...data.theme, cardBackgroundHex: v } })} />
-            <ColorField label="Акцент" value={data.theme.accentHex} onChange={(v) => upd({ theme: { ...data.theme, accentHex: v } })} />
-            <ColorField label="Доп. акцент" value={data.theme.secondaryAccentHex} onChange={(v) => upd({ theme: { ...data.theme, secondaryAccentHex: v } })} />
-            <ColorField label="Текст на тёмном" value={data.theme.textOnDarkHex} onChange={(v) => upd({ theme: { ...data.theme, textOnDarkHex: v } })} />
-          </SectionBlock>
-
-          {/* Секция "Что внутри" */}
+          {/* ── Секция «Что внутри» ── */}
           <SectionBlock title="📦 Секция «Что внутри»" open={!!data.inside_section}>
-            <OptionalToggle label="Включить секцию" enabled={!!data.inside_section} onToggle={(v) => upd({ inside_section: v ? { title: "Что внутри", subtitle: "", items: [] } : null })} />
-            {data.inside_section && (
-              <>
-                <Field label="Заголовок">
-                  <input className="input" value={data.inside_section.title} onChange={(e) => upd({ inside_section: { ...data.inside_section!, title: e.target.value } })} />
-                </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" value={data.inside_section.subtitle ?? ""} onChange={(e) => upd({ inside_section: { ...data.inside_section!, subtitle: e.target.value } })} />
-                </Field>
-                <BulletItemsList items={data.inside_section.items} onChange={(items) => upd({ inside_section: { ...data.inside_section!, items } })} />
-              </>
-            )}
+            <OptionalSection label="Секция" enabled={!!data.inside_section} onToggle={(v) => upd({ inside_section: v ? { title: "Что внутри", subtitle: "", items: [] } : null })}>
+              <Field label="Заголовок">
+                <input className="input" value={data.inside_section!.title} onChange={(e) => upd({ inside_section: { ...data.inside_section!, title: e.target.value } })} />
+              </Field>
+              <Field label="Подзаголовок">
+                <input className="input" value={data.inside_section!.subtitle ?? ""} onChange={(e) => upd({ inside_section: { ...data.inside_section!, subtitle: e.target.value } })} />
+              </Field>
+              <BulletItemsList items={data.inside_section!.items} onChange={(items) => upd({ inside_section: { ...data.inside_section!, items } })} />
+            </OptionalSection>
           </SectionBlock>
 
-          {/* Витрина рецептов */}
+          {/* ── Витрина рецептов ── */}
           <SectionBlock title="🍽️ Витрина рецептов" open={!!data.recipe_showcase}>
-            <OptionalToggle label="Включить секцию" enabled={!!data.recipe_showcase} onToggle={(v) => upd({ recipe_showcase: v ? { title: "Примеры рецептов", subtitle: "" } : null })} />
-            {data.recipe_showcase && (
-              <>
-                <Field label="Заголовок">
-                  <input className="input" value={data.recipe_showcase.title} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, title: e.target.value } })} />
-                </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" value={data.recipe_showcase.subtitle ?? ""} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, subtitle: e.target.value } })} />
-                </Field>
-              </>
-            )}
+            <OptionalSection label="Секция" enabled={!!data.recipe_showcase} onToggle={(v) => upd({ recipe_showcase: v ? { title: "Примеры рецептов", subtitle: "" } : null })}>
+              <Field label="Заголовок">
+                <input className="input" value={data.recipe_showcase!.title} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, title: e.target.value } })} />
+              </Field>
+              <Field label="Подзаголовок">
+                <input className="input" value={data.recipe_showcase!.subtitle ?? ""} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, subtitle: e.target.value } })} />
+              </Field>
+            </OptionalSection>
           </SectionBlock>
 
-          {/* Аудитория */}
+          {/* ── Аудитория ── */}
           <SectionBlock title="👥 Секция «Кому подойдёт»" open={!!data.audience_section}>
-            <OptionalToggle label="Включить секцию" enabled={!!data.audience_section} onToggle={(v) => upd({ audience_section: v ? { title: "Кому подойдёт", subtitle: "", items: [] } : null })} />
-            {data.audience_section && (
-              <>
-                <Field label="Заголовок">
-                  <input className="input" value={data.audience_section.title} onChange={(e) => upd({ audience_section: { ...data.audience_section!, title: e.target.value } })} />
-                </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" value={data.audience_section.subtitle ?? ""} onChange={(e) => upd({ audience_section: { ...data.audience_section!, subtitle: e.target.value } })} />
-                </Field>
-                <BulletItemsList items={data.audience_section.items} onChange={(items) => upd({ audience_section: { ...data.audience_section!, items } })} />
-              </>
-            )}
+            <OptionalSection label="Секция" enabled={!!data.audience_section} onToggle={(v) => upd({ audience_section: v ? { title: "Кому подойдёт", subtitle: "", items: [] } : null })}>
+              <Field label="Заголовок">
+                <input className="input" value={data.audience_section!.title} onChange={(e) => upd({ audience_section: { ...data.audience_section!, title: e.target.value } })} />
+              </Field>
+              <Field label="Подзаголовок">
+                <input className="input" value={data.audience_section!.subtitle ?? ""} onChange={(e) => upd({ audience_section: { ...data.audience_section!, subtitle: e.target.value } })} />
+              </Field>
+              <BulletItemsList items={data.audience_section!.items} onChange={(items) => upd({ audience_section: { ...data.audience_section!, items } })} />
+            </OptionalSection>
           </SectionBlock>
 
-          {/* Трансформация */}
-          <SectionBlock title="🔄 Секция «Узнаешь себя?»" open={!!data.transformation_section}>
-            <OptionalToggle label="Включить секцию" enabled={!!data.transformation_section} onToggle={(v) => upd({ transformation_section: v ? { title: "Узнаешь себя?", beforeLabel: "До", afterLabel: "После", pairs: [] } : null })} />
-            {data.transformation_section && (
-              <>
-                <Field label="Заголовок">
-                  <input className="input" value={data.transformation_section.title} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, title: e.target.value } })} />
-                </Field>
-                <Field label="Метка «До»">
-                  <input className="input" value={data.transformation_section.beforeLabel ?? ""} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, beforeLabel: e.target.value } })} />
-                </Field>
-                <Field label="Метка «После»">
-                  <input className="input" value={data.transformation_section.afterLabel ?? ""} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, afterLabel: e.target.value } })} />
-                </Field>
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <label className="form-label">Пары «До → После»</label>
-                  {data.transformation_section.pairs.map((pair, i) => (
-                    <div key={pair.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
-                      <input className="input" placeholder="До..." value={pair.beforeText} onChange={(e) => { const p = [...data.transformation_section!.pairs]; p[i] = { ...pair, beforeText: e.target.value }; upd({ transformation_section: { ...data.transformation_section!, pairs: p } }); }} />
-                      <input className="input" placeholder="После..." value={pair.afterText} onChange={(e) => { const p = [...data.transformation_section!.pairs]; p[i] = { ...pair, afterText: e.target.value }; upd({ transformation_section: { ...data.transformation_section!, pairs: p } }); }} />
-                      <button className="btn btn-secondary" onClick={() => upd({ transformation_section: { ...data.transformation_section!, pairs: data.transformation_section!.pairs.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
-                    </div>
-                  ))}
-                  <button className="btn btn-secondary" onClick={() => upd({ transformation_section: { ...data.transformation_section!, pairs: [...data.transformation_section!.pairs, { id: uid(), beforeText: "", afterText: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить пару</button>
-                </div>
-              </>
-            )}
+          {/* ── Трансформация ── */}
+          <SectionBlock title="🔄 Секция «Узнаёшь себя?»" open={!!data.transformation_section}>
+            <OptionalSection label="Секция" enabled={!!data.transformation_section} onToggle={(v) => upd({ transformation_section: v ? { title: "Узнаёшь себя?", beforeLabel: "До", afterLabel: "После", pairs: [] } : null })}>
+              <Field label="Заголовок">
+                <input className="input" value={data.transformation_section!.title} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, title: e.target.value } })} />
+              </Field>
+              <Field label="Метка «До»">
+                <input className="input" value={data.transformation_section!.beforeLabel ?? ""} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, beforeLabel: e.target.value } })} />
+              </Field>
+              <Field label="Метка «После»">
+                <input className="input" value={data.transformation_section!.afterLabel ?? ""} onChange={(e) => upd({ transformation_section: { ...data.transformation_section!, afterLabel: e.target.value } })} />
+              </Field>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="form-label">Пары «До → После»</label>
+                {data.transformation_section!.pairs.map((pair, i) => (
+                  <div key={pair.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
+                    <input className="input" placeholder="До..." value={pair.beforeText} onChange={(e) => { const p = [...data.transformation_section!.pairs]; p[i] = { ...pair, beforeText: e.target.value }; upd({ transformation_section: { ...data.transformation_section!, pairs: p } }); }} />
+                    <input className="input" placeholder="После..." value={pair.afterText} onChange={(e) => { const p = [...data.transformation_section!.pairs]; p[i] = { ...pair, afterText: e.target.value }; upd({ transformation_section: { ...data.transformation_section!, pairs: p } }); }} />
+                    <button className="btn btn-secondary" onClick={() => upd({ transformation_section: { ...data.transformation_section!, pairs: data.transformation_section!.pairs.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
+                  </div>
+                ))}
+                <button className="btn btn-secondary" onClick={() => upd({ transformation_section: { ...data.transformation_section!, pairs: [...data.transformation_section!.pairs, { id: uid(), beforeText: "", afterText: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить пару</button>
+              </div>
+            </OptionalSection>
           </SectionBlock>
 
-          {/* Преимущества */}
+          {/* ── Преимущества ── */}
           <SectionBlock title="✨ Преимущества" open={!!data.benefits_section}>
-            <OptionalToggle label="Включить секцию" enabled={!!data.benefits_section} onToggle={(v) => upd({ benefits_section: v ? { title: "Преимущества", subtitle: "", cards: [] } : null })} />
-            {data.benefits_section && (
-              <>
-                <Field label="Заголовок">
-                  <input className="input" value={data.benefits_section.title} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, title: e.target.value } })} />
-                </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" value={data.benefits_section.subtitle ?? ""} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, subtitle: e.target.value } })} />
-                </Field>
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <label className="form-label">Карточки</label>
-                  {data.benefits_section.cards.map((card, i) => (
-                    <div key={card.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
-                      <input className="input" placeholder="Метка (необяз.)" value={card.eyebrow ?? ""} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, eyebrow: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
-                      <input className="input" placeholder="Заголовок *" value={card.title} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, title: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
-                      <input className="input" placeholder="Текст *" value={card.text} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, text: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
-                      <button className="btn btn-secondary" onClick={() => upd({ benefits_section: { ...data.benefits_section!, cards: data.benefits_section!.cards.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
-                    </div>
-                  ))}
-                  <button className="btn btn-secondary" onClick={() => upd({ benefits_section: { ...data.benefits_section!, cards: [...data.benefits_section!.cards, { id: uid(), eyebrow: "", title: "", text: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить карточку</button>
-                </div>
-              </>
-            )}
+            <OptionalSection label="Секция" enabled={!!data.benefits_section} onToggle={(v) => upd({ benefits_section: v ? { title: "Преимущества", subtitle: "", cards: [] } : null })}>
+              <Field label="Заголовок">
+                <input className="input" value={data.benefits_section!.title} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, title: e.target.value } })} />
+              </Field>
+              <Field label="Подзаголовок">
+                <input className="input" value={data.benefits_section!.subtitle ?? ""} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, subtitle: e.target.value } })} />
+              </Field>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="form-label">Карточки</label>
+                {data.benefits_section!.cards.map((card, i) => (
+                  <div key={card.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
+                    <input className="input" placeholder="Метка" value={card.eyebrow ?? ""} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, eyebrow: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
+                    <input className="input" placeholder="Заголовок *" value={card.title} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, title: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
+                    <input className="input" placeholder="Текст *" value={card.text} onChange={(e) => { const c = [...data.benefits_section!.cards]; c[i] = { ...card, text: e.target.value }; upd({ benefits_section: { ...data.benefits_section!, cards: c } }); }} />
+                    <button className="btn btn-secondary" onClick={() => upd({ benefits_section: { ...data.benefits_section!, cards: data.benefits_section!.cards.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
+                  </div>
+                ))}
+                <button className="btn btn-secondary" onClick={() => upd({ benefits_section: { ...data.benefits_section!, cards: [...data.benefits_section!.cards, { id: uid(), eyebrow: "", title: "", text: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить карточку</button>
+              </div>
+            </OptionalSection>
           </SectionBlock>
 
-          {/* FAQ */}
+          {/* ── FAQ ── */}
           <SectionBlock title="❓ FAQ">
             <div style={{ gridColumn: "1 / -1" }}>
               {data.faq_items.map((item, i) => (
-                <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
+                <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "6px", marginBottom: "8px", alignItems: "start" }}>
                   <input className="input" placeholder="Вопрос *" value={item.question} onChange={(e) => { const f = [...data.faq_items]; f[i] = { ...item, question: e.target.value }; upd({ faq_items: f }); }} />
-                  <input className="input" placeholder="Ответ *" value={item.answer} onChange={(e) => { const f = [...data.faq_items]; f[i] = { ...item, answer: e.target.value }; upd({ faq_items: f }); }} />
+                  <textarea className="input" rows={2} placeholder="Ответ *" value={item.answer} onChange={(e) => { const f = [...data.faq_items]; f[i] = { ...item, answer: e.target.value }; upd({ faq_items: f }); }} style={{ resize: "vertical" }} />
                   <button className="btn btn-secondary" onClick={() => upd({ faq_items: data.faq_items.filter((_, j) => j !== i) })} style={{ color: "var(--accent-danger)" }}>×</button>
                 </div>
               ))}
@@ -994,37 +1087,34 @@ ${cuisineDescription ? `Описание: ${cuisineDescription}` : ""}
             </div>
           </SectionBlock>
 
-          {/* CTA покупки */}
+          {/* ── CTA покупки ── */}
           <SectionBlock title="💰 Кнопка покупки (CTA)" open={!!data.purchase_cta}>
-            <OptionalToggle label="Включить CTA" enabled={!!data.purchase_cta} onToggle={(v) => upd({ purchase_cta: v ? { title: "Открыть каталог", subtitle: "", priceBadge: "$2", features: [], buttonTitle: "Открыть каталог" } : null })} />
-            {data.purchase_cta && (
-              <>
-                <Field label="Заголовок">
-                  <input className="input" value={data.purchase_cta.title} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, title: e.target.value } })} />
-                </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" value={data.purchase_cta.subtitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, subtitle: e.target.value } })} />
-                </Field>
-                <Field label="Значок цены">
-                  <input className="input" placeholder="$2 / $4.99" value={data.purchase_cta.priceBadge ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, priceBadge: e.target.value } })} />
-                </Field>
-                <Field label="Текст кнопки">
-                  <input className="input" value={data.purchase_cta.buttonTitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, buttonTitle: e.target.value } })} />
-                </Field>
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <label className="form-label">Фичи (иконка SF, заголовок, подзаголовок)</label>
-                  {data.purchase_cta.features.map((f, i) => (
-                    <div key={f.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
-                      <input className="input" placeholder="SF-иконка" value={f.icon ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, icon: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
-                      <input className="input" placeholder="Заголовок *" value={f.title} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, title: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
-                      <input className="input" placeholder="Подзаголовок" value={f.subtitle ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, subtitle: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
-                      <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: data.purchase_cta!.features.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
-                    </div>
-                  ))}
-                  <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: [...data.purchase_cta!.features, { id: uid(), icon: "", title: "", subtitle: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить</button>
-                </div>
-              </>
-            )}
+            <OptionalSection label="Секция" enabled={!!data.purchase_cta} onToggle={(v) => upd({ purchase_cta: v ? { title: "Открыть каталог", subtitle: "", priceBadge: "$2", features: [], buttonTitle: "Открыть каталог" } : null })}>
+              <Field label="Заголовок">
+                <input className="input" value={data.purchase_cta!.title} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, title: e.target.value } })} />
+              </Field>
+              <Field label="Подзаголовок">
+                <input className="input" value={data.purchase_cta!.subtitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, subtitle: e.target.value } })} />
+              </Field>
+              <Field label="Значок цены">
+                <input className="input" placeholder="$2 / $4.99" value={data.purchase_cta!.priceBadge ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, priceBadge: e.target.value } })} />
+              </Field>
+              <Field label="Текст кнопки">
+                <input className="input" value={data.purchase_cta!.buttonTitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, buttonTitle: e.target.value } })} />
+              </Field>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="form-label">Фичи (SF-иконка, заголовок, подзаголовок)</label>
+                {data.purchase_cta!.features.map((f, i) => (
+                  <div key={f.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
+                    <input className="input" placeholder="SF-иконка" value={f.icon ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, icon: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} style={{ fontFamily: "monospace", fontSize: "12px" }} />
+                    <input className="input" placeholder="Заголовок *" value={f.title} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, title: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
+                    <input className="input" placeholder="Подзаголовок" value={f.subtitle ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, subtitle: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
+                    <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: data.purchase_cta!.features.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>
+                  </div>
+                ))}
+                <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: [...data.purchase_cta!.features, { id: uid(), icon: "", title: "", subtitle: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить</button>
+              </div>
+            </OptionalSection>
           </SectionBlock>
         </div>
       )}
