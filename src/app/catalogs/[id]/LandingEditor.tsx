@@ -76,6 +76,7 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
       badges: ["Пошагово", "Разовая покупка"],
       backgroundHex: "C70A0A",
       overlayHex: "7F3A44",
+      accentHex: "FF375F",
     },
     hero: {
       title: name,
@@ -330,10 +331,30 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       const result = await res.json().catch(() => ({}));
 
       const tableMissing = isTableMissingResponse(result);
-      const loaded = (result?.data ?? null) as LandingData | null;
+      const rawLoaded = (result?.data ?? null) as Record<string, unknown> | null;
 
-      if (loaded) {
-        const loadedTranslations = ((loaded as unknown) as Record<string, unknown>).translations as Record<string, unknown> ?? {};
+      if (rawLoaded) {
+        // Extract translations from DB row and keep them separate from landing data
+        const loadedTranslations = (
+          rawLoaded.translations &&
+          typeof rawLoaded.translations === "object" &&
+          !Array.isArray(rawLoaded.translations)
+        ) ? rawLoaded.translations as Record<string, unknown> : {};
+        // Strip the translations column from the LandingData object
+        const { translations: _t, ...cleanLoaded } = rawLoaded;
+        const loaded = cleanLoaded as unknown as LandingData;
+
+        // Migration: sync imageUrl between preview_card and hero (they should always match)
+        const pc = loaded.preview_card as Record<string, unknown>;
+        const hero = loaded.hero as Record<string, unknown>;
+        const pcImg = pc?.imageUrl as string | null | undefined;
+        const heroImg = hero?.imageUrl as string | null | undefined;
+        if (pcImg && !heroImg) {
+          (loaded.hero as Record<string, unknown>).imageUrl = pcImg;
+        } else if (heroImg && !pcImg) {
+          (loaded.preview_card as Record<string, unknown>).imageUrl = heroImg;
+        }
+
         applyLanding(loaded, loadedTranslations);
         writeLocalDraft(loaded, loadedTranslations);
         setSaveStatus("");
@@ -555,6 +576,8 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       setData(landingData as unknown as LandingData);
       if (Object.keys(extractedTranslations).length > 0) {
         setTranslations(extractedTranslations);
+        const langCount = Object.keys(extractedTranslations).length;
+        setSaveStatus(`Найдены переводы на ${langCount} языков — нажми «Сохранить» чтобы записать в БД`);
       }
       setJsonError("");
       setMode("form");
@@ -565,6 +588,11 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 
   async function saveLanding(): Promise<"saved" | "local" | "error"> {
     let payload = data;
+    // effectiveTranslations: either freshly extracted from JSON or current state
+    // Must be a local variable because setTranslations() is async and won't update
+    // the `translations` closure value until next render
+    let effectiveTranslations = translations;
+
     if (mode === "json") {
       try {
         const parsed = JSON.parse(jsonText);
@@ -573,6 +601,7 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
         setData(payload);
         if (Object.keys(extractedTranslations).length > 0) {
           setTranslations(extractedTranslations);
+          effectiveTranslations = extractedTranslations; // use immediately, don't wait for state update
         }
         setJsonError("");
       } catch {
@@ -584,8 +613,8 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 
     setSaveStatus("Сохраняю...");
     try {
-      const savePayload = Object.keys(translations).length > 0
-        ? { ...payload, translations }
+      const savePayload = Object.keys(effectiveTranslations).length > 0
+        ? { ...payload, translations: effectiveTranslations }
         : payload;
       const res = await fetch(`/api/admin/landings/${cuisineId}`, {
         method: "POST",
@@ -595,8 +624,8 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       const result = await res.json().catch(() => ({}));
 
       if (isTableMissingResponse(result)) {
-        applyLanding(payload, translations);
-        writeLocalDraft(payload, translations);
+        applyLanding(payload, effectiveTranslations);
+        writeLocalDraft(payload, effectiveTranslations);
         setSaveStatus(`Сохранено локально ⚠️ (${new Date().toLocaleTimeString()}) — таблица catalog_landings не найдена в БД`);
         return "local";
       }
@@ -607,13 +636,19 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       }
 
       if (result.data) {
-        const saved = result.data as LandingData;
-        const savedTranslations = ((saved as unknown) as Record<string, unknown>).translations as Record<string, unknown> ?? translations;
+        const savedRaw = result.data as Record<string, unknown>;
+        const savedTranslations = (
+          savedRaw.translations &&
+          typeof savedRaw.translations === "object" &&
+          !Array.isArray(savedRaw.translations)
+        ) ? savedRaw.translations as Record<string, unknown> : effectiveTranslations;
+        const { translations: _t, ...cleanSaved } = savedRaw;
+        const saved = cleanSaved as unknown as LandingData;
         applyLanding(saved, savedTranslations);
         writeLocalDraft(saved, savedTranslations);
       } else {
-        applyLanding(payload, translations);
-        writeLocalDraft(payload, translations);
+        applyLanding(payload, effectiveTranslations);
+        writeLocalDraft(payload, effectiveTranslations);
       }
 
       if ((result.data as LandingData | undefined)?.is_published === false || payload.is_published === false) {
@@ -623,8 +658,8 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       }
       return "saved";
     } catch {
-      applyLanding(payload, translations);
-      writeLocalDraft(payload, translations);
+      applyLanding(payload!, effectiveTranslations);
+      writeLocalDraft(payload!, effectiveTranslations);
       setSaveStatus(`Сохранено локально ⚠️ (${new Date().toLocaleTimeString()}) — ошибка соединения`);
       return "local";
     }
@@ -876,6 +911,20 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
                   hero: { ...data.hero, imageUrl: e.target.value },
                 })}
               />
+              {data.preview_card.imageUrl && (
+                <div style={{ marginTop: "8px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                  <img
+                    src={data.preview_card.imageUrl}
+                    alt="preview"
+                    style={{ height: "80px", width: "80px", objectFit: "cover", borderRadius: "8px", border: "1px solid var(--border-light)", flexShrink: 0 }}
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    onLoad={(e) => { (e.currentTarget as HTMLImageElement).style.display = ""; }}
+                  />
+                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", alignSelf: "center" }}>
+                    Превью изображения (квадрат 80×80)
+                  </span>
+                </div>
+              )}
             </Field>
           </SectionBlock>
 

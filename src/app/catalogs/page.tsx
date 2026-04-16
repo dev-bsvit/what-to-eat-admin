@@ -25,6 +25,7 @@ export default function CatalogsPage() {
     name: "",
     image_url: "",
     landing_image_url: "",
+    type: "free",
   });
 
   useEffect(() => {
@@ -66,6 +67,9 @@ export default function CatalogsPage() {
         name: newCuisine.name.trim(),
         image_url: newCuisine.image_url.trim() || null,
         landing_image_url: newCuisine.landing_image_url.trim() || null,
+        type: newCuisine.type || "free",
+        status: "active",
+        moderation_status: "approved",
       };
 
       console.log("Отправка данных:", payload);
@@ -78,7 +82,7 @@ export default function CatalogsPage() {
 
       if (response.ok) {
         setShowAddModal(false);
-        setNewCuisine({ id: "", name: "", image_url: "", landing_image_url: "" });
+        setNewCuisine({ id: "", name: "", image_url: "", landing_image_url: "", type: "free" });
         loadCuisines();
       } else {
         const error = await response.json();
@@ -406,6 +410,20 @@ export default function CatalogsPage() {
                 value={newCuisine.landing_image_url}
                 onChange={(e) => setNewCuisine({ ...newCuisine, landing_image_url: e.target.value })}
               />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Тип каталога</label>
+              <select
+                className="input"
+                value={newCuisine.type}
+                onChange={(e) => setNewCuisine({ ...newCuisine, type: e.target.value })}
+              >
+                <option value="free">free — бесплатный</option>
+                <option value="premium">premium — платный</option>
+                <option value="gift">gift — подарочный</option>
+                <option value="unlockable">unlockable — разблокируемый</option>
+              </select>
             </div>
 
             <div className="modal-footer">

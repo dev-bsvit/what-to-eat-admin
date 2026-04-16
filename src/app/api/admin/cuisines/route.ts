@@ -55,6 +55,7 @@ export async function POST(request: Request) {
       purchases_count: parseNumber(body.purchases_count),
       tags: parseTextArray(body.tags),
       revenue_share: parseNumber(body.revenue_share),
+      ...(body.translations !== undefined && { translations: parseJson(body.translations) }),
     };
 
     if (!payload.id) {
