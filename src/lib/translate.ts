@@ -273,10 +273,128 @@ export interface LandingTextContent {
   cta_button_title?: string;
 }
 
-export type LandingTranslationResult = LandingTextContent;
+/**
+ * Nested translation result — matches iOS Swift LandingTranslation CodingKeys exactly.
+ * Top-level keys use snake_case (preview_card, inside_section, etc.)
+ * Inner fields use camelCase (beforeLabel, afterLabel, buttonTitle, etc.)
+ */
+export interface LandingTranslationResult {
+  preview_card: { title?: string; subtitle?: string; badges?: string[] };
+  hero: { title?: string; subtitle?: string; badges?: string[] };
+  inside_section?: { title?: string; subtitle?: string; items?: Array<{ id: string; emoji?: string; title?: string; text: string }> };
+  recipe_showcase?: { title?: string; subtitle?: string };
+  audience_section?: { title?: string; subtitle?: string; items?: Array<{ id: string; emoji?: string; title?: string; text: string }> };
+  transformation_section?: { title?: string; subtitle?: string | null; beforeLabel?: string; afterLabel?: string; pairs?: Array<{ id: string; beforeText: string; afterText: string }> };
+  benefits_section?: { title?: string; subtitle?: string; cards?: Array<{ id: string; eyebrow?: string; title: string; text: string }> };
+  faq_items?: Array<{ id: string; question: string; answer: string }>;
+  purchase_cta?: { title?: string; subtitle?: string; features?: Array<{ id: string; title: string; subtitle?: string }>; buttonTitle?: string };
+}
+
+/** Convert flat LandingTextContent + translated values → nested LandingTranslationResult */
+function flatToNested(
+  content: LandingTextContent,
+  get: (key: string) => string | undefined
+): LandingTranslationResult {
+  const result: LandingTranslationResult = {
+    preview_card: {
+      title: get("preview_card_title") ?? content.preview_card_title,
+      subtitle: get("preview_card_subtitle") ?? content.preview_card_subtitle,
+      badges: content.preview_card_badges.map((b, i) => get(`preview_card_badge_${i}`) ?? b),
+    },
+    hero: {
+      title: get("hero_title") ?? content.hero_title,
+      subtitle: get("hero_subtitle") ?? content.hero_subtitle,
+      badges: content.hero_badges.map((b, i) => get(`hero_badge_${i}`) ?? b),
+    },
+  };
+
+  if (content.inside_title || content.inside_items.length) {
+    result.inside_section = {
+      title: get("inside_title") ?? content.inside_title,
+      subtitle: get("inside_subtitle") ?? content.inside_subtitle,
+      items: content.inside_items.map((item, i) => ({
+        id: item.id,
+        emoji: item.emoji,
+        title: get(`inside_item_${i}_title`) ?? item.title,
+        text: get(`inside_item_${i}_text`) ?? item.text,
+      })),
+    };
+  }
+
+  if (content.recipe_showcase_title) {
+    result.recipe_showcase = {
+      title: get("recipe_showcase_title") ?? content.recipe_showcase_title,
+      subtitle: get("recipe_showcase_subtitle") ?? content.recipe_showcase_subtitle,
+    };
+  }
+
+  if (content.audience_title || content.audience_items.length) {
+    result.audience_section = {
+      title: get("audience_title") ?? content.audience_title,
+      subtitle: get("audience_subtitle") ?? content.audience_subtitle,
+      items: content.audience_items.map((item, i) => ({
+        id: item.id,
+        emoji: item.emoji,
+        title: get(`audience_item_${i}_title`) ?? item.title,
+        text: get(`audience_item_${i}_text`) ?? item.text,
+      })),
+    };
+  }
+
+  if (content.transformation_title || content.transformation_pairs.length) {
+    result.transformation_section = {
+      title: get("transformation_title") ?? content.transformation_title,
+      subtitle: get("transformation_subtitle") ?? content.transformation_subtitle ?? null,
+      beforeLabel: get("transformation_before_label") ?? content.transformation_before_label,
+      afterLabel: get("transformation_after_label") ?? content.transformation_after_label,
+      pairs: content.transformation_pairs.map((p, i) => ({
+        id: p.id,
+        beforeText: get(`transformation_pair_${i}_before`) ?? p.beforeText,
+        afterText: get(`transformation_pair_${i}_after`) ?? p.afterText,
+      })),
+    };
+  }
+
+  if (content.benefits_title || content.benefits_cards.length) {
+    result.benefits_section = {
+      title: get("benefits_title") ?? content.benefits_title,
+      subtitle: get("benefits_subtitle") ?? content.benefits_subtitle,
+      cards: content.benefits_cards.map((c, i) => ({
+        id: c.id,
+        eyebrow: get(`benefit_card_${i}_eyebrow`) ?? c.eyebrow,
+        title: get(`benefit_card_${i}_title`) ?? c.title,
+        text: get(`benefit_card_${i}_text`) ?? c.text,
+      })),
+    };
+  }
+
+  if (content.faq_items.length) {
+    result.faq_items = content.faq_items.map((f, i) => ({
+      id: f.id,
+      question: get(`faq_${i}_question`) ?? f.question,
+      answer: get(`faq_${i}_answer`) ?? f.answer,
+    }));
+  }
+
+  if (content.cta_title || content.cta_features.length) {
+    result.purchase_cta = {
+      title: get("cta_title") ?? content.cta_title,
+      subtitle: get("cta_subtitle") ?? content.cta_subtitle,
+      features: content.cta_features.map((f, i) => ({
+        id: f.id,
+        title: get(`cta_feature_${i}_title`) ?? f.title,
+        subtitle: get(`cta_feature_${i}_subtitle`) ?? f.subtitle,
+      })),
+      buttonTitle: get("cta_button_title") ?? content.cta_button_title,
+    };
+  }
+
+  return result;
+}
 
 /**
  * Translate all landing text fields to one target language in one batch call.
+ * Returns nested LandingTranslationResult compatible with iOS Swift Codable.
  */
 export async function translateLanding(
   content: LandingTextContent,
@@ -347,35 +465,7 @@ export async function translateLanding(
   pairs.forEach(({ key }, i) => { t[key] = translated[i]; });
   const get = (key: string) => t[key] ?? undefined;
 
-  return {
-    preview_card_title: get("preview_card_title") ?? content.preview_card_title,
-    preview_card_subtitle: get("preview_card_subtitle"),
-    preview_card_badges: content.preview_card_badges.map((b, i) => get(`preview_card_badge_${i}`) ?? b),
-    hero_title: get("hero_title") ?? content.hero_title,
-    hero_subtitle: get("hero_subtitle"),
-    hero_badges: content.hero_badges.map((b, i) => get(`hero_badge_${i}`) ?? b),
-    inside_title: get("inside_title"),
-    inside_subtitle: get("inside_subtitle"),
-    inside_items: content.inside_items.map((item, i) => ({ ...item, title: get(`inside_item_${i}_title`) ?? item.title, text: get(`inside_item_${i}_text`) ?? item.text })),
-    recipe_showcase_title: get("recipe_showcase_title"),
-    recipe_showcase_subtitle: get("recipe_showcase_subtitle"),
-    audience_title: get("audience_title"),
-    audience_subtitle: get("audience_subtitle"),
-    audience_items: content.audience_items.map((item, i) => ({ ...item, title: get(`audience_item_${i}_title`) ?? item.title, text: get(`audience_item_${i}_text`) ?? item.text })),
-    transformation_title: get("transformation_title"),
-    transformation_subtitle: get("transformation_subtitle"),
-    transformation_before_label: get("transformation_before_label"),
-    transformation_after_label: get("transformation_after_label"),
-    transformation_pairs: content.transformation_pairs.map((p, i) => ({ ...p, beforeText: get(`transformation_pair_${i}_before`) ?? p.beforeText, afterText: get(`transformation_pair_${i}_after`) ?? p.afterText })),
-    benefits_title: get("benefits_title"),
-    benefits_subtitle: get("benefits_subtitle"),
-    benefits_cards: content.benefits_cards.map((c, i) => ({ ...c, eyebrow: get(`benefit_card_${i}_eyebrow`) ?? c.eyebrow, title: get(`benefit_card_${i}_title`) ?? c.title, text: get(`benefit_card_${i}_text`) ?? c.text })),
-    faq_items: content.faq_items.map((f, i) => ({ ...f, question: get(`faq_${i}_question`) ?? f.question, answer: get(`faq_${i}_answer`) ?? f.answer })),
-    cta_title: get("cta_title"),
-    cta_subtitle: get("cta_subtitle"),
-    cta_features: content.cta_features.map((f, i) => ({ ...f, title: get(`cta_feature_${i}_title`) ?? f.title, subtitle: get(`cta_feature_${i}_subtitle`) ?? f.subtitle })),
-    cta_button_title: get("cta_button_title"),
-  };
+  return flatToNested(content, get);
 }
 
 /** Extract text content from raw JSONB landing data */
@@ -421,7 +511,8 @@ export function extractLandingText(landing: Record<string, unknown>): LandingTex
   };
 }
 
-/** Translate landing to all 7 other languages in parallel */
+/** Translate landing to all 7 other languages in parallel.
+ *  Returns nested format matching iOS Swift LandingTranslation. */
 export async function translateLandingToAllLanguages(
   landing: Record<string, unknown>,
   sourceLang: string
@@ -431,5 +522,7 @@ export async function translateLandingToAllLanguages(
   const entries = await Promise.all(
     targets.map(async (lang) => [lang, await translateLanding(content, sourceLang, lang)] as const)
   );
-  return Object.fromEntries([[sourceLang, content], ...entries]);
+  // Source language: also build nested from flat (identity get function)
+  const sourceNested = flatToNested(content, () => undefined);
+  return Object.fromEntries([[sourceLang, sourceNested], ...entries]);
 }
