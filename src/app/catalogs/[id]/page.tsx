@@ -343,55 +343,18 @@ export default function CatalogDetailPage() {
           </div>
         )}
 
-        {/* Main fields */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+        {/* Main fields — compact 2-column grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+
+          {/* Row 1: Название + Теги */}
           <div className="form-group">
             <label className="form-label">Название *</label>
             <input
               className="input"
               value={editForm.name}
               onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              placeholder="Например: Итальянская кухня"
+              placeholder="Итальянская кухня"
             />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Подзаголовок / Описание</label>
-            <textarea
-              className="input"
-              rows={2}
-              value={editForm.description}
-              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-              placeholder="Краткое описание каталога"
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
-            <div className="form-group">
-              <label className="form-label">Тип каталога</label>
-              <select
-                className="input"
-                value={editForm.type}
-                onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
-              >
-                <option value="free">Бесплатный</option>
-                <option value="premium">Платный (premium)</option>
-              </select>
-            </div>
-
-            {editForm.type === 'premium' && (
-              <div className="form-group">
-                <label className="form-label">Цена ($)</label>
-                <input
-                  className="input"
-                  type="number"
-                  step="0.01"
-                  placeholder="1.99"
-                  value={editForm.price}
-                  onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-                />
-              </div>
-            )}
           </div>
 
           <div className="form-group">
@@ -400,10 +363,87 @@ export default function CatalogDetailPage() {
               className="input"
               value={editForm.tags}
               onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
-              placeholder="🇮🇹, паста, пицца, средиземноморская"
+              placeholder="🇮🇹, паста, пицца"
             />
           </div>
 
+          {/* Row 2: Описание — full width */}
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">Подзаголовок</label>
+            <input
+              className="input"
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              placeholder="Краткое описание каталога"
+            />
+          </div>
+
+          {/* Row 3: Тип + Цена */}
+          <div className="form-group">
+            <label className="form-label">Тип каталога</label>
+            <select
+              className="input"
+              value={editForm.type}
+              onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+            >
+              <option value="free">Бесплатный</option>
+              <option value="premium">Платный (premium)</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Цена ($)</label>
+            <input
+              className="input"
+              type="number"
+              step="0.01"
+              placeholder="1.99"
+              value={editForm.price}
+              disabled={editForm.type !== 'premium'}
+              style={{ opacity: editForm.type !== 'premium' ? 0.4 : 1 }}
+              onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+            />
+          </div>
+
+          {/* Row 4: Catalog ID — full width */}
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label className="form-label">
+              Catalog ID
+              <span style={{ fontWeight: 400, color: 'var(--text-secondary)', marginLeft: 6 }}>
+                — уникальный ключ покупки, только латиницей без пробелов
+              </span>
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                className="input"
+                value={editForm.catalog_id}
+                onChange={(e) => setEditForm({ ...editForm, catalog_id: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '') })}
+                placeholder="italian / highprotein / mycatalog..."
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                onClick={() => {
+                  const translit: Record<string, string> = {
+                    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z',
+                    'и':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+                    'с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh',
+                    'щ':'sh','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+                  };
+                  const slug = editForm.name.toLowerCase()
+                    .split('').map(c => translit[c] ?? c).join('')
+                    .replace(/[^a-z0-9]/g, '')
+                    .slice(0, 20);
+                  setEditForm(prev => ({ ...prev, catalog_id: slug }));
+                }}
+              >
+                Из названия
+              </button>
+            </div>
+          </div>
+
+          {/* Row 5: Фото мини + Фото лендинга */}
           <div className="form-group">
             <label className="form-label">Фото мини (URL)</label>
             <input
@@ -413,7 +453,7 @@ export default function CatalogDetailPage() {
               placeholder="https://..."
             />
             {editForm.image_url && (
-              <img src={editForm.image_url} alt="" style={{ marginTop: 8, height: 60, borderRadius: 8, objectFit: 'cover' }} />
+              <img src={editForm.image_url} alt="" style={{ marginTop: 6, height: 52, borderRadius: 8, objectFit: 'cover' }} />
             )}
           </div>
 
@@ -426,100 +466,50 @@ export default function CatalogDetailPage() {
               placeholder="https://..."
             />
             {editForm.landing_image_url && (
-              <img src={editForm.landing_image_url} alt="" style={{ marginTop: 8, height: 80, borderRadius: 8, objectFit: 'cover' }} />
+              <img src={editForm.landing_image_url} alt="" style={{ marginTop: 6, height: 52, borderRadius: 8, objectFit: 'cover' }} />
             )}
           </div>
+
         </div>
 
-        <div className="modal-footer" style={{ marginTop: 'var(--spacing-lg)', marginBottom: 'var(--spacing-lg)' }}>
+        <div style={{ marginTop: 16 }}>
           <button className="btn btn-primary" onClick={handleSaveCuisine}>
-            Сохранить каталог
+            Сохранить
           </button>
         </div>
 
         {/* Technical section — collapsed */}
-        <details style={{ marginTop: 'var(--spacing-md)' }}>
-          <summary style={{
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontWeight: 600,
-            color: 'var(--text-secondary)',
-            userSelect: 'none',
-            padding: '8px 0',
-          }}>
-            ⚙️ Технические настройки
+        <details style={{ marginTop: 16 }}>
+          <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', userSelect: 'none', padding: '6px 0' }}>
+            ⚙️ Системная информация
           </summary>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 'var(--spacing-md)',
-            marginTop: 'var(--spacing-md)',
-            padding: 'var(--spacing-md)',
-            background: 'var(--bg-hover)',
-            borderRadius: 'var(--radius-md)',
-          }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, padding: 12, background: 'var(--bg-hover)', borderRadius: 10 }}>
             <div className="form-group">
-              <label className="form-label">UUID каталога</label>
-              <input className="input" value={editForm.id} readOnly style={{ opacity: 0.6 }} />
+              <label className="form-label" style={{ fontSize: 11 }}>UUID</label>
+              <input className="input" value={editForm.id} readOnly style={{ opacity: 0.5, fontSize: 12 }} />
             </div>
-
             <div className="form-group">
-              <label className="form-label">Catalog ID (StoreKit)</label>
-              <select
-                className="input"
-                value={editForm.catalog_id}
-                onChange={(e) => setEditForm({ ...editForm, catalog_id: e.target.value })}
-              >
-                <option value="">— не выбрано —</option>
-                <optgroup label="Кухни мира">
-                  <option value="italian">italian — Итальянская</option>
-                  <option value="asian">asian — Азиатская</option>
-                  <option value="japanese">japanese — Японская</option>
-                  <option value="mexican">mexican — Мексиканская</option>
-                  <option value="indian">indian — Индийская</option>
-                  <option value="chinese">chinese — Китайская</option>
-                  <option value="french">french — Французская</option>
-                  <option value="thai">thai — Тайская</option>
-                  <option value="korean">korean — Корейская</option>
-                </optgroup>
-                <optgroup label="Тематические">
-                  <option value="christmas">christmas</option>
-                  <option value="healthy">healthy</option>
-                  <option value="kids">kids</option>
-                  <option value="party">party</option>
-                  <option value="quick">quick</option>
-                  <option value="vegetarian">vegetarian</option>
-                  <option value="highprotein">highprotein</option>
-                </optgroup>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Статус</label>
+              <label className="form-label" style={{ fontSize: 11 }}>Статус</label>
               <select className="input" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
                 <option value="active">active</option>
                 <option value="archived">archived</option>
                 <option value="hidden">hidden</option>
               </select>
             </div>
-
             <div className="form-group">
-              <label className="form-label">Модерация</label>
+              <label className="form-label" style={{ fontSize: 11 }}>Модерация</label>
               <select className="input" value={editForm.moderation_status} onChange={(e) => setEditForm({ ...editForm, moderation_status: e.target.value })}>
                 <option value="pending">pending</option>
                 <option value="approved">approved</option>
                 <option value="rejected">rejected</option>
               </select>
             </div>
-
             <div className="form-group">
-              <label className="form-label">Скачивания</label>
-              <input className="input" type="number" value={editForm.downloads_count} onChange={(e) => setEditForm({ ...editForm, downloads_count: e.target.value })} />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Покупки</label>
-              <input className="input" type="number" value={editForm.purchases_count} onChange={(e) => setEditForm({ ...editForm, purchases_count: e.target.value })} />
+              <label className="form-label" style={{ fontSize: 11 }}>Покупки / Скачивания</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input className="input" type="number" placeholder="покупки" value={editForm.purchases_count} onChange={(e) => setEditForm({ ...editForm, purchases_count: e.target.value })} />
+                <input className="input" type="number" placeholder="скачив." value={editForm.downloads_count} onChange={(e) => setEditForm({ ...editForm, downloads_count: e.target.value })} />
+              </div>
             </div>
           </div>
         </details>
