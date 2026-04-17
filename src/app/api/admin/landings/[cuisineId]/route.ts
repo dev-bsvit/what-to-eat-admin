@@ -6,6 +6,24 @@ import {
 } from "@/lib/landingErrors";
 import { resolveLandingTable } from "@/lib/landingStorage";
 
+// Fix invalid UUIDs (e.g. "4xxx" placeholder from AI-generated content) by replacing them with real UUIDs.
+// Swift UUID decoder is strict — any malformed UUID causes the entire record to fail decoding.
+const INVALID_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function fixUuids(obj: unknown): unknown {
+  if (typeof obj === "string") {
+    // Check if it looks like a UUID but contains non-hex chars
+    if (obj.length === 36 && obj.includes("-") && !INVALID_UUID_RE.test(obj)) {
+      return crypto.randomUUID();
+    }
+    return obj;
+  }
+  if (Array.isArray(obj)) return obj.map(fixUuids);
+  if (obj && typeof obj === "object") {
+    return Object.fromEntries(Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, fixUuids(v)]));
+  }
+  return obj;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ cuisineId: string }> }
@@ -55,7 +73,7 @@ export async function POST(
       });
     }
 
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, unknown> = fixUuids({
       cuisine_id: cuisineId,
       preview_card: body.preview_card ?? {},
       hero: body.hero ?? {},
@@ -71,12 +89,8 @@ export async function POST(
       is_published: body.is_published ?? false,
       sort_order: body.sort_order ?? 0,
       updated_at: new Date().toISOString(),
-    };
-
-    // Include translations if provided (e.g. after AI generation)
-    if (body.translations !== undefined) {
-      payload.translations = body.translations;
-    }
+      ...(body.translations !== undefined && { translations: body.translations }),
+    }) as Record<string, unknown>;
 
     const { data, error } = await supabaseAdmin
       .from(landingTable)
