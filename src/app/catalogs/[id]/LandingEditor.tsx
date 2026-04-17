@@ -259,9 +259,11 @@ interface Props {
   cuisineDescription?: string | null;
   cuisinePrice?: string | null;
   cuisineImageUrl?: string | null;
+  saveTrigger?: number;
+  onCuisineImport?: (imported: { name?: string; description?: string; price?: string }) => void;
 }
 
-export default function LandingEditor({ cuisineId, cuisineName, cuisineDescription, cuisinePrice, cuisineImageUrl }: Props) {
+export default function LandingEditor({ cuisineId, cuisineName, cuisineDescription, cuisinePrice, cuisineImageUrl, saveTrigger, onCuisineImport }: Props) {
   const [data, setData] = useState<LandingData | null>(null);
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
@@ -276,6 +278,11 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
   const [isTranslating, setIsTranslating] = useState(false);
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
+
+  // Auto-save when parent triggers (saveTrigger increments from "Сохранить всё")
+  useEffect(() => {
+    if (saveTrigger && saveTrigger > 0) { saveLanding(); }
+  }, [saveTrigger]);
 
   const localDraftKey = `catalog-landing-draft:${cuisineId}`;
 
@@ -630,9 +637,16 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 
   function switchToJson() {
     if (data) {
+      const cuisineMeta = {
+        _cuisine: {
+          name: cuisineName,
+          description: cuisineDescription ?? undefined,
+          price: cuisinePrice ?? undefined,
+        },
+      };
       const full = Object.keys(translations).length > 0
-        ? { ...data, translations }
-        : data;
+        ? { ...cuisineMeta, ...data, translations }
+        : { ...cuisineMeta, ...data };
       setJsonText(JSON.stringify(full, null, 2));
     }
     setJsonError("");
@@ -640,8 +654,17 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
   }
 
   function extractTranslationsFromJson(parsed: Record<string, unknown>): { landingData: Record<string, unknown>; extractedTranslations: Record<string, unknown> } {
-    const { translations: t, ...rest } = parsed;
+    const { translations: t, _cuisine, ...rest } = parsed;
     const extractedTranslations = (t && typeof t === "object" && !Array.isArray(t)) ? t as Record<string, unknown> : {};
+    // If _cuisine block present — sync name/description/price back to parent form
+    if (_cuisine && typeof _cuisine === "object" && onCuisineImport) {
+      const c = _cuisine as Record<string, unknown>;
+      onCuisineImport({
+        name: typeof c.name === "string" ? c.name : undefined,
+        description: typeof c.description === "string" ? c.description : undefined,
+        price: typeof c.price === "string" ? c.price : undefined,
+      });
+    }
     return { landingData: rest, extractedTranslations };
   }
 
