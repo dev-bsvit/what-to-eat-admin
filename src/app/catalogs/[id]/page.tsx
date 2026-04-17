@@ -528,6 +528,7 @@ export default function CatalogDetailPage() {
             cuisineName={editForm.name}
             cuisineDescription={editForm.description}
             cuisinePrice={editForm.price ? `$${editForm.price}` : undefined}
+            cuisineImageUrl={editForm.landing_image_url || editForm.image_url || undefined}
           />
         </div>
       )}

@@ -258,9 +258,10 @@ interface Props {
   cuisineName: string;
   cuisineDescription?: string | null;
   cuisinePrice?: string | null;
+  cuisineImageUrl?: string | null;
 }
 
-export default function LandingEditor({ cuisineId, cuisineName, cuisineDescription, cuisinePrice }: Props) {
+export default function LandingEditor({ cuisineId, cuisineName, cuisineDescription, cuisinePrice, cuisineImageUrl }: Props) {
   const [data, setData] = useState<LandingData | null>(null);
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
@@ -279,10 +280,14 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
   const localDraftKey = `catalog-landing-draft:${cuisineId}`;
 
   const applyLanding = (nextData: LandingData, nextTranslations: Record<string, unknown> = {}) => {
-    // Keep badges in sync: preview_card is the source of truth for the shared badge field
+    // Sync from cuisine settings (single source of truth for these fields)
+    const img = cuisineImageUrl ?? nextData.preview_card.imageUrl;
+    const priceBadge = cuisinePrice ?? nextData.purchase_cta?.priceBadge ?? "$2";
     const synced: LandingData = {
       ...nextData,
-      hero: { ...nextData.hero, badges: nextData.preview_card.badges },
+      preview_card: { ...nextData.preview_card, title: cuisineName, subtitle: cuisineDescription ?? nextData.preview_card.subtitle, imageUrl: img },
+      hero: { ...nextData.hero, title: cuisineName, subtitle: cuisineDescription ?? nextData.hero.subtitle, imageUrl: img, badges: nextData.preview_card.badges },
+      purchase_cta: nextData.purchase_cta ? { ...nextData.purchase_cta, priceBadge } : nextData.purchase_cta,
     };
     setData(synced);
     setJsonText(JSON.stringify(synced, null, 2));
@@ -981,63 +986,25 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       {/* ── Form mode ── */}
       {mode === "form" && (
         <div>
-          {/* ── Заголовок и описание (синхронизируются в preview_card + hero) ── */}
+          {/* ── Заголовок и описание — берутся из Настроек каталога ── */}
           <SectionBlock title="📝 Заголовок и описание">
-            <Field
-              label={isRO ? "Заголовок (только просмотр)" : "Заголовок *"}
-              hint={isRO ? undefined : "Используется и в карточке каталога (список), и в шапке лендинга"}
-              counter={{ current: viewData.preview_card.title.length, max: 40 }}
-            >
-              <input
-                className="input"
-                style={roStyle}
-                readOnly={isRO}
-                value={viewData.preview_card.title}
-                onChange={(e) => upd({
-                  preview_card: { ...data.preview_card, title: e.target.value },
-                  hero: { ...data.hero, title: e.target.value },
-                })}
-              />
+            <div style={{ gridColumn: "1 / -1", padding: "8px 12px", background: "rgba(0,122,255,0.06)", border: "1px solid rgba(0,122,255,0.18)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+              ℹ️ Название, подзаголовок и фото редактируются во вкладке <strong>Настройки</strong> и автоматически попадают сюда при сохранении
+            </div>
+            <Field label="Название" counter={{ current: viewData.preview_card.title.length, max: 40 }}>
+              <input className="input" readOnly value={viewData.preview_card.title} style={{ opacity: 0.6, background: "var(--bg-hover)" }} />
             </Field>
-            <Field label="Подзаголовок" hint={isRO ? undefined : "Краткое описание — что получит покупатель"} span>
-              <textarea
-                className="input"
-                style={roStyle}
-                readOnly={isRO}
-                rows={2}
-                value={viewData.preview_card.subtitle ?? ""}
-                onChange={(e) => upd({
-                  preview_card: { ...data.preview_card, subtitle: e.target.value },
-                  hero: { ...data.hero, subtitle: e.target.value },
-                })}
-              />
+            <Field label="Подзаголовок" span>
+              <input className="input" readOnly value={viewData.preview_card.subtitle ?? ""} style={{ opacity: 0.6, background: "var(--bg-hover)" }} />
             </Field>
-            <Field label="URL изображения" hint={isRO ? undefined : "Обложка каталога (карточка + hero)"} span>
-              <input
-                className="input"
-                style={roStyle}
-                readOnly={isRO}
-                placeholder="https://..."
-                value={data.preview_card.imageUrl ?? ""}
-                onChange={(e) => upd({
-                  preview_card: { ...data.preview_card, imageUrl: e.target.value },
-                  hero: { ...data.hero, imageUrl: e.target.value },
-                })}
-              />
-              {data.preview_card.imageUrl && (
-                <div style={{ marginTop: "8px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
-                  <img
-                    src={data.preview_card.imageUrl}
-                    alt="preview"
-                    style={{ height: "80px", width: "80px", objectFit: "cover", borderRadius: "8px", border: "1px solid var(--border-light)", flexShrink: 0 }}
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                    onLoad={(e) => { (e.currentTarget as HTMLImageElement).style.display = ""; }}
-                  />
-                  <span style={{ fontSize: "11px", color: "var(--text-secondary)", alignSelf: "center" }}>
-                    Превью изображения (квадрат 80×80)
-                  </span>
-                </div>
-              )}
+            <Field label="Фото" span>
+              <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                {data.preview_card.imageUrl
+                  ? <img src={data.preview_card.imageUrl} alt="preview" style={{ height: "56px", width: "56px", objectFit: "cover", borderRadius: "8px", border: "1px solid var(--border-light)", flexShrink: 0 }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  : <div style={{ height: "56px", width: "56px", borderRadius: "8px", border: "1px dashed var(--border-medium)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>📷</div>
+                }
+                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{data.preview_card.imageUrl || "Фото не задано — добавь в Настройках"}</span>
+              </div>
             </Field>
           </SectionBlock>
 
@@ -1227,8 +1194,8 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
                 <Field label="Подзаголовок">
                   <input className="input" style={roStyle} readOnly={isRO} value={viewData.purchase_cta?.subtitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, subtitle: e.target.value } })} />
                 </Field>
-                <Field label="Значок цены">
-                  <input className="input" style={roStyle} readOnly={isRO} placeholder="$2 / $4.99" value={data.purchase_cta.priceBadge ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, priceBadge: e.target.value } })} />
+                <Field label="Значок цены" hint="Берётся из поля Цена в Настройках">
+                  <input className="input" readOnly value={data.purchase_cta.priceBadge ?? ""} style={{ opacity: 0.6, background: "var(--bg-hover)" }} />
                 </Field>
                 <Field label="Текст кнопки">
                   <input className="input" style={roStyle} readOnly={isRO} value={viewData.purchase_cta?.buttonTitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, buttonTitle: e.target.value } })} />
