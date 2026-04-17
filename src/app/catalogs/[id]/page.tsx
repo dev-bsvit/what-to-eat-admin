@@ -75,35 +75,6 @@ export default function CatalogDetailPage() {
   const [saveStatus, setSaveStatus] = useState("");
   const [activeTab, setActiveTab] = useState<"settings" | "landing" | "recipes">("settings");
 
-  const resolveCatalogId = (name: string) => {
-    const normalized = name.trim().toLowerCase();
-    const candidates = [
-      { id: "italian", keywords: ["итальян", "italian"] },
-      { id: "asian", keywords: ["азиат", "asian"] },
-      { id: "japanese", keywords: ["япон", "japan"] },
-      { id: "mexican", keywords: ["мексик", "mexic"] },
-      { id: "indian", keywords: ["индий", "indian"] },
-      { id: "chinese", keywords: ["китай", "chinese"] },
-      { id: "french", keywords: ["франц", "french"] },
-      { id: "thai", keywords: ["тай", "thai"] },
-      { id: "korean", keywords: ["корей", "korean"] },
-      { id: "christmas", keywords: ["новогод", "рожде", "christmas"] },
-      { id: "healthy", keywords: ["здоров", "healthy"] },
-      { id: "kids", keywords: ["детск", "kids"] },
-      { id: "party", keywords: ["вечерин", "party"] },
-      { id: "quick", keywords: ["быстр", "quick"] },
-      { id: "vegetarian", keywords: ["вегетар", "vegetarian"] },
-    ];
-
-    for (const candidate of candidates) {
-      if (candidate.keywords.some((keyword) => normalized.includes(keyword))) {
-        return candidate.id;
-      }
-    }
-
-    return "";
-  };
-
   useEffect(() => {
     loadData();
   }, [cuisineId]);
@@ -187,16 +158,10 @@ export default function CatalogDetailPage() {
       return;
     }
 
-    let nextCatalogId = editForm.catalog_id.trim();
-    if (editForm.type === "premium" && !nextCatalogId) {
-      nextCatalogId = resolveCatalogId(editForm.name);
-      if (nextCatalogId) {
-        setEditForm((prev) => ({ ...prev, catalog_id: nextCatalogId }));
-      }
-    }
+    const nextCatalogId = editForm.catalog_id.trim();
 
     if (editForm.type === "premium" && !nextCatalogId) {
-      alert("Для premium каталога нужно указать Catalog ID (StoreKit)");
+      alert("Для premium каталога нужно выбрать Catalog ID (StoreKit)");
       return;
     }
 
@@ -391,14 +356,6 @@ export default function CatalogDetailPage() {
               className="input"
               value={editForm.name}
               onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              onBlur={() => {
-                if (editForm.type === "premium" && !editForm.catalog_id.trim()) {
-                  const suggested = resolveCatalogId(editForm.name);
-                  if (suggested) {
-                    setEditForm((prev) => ({ ...prev, catalog_id: suggested }));
-                  }
-                }
-              }}
             />
           </div>
 
@@ -446,28 +403,33 @@ export default function CatalogDetailPage() {
 
           <div className="form-group">
             <label className="form-label">Catalog ID (StoreKit)</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <input
-                className="input"
-                placeholder="italian / asian / japanese..."
-                value={editForm.catalog_id}
-                onChange={(e) => setEditForm({ ...editForm, catalog_id: e.target.value })}
-              />
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  const suggested = resolveCatalogId(editForm.name);
-                  if (suggested) {
-                    setEditForm((prev) => ({ ...prev, catalog_id: suggested }));
-                  } else {
-                    alert("Не удалось определить Catalog ID по названию");
-                  }
-                }}
-              >
-                Подставить
-              </button>
-            </div>
+            <select
+              className="input"
+              value={editForm.catalog_id}
+              onChange={(e) => setEditForm({ ...editForm, catalog_id: e.target.value })}
+            >
+              <option value="">— не выбрано —</option>
+              <optgroup label="Кухни мира">
+                <option value="italian">italian — Итальянская</option>
+                <option value="asian">asian — Азиатская</option>
+                <option value="japanese">japanese — Японская</option>
+                <option value="mexican">mexican — Мексиканская</option>
+                <option value="indian">indian — Индийская</option>
+                <option value="chinese">chinese — Китайская</option>
+                <option value="french">french — Французская</option>
+                <option value="thai">thai — Тайская</option>
+                <option value="korean">korean — Корейская</option>
+              </optgroup>
+              <optgroup label="Тематические">
+                <option value="christmas">christmas — Новогоднее меню</option>
+                <option value="healthy">healthy — Здоровое питание</option>
+                <option value="kids">kids — Детское меню</option>
+                <option value="party">party — Для вечеринки</option>
+                <option value="quick">quick — Быстрые блюда</option>
+                <option value="vegetarian">vegetarian — Вегетарианское</option>
+                <option value="highprotein">highprotein — Высокобелковые блюда</option>
+              </optgroup>
+            </select>
           </div>
 
           <div className="form-group">
