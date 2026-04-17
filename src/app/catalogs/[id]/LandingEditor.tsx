@@ -1009,28 +1009,6 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
       {/* ── Form mode ── */}
       {mode === "form" && (
         <div>
-          {/* ── Заголовок и описание — берутся из Настроек каталога ── */}
-          <SectionBlock title="📝 Заголовок и описание">
-            <div style={{ gridColumn: "1 / -1", padding: "8px 12px", background: "rgba(0,122,255,0.06)", border: "1px solid rgba(0,122,255,0.18)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
-              ℹ️ Название, подзаголовок и фото редактируются во вкладке <strong>Настройки</strong> и автоматически попадают сюда при сохранении
-            </div>
-            <Field label="Название" counter={{ current: viewData.preview_card.title.length, max: 40 }}>
-              <input className="input" readOnly value={viewData.preview_card.title} style={{ opacity: 0.6, background: "var(--bg-hover)" }} />
-            </Field>
-            <Field label="Подзаголовок" span>
-              <input className="input" readOnly value={viewData.preview_card.subtitle ?? ""} style={{ opacity: 0.6, background: "var(--bg-hover)" }} />
-            </Field>
-            <Field label="Фото" span>
-              <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                {data.preview_card.imageUrl
-                  ? <img src={data.preview_card.imageUrl} alt="preview" style={{ height: "56px", width: "56px", objectFit: "cover", borderRadius: "8px", border: "1px solid var(--border-light)", flexShrink: 0 }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-                  : <div style={{ height: "56px", width: "56px", borderRadius: "8px", border: "1px dashed var(--border-medium)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>📷</div>
-                }
-                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{data.preview_card.imageUrl || "Фото не задано — добавь в Настройках"}</span>
-              </div>
-            </Field>
-          </SectionBlock>
-
           {/* ── Цвета оформления (единый блок для всех трёх структур) ── */}
           <SectionBlock title="🎨 Цвета оформления">
             <ColorField
@@ -1217,7 +1195,7 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
                 <Field label="Подзаголовок">
                   <input className="input" style={roStyle} readOnly={isRO} value={viewData.purchase_cta?.subtitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, subtitle: e.target.value } })} />
                 </Field>
-                <Field label="Значок цены" hint="Берётся из поля Цена в Настройках">
+                <Field label="Значок цены" hint="Берётся из поля Цена выше">
                   <input className="input" readOnly value={data.purchase_cta.priceBadge ?? ""} style={{ opacity: 0.6, background: "var(--bg-hover)" }} />
                 </Field>
                 <Field label="Текст кнопки">
