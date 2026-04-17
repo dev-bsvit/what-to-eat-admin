@@ -329,257 +329,200 @@ export default function CatalogDetailPage() {
         padding: 'var(--spacing-lg)',
         marginBottom: 'var(--spacing-xl)',
       }}>
-        <div className="section-header" style={{ marginBottom: 'var(--spacing-lg)' }}>
-          <h2 className="section-title" style={{ fontSize: '20px' }}>Настройки каталога</h2>
-          <p className="section-subtitle">Редактирование названия, изображения и параметров монетизации</p>
-        </div>
-
         {saveStatus && (
-          <div style={{ marginBottom: 'var(--spacing-md)', color: 'var(--text-secondary)', fontSize: '12px' }}>
+          <div style={{
+            marginBottom: 'var(--spacing-md)',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            fontSize: '14px',
+            fontWeight: 600,
+            background: saveStatus.startsWith('Ошибка') ? 'rgba(255,59,48,0.1)' : 'rgba(52,199,89,0.1)',
+            color: saveStatus.startsWith('Ошибка') ? '#ff3b30' : '#34c759',
+          }}>
             {saveStatus}
           </div>
         )}
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-          gap: 'var(--spacing-lg)',
-        }}>
-          <div className="form-group">
-            <label className="form-label">ID</label>
-            <input className="input" value={editForm.id} readOnly />
-          </div>
-
+        {/* Main fields */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
           <div className="form-group">
             <label className="form-label">Название *</label>
             <input
               className="input"
               value={editForm.name}
               onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              placeholder="Например: Итальянская кухня"
             />
           </div>
 
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">Описание</label>
+          <div className="form-group">
+            <label className="form-label">Подзаголовок / Описание</label>
             <textarea
               className="input"
-              rows={3}
+              rows={2}
               value={editForm.description}
               onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              placeholder="Краткое описание каталога"
             />
           </div>
 
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">URL мини-изображения</label>
-            <input
-              className="input"
-              value={editForm.image_url}
-              onChange={(e) => setEditForm({ ...editForm, image_url: e.target.value })}
-            />
-          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-md)' }}>
+            <div className="form-group">
+              <label className="form-label">Тип каталога</label>
+              <select
+                className="input"
+                value={editForm.type}
+                onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+              >
+                <option value="free">Бесплатный</option>
+                <option value="premium">Платный (premium)</option>
+              </select>
+            </div>
 
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">URL landing-изображения</label>
-            <input
-              className="input"
-              value={editForm.landing_image_url}
-              onChange={(e) => setEditForm({ ...editForm, landing_image_url: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Тип каталога</label>
-            <select
-              className="input"
-              value={editForm.type}
-              onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
-            >
-              <option value="free">free</option>
-              <option value="premium">premium</option>
-              <option value="gift">gift</option>
-              <option value="unlockable">unlockable</option>
-            </select>
+            {editForm.type === 'premium' && (
+              <div className="form-group">
+                <label className="form-label">Цена ($)</label>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.99"
+                  value={editForm.price}
+                  onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                />
+              </div>
+            )}
           </div>
 
           <div className="form-group">
-            <label className="form-label">Catalog ID (StoreKit)</label>
-            <select
-              className="input"
-              value={editForm.catalog_id}
-              onChange={(e) => setEditForm({ ...editForm, catalog_id: e.target.value })}
-            >
-              <option value="">— не выбрано —</option>
-              <optgroup label="Кухни мира">
-                <option value="italian">italian — Итальянская</option>
-                <option value="asian">asian — Азиатская</option>
-                <option value="japanese">japanese — Японская</option>
-                <option value="mexican">mexican — Мексиканская</option>
-                <option value="indian">indian — Индийская</option>
-                <option value="chinese">chinese — Китайская</option>
-                <option value="french">french — Французская</option>
-                <option value="thai">thai — Тайская</option>
-                <option value="korean">korean — Корейская</option>
-              </optgroup>
-              <optgroup label="Тематические">
-                <option value="christmas">christmas — Новогоднее меню</option>
-                <option value="healthy">healthy — Здоровое питание</option>
-                <option value="kids">kids — Детское меню</option>
-                <option value="party">party — Для вечеринки</option>
-                <option value="quick">quick — Быстрые блюда</option>
-                <option value="vegetarian">vegetarian — Вегетарианское</option>
-                <option value="highprotein">highprotein — Высокобелковые блюда</option>
-              </optgroup>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Цена</label>
-            <input
-              className="input"
-              type="number"
-              step="0.01"
-              value={editForm.price}
-              onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Статус</label>
-            <select
-              className="input"
-              value={editForm.status}
-              onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-            >
-              <option value="active">active</option>
-              <option value="archived">archived</option>
-              <option value="hidden">hidden</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Модерация</label>
-            <select
-              className="input"
-              value={editForm.moderation_status}
-              onChange={(e) => setEditForm({ ...editForm, moderation_status: e.target.value })}
-            >
-              <option value="pending">pending</option>
-              <option value="approved">approved</option>
-              <option value="rejected">rejected</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">По умолчанию</label>
-            <select
-              className="input"
-              value={editForm.is_default}
-              onChange={(e) => setEditForm({ ...editForm, is_default: e.target.value })}
-            >
-              <option value="false">false</option>
-              <option value="true">true</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Пользовательский</label>
-            <select
-              className="input"
-              value={editForm.is_user_generated}
-              onChange={(e) => setEditForm({ ...editForm, is_user_generated: e.target.value })}
-            >
-              <option value="false">false</option>
-              <option value="true">true</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Owner ID</label>
-            <input
-              className="input"
-              value={editForm.owner_id}
-              onChange={(e) => setEditForm({ ...editForm, owner_id: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Популярность</label>
-            <input
-              className="input"
-              type="number"
-              value={editForm.popularity_score}
-              onChange={(e) => setEditForm({ ...editForm, popularity_score: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Скачивания</label>
-            <input
-              className="input"
-              type="number"
-              value={editForm.downloads_count}
-              onChange={(e) => setEditForm({ ...editForm, downloads_count: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Покупки</label>
-            <input
-              className="input"
-              type="number"
-              value={editForm.purchases_count}
-              onChange={(e) => setEditForm({ ...editForm, purchases_count: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Доля выручки (%)</label>
-            <input
-              className="input"
-              type="number"
-              step="0.01"
-              value={editForm.revenue_share}
-              onChange={(e) => setEditForm({ ...editForm, revenue_share: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
             <label className="form-label">Теги (через запятую)</label>
             <input
               className="input"
               value={editForm.tags}
               onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+              placeholder="🇮🇹, паста, пицца, средиземноморская"
             />
           </div>
 
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">Переводы (JSON)</label>
-            <textarea
+          <div className="form-group">
+            <label className="form-label">Фото мини (URL)</label>
+            <input
               className="input"
-              rows={4}
-              placeholder='{"en":{"name":"Italian","description":"..."}}'
-              value={editForm.translations}
-              onChange={(e) => setEditForm({ ...editForm, translations: e.target.value })}
-              style={{ fontFamily: 'monospace', fontSize: '13px' }}
+              value={editForm.image_url}
+              onChange={(e) => setEditForm({ ...editForm, image_url: e.target.value })}
+              placeholder="https://..."
             />
+            {editForm.image_url && (
+              <img src={editForm.image_url} alt="" style={{ marginTop: 8, height: 60, borderRadius: 8, objectFit: 'cover' }} />
+            )}
           </div>
 
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label className="form-label">Условия разблокировки (JSON)</label>
-            <textarea
+          <div className="form-group">
+            <label className="form-label">Фото лендинга (URL)</label>
+            <input
               className="input"
-              rows={4}
-              value={editForm.unlock_conditions}
-              onChange={(e) => setEditForm({ ...editForm, unlock_conditions: e.target.value })}
+              value={editForm.landing_image_url}
+              onChange={(e) => setEditForm({ ...editForm, landing_image_url: e.target.value })}
+              placeholder="https://..."
             />
+            {editForm.landing_image_url && (
+              <img src={editForm.landing_image_url} alt="" style={{ marginTop: 8, height: 80, borderRadius: 8, objectFit: 'cover' }} />
+            )}
           </div>
         </div>
 
-        <div className="modal-footer" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <div className="modal-footer" style={{ marginTop: 'var(--spacing-lg)', marginBottom: 'var(--spacing-lg)' }}>
           <button className="btn btn-primary" onClick={handleSaveCuisine}>
             Сохранить каталог
           </button>
         </div>
+
+        {/* Technical section — collapsed */}
+        <details style={{ marginTop: 'var(--spacing-md)' }}>
+          <summary style={{
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: 600,
+            color: 'var(--text-secondary)',
+            userSelect: 'none',
+            padding: '8px 0',
+          }}>
+            ⚙️ Технические настройки
+          </summary>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 'var(--spacing-md)',
+            marginTop: 'var(--spacing-md)',
+            padding: 'var(--spacing-md)',
+            background: 'var(--bg-hover)',
+            borderRadius: 'var(--radius-md)',
+          }}>
+            <div className="form-group">
+              <label className="form-label">UUID каталога</label>
+              <input className="input" value={editForm.id} readOnly style={{ opacity: 0.6 }} />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Catalog ID (StoreKit)</label>
+              <select
+                className="input"
+                value={editForm.catalog_id}
+                onChange={(e) => setEditForm({ ...editForm, catalog_id: e.target.value })}
+              >
+                <option value="">— не выбрано —</option>
+                <optgroup label="Кухни мира">
+                  <option value="italian">italian — Итальянская</option>
+                  <option value="asian">asian — Азиатская</option>
+                  <option value="japanese">japanese — Японская</option>
+                  <option value="mexican">mexican — Мексиканская</option>
+                  <option value="indian">indian — Индийская</option>
+                  <option value="chinese">chinese — Китайская</option>
+                  <option value="french">french — Французская</option>
+                  <option value="thai">thai — Тайская</option>
+                  <option value="korean">korean — Корейская</option>
+                </optgroup>
+                <optgroup label="Тематические">
+                  <option value="christmas">christmas</option>
+                  <option value="healthy">healthy</option>
+                  <option value="kids">kids</option>
+                  <option value="party">party</option>
+                  <option value="quick">quick</option>
+                  <option value="vegetarian">vegetarian</option>
+                  <option value="highprotein">highprotein</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Статус</label>
+              <select className="input" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+                <option value="active">active</option>
+                <option value="archived">archived</option>
+                <option value="hidden">hidden</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Модерация</label>
+              <select className="input" value={editForm.moderation_status} onChange={(e) => setEditForm({ ...editForm, moderation_status: e.target.value })}>
+                <option value="pending">pending</option>
+                <option value="approved">approved</option>
+                <option value="rejected">rejected</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Скачивания</label>
+              <input className="input" type="number" value={editForm.downloads_count} onChange={(e) => setEditForm({ ...editForm, downloads_count: e.target.value })} />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Покупки</label>
+              <input className="input" type="number" value={editForm.purchases_count} onChange={(e) => setEditForm({ ...editForm, purchases_count: e.target.value })} />
+            </div>
+          </div>
+        </details>
       </div>}
 
       {/* Tab: Landing */}
