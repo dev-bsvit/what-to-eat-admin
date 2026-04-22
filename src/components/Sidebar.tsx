@@ -8,6 +8,7 @@ const navigation = [
   { name: "Продукты", href: "/products", icon: "🥗" },
   { name: "Модерация", href: "/moderation", icon: "📋" },
   { name: "Пользователи", href: "/users", icon: "👤" },
+  { name: "Подписки", href: "/subscription-rules", icon: "💎" },
   { name: "Уведомления", href: "/notifications", icon: "🔔" },
   { name: "Парсеры", href: "/parsers", icon: "⚙️" },
   { name: "Тест импорта", href: "/test-import", icon: "🧪" },

@@ -26,6 +26,10 @@ function isPublicPath(pathname: string) {
   if (pathname.startsWith("/api/webhooks/")) {
     return true;
   }
+  // AI proxy endpoints — имеют собственную JWT авторизацию через Supabase
+  if (pathname.startsWith("/api/ai/")) {
+    return true;
+  }
   if (pathname.startsWith("/_next/")) {
     return true;
   }
