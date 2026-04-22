@@ -104,6 +104,29 @@ export async function checkAndIncrementAiUsage(userId: string): Promise<void> {
   );
 }
 
+// Logs token usage to ai_token_usage table (fire-and-forget, called via after()).
+export async function logTokenUsage(
+  userId: string,
+  endpoint: string,
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+): Promise<void> {
+  try {
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    await adminClient.from("ai_token_usage").insert({
+      user_id: userId,
+      endpoint,
+      prompt_tokens: usage.prompt_tokens,
+      completion_tokens: usage.completion_tokens,
+      total_tokens: usage.total_tokens,
+    });
+  } catch {
+    // Non-critical — don't affect the response
+    console.error("logTokenUsage failed silently");
+  }
+}
+
 export class AuthError extends Error {
   constructor(
     message: string,

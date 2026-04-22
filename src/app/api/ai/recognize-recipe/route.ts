@@ -2,8 +2,9 @@
 // Распознавание полного рецепта из фото.
 // Free: 1 запрос/день (общий счётчик). Premium: без ограничений.
 
+import { after } from "next/server";
 import { NextResponse } from "next/server";
-import { verifyUser, checkAndIncrementAiUsage, AuthError } from "@/lib/verifyUser";
+import { verifyUser, checkAndIncrementAiUsage, logTokenUsage, AuthError } from "@/lib/verifyUser";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
@@ -89,6 +90,10 @@ Return JSON:
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
       return NextResponse.json({ error: "Empty AI response" }, { status: 502 });
+    }
+
+    if (data.usage) {
+      after(() => logTokenUsage(user.userId, "recognize-recipe", data.usage));
     }
 
     return NextResponse.json(JSON.parse(content));

@@ -2,8 +2,9 @@
 // AI улучшение рецепта — нормализация единиц, чистка ингредиентов.
 // ТОЛЬКО для Premium пользователей.
 
+import { after } from "next/server";
 import { NextResponse } from "next/server";
-import { verifyUser, AuthError } from "@/lib/verifyUser";
+import { verifyUser, logTokenUsage, AuthError } from "@/lib/verifyUser";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
@@ -70,6 +71,10 @@ OUTPUT: valid JSON with same structure as input. Never put string in integer fie
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
       return NextResponse.json({ error: "Empty AI response" }, { status: 502 });
+    }
+
+    if (data.usage) {
+      after(() => logTokenUsage(user.userId, "process-recipe", data.usage));
     }
 
     return NextResponse.json(JSON.parse(content));

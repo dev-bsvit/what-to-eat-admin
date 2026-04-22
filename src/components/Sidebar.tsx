@@ -13,6 +13,7 @@ const navigation = [
   { name: "Парсеры", href: "/parsers", icon: "⚙️" },
   { name: "Тест импорта", href: "/test-import", icon: "🧪" },
   { name: "Instagram импорт", href: "/instagram-import", icon: "📷" },
+  { name: "AI токени", href: "/ai-tokens", icon: "📊" },
   { name: "AI теги", href: "/recommend-setup", icon: "🏷️" },
   { name: "Теги рецептов", href: "/recipes/tags", icon: "🔖" },
 ];

@@ -2,8 +2,9 @@
 // Распознавание продуктов из фото (чек, список, книга).
 // Free: 1 запрос/день (общий счётчик с recognize-text). Premium: без ограничений.
 
+import { after } from "next/server";
 import { NextResponse } from "next/server";
-import { verifyUser, checkAndIncrementAiUsage, AuthError } from "@/lib/verifyUser";
+import { verifyUser, checkAndIncrementAiUsage, logTokenUsage, AuthError } from "@/lib/verifyUser";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
@@ -71,6 +72,10 @@ Return JSON: {"products":[{"name":"...","quantity":1,"unit":"grams|kilograms|mil
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
       return NextResponse.json({ error: "Empty AI response" }, { status: 502 });
+    }
+
+    if (data.usage) {
+      after(() => logTokenUsage(user.userId, "recognize-image", data.usage));
     }
 
     return NextResponse.json(JSON.parse(content));
