@@ -429,7 +429,7 @@ export default function SubscriptionRulesPage() {
             <li>Сервер верифицирует токен через Supabase Auth</li>
             <li>Проверяет <code>subscription_status</code> пользователя в таблице profiles</li>
             <li>Если Free — проверяет счётчик AI-запросов за сегодня в таблице <code>ai_usage</code></li>
-            <li>Если лимит достигнут → возвращает <code>403 + reason: "ai_limit_reached"</code></li>
+            <li>Если лимит достигнут → возвращает <code>{'403 + reason: "ai_limit_reached"'}</code></li>
             <li>Клиент получает 403 → показывает Paywall</li>
             <li>Если всё ок → форвардит запрос к OpenAI, возвращает результат</li>
           </ol>
