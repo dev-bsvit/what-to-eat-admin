@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     try {
       const cleanedContent = stripMarkdownCodeBlocks(content);
       parsed = JSON.parse(cleanedContent);
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: "Invalid JSON from model", raw: content }, { status: 500 });
     }
 
