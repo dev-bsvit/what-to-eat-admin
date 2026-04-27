@@ -946,7 +946,7 @@ ${base}
         <div style={{ background: "linear-gradient(135deg,rgba(0,122,255,0.07),rgba(52,199,89,0.07))", border: "1px solid rgba(0,122,255,0.25)", borderRadius: "14px", padding: "16px", marginBottom: "14px" }}>
           <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "6px" }}>🌍 Вставь ответ AI с переводами</div>
           <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "10px", marginTop: 0 }}>
-            Вставь JSON который вернул AI — объект вида {`{"en":{...},"de":{...},...}`} или с полем "translations".
+            Вставь JSON который вернул AI — объект вида {`{"en":{...},"de":{...},...}`} или с полем &quot;translations&quot;.
           </p>
           <textarea
             className="input"
