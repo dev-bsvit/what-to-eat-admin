@@ -963,35 +963,96 @@ ${base}
           </div>
         </div>
 
-        <div className="landing-workflow-actions">
-          <button type="button" className="workflow-action primary" onClick={copyPrompt}>
-            <Clipboard size={18} />
-            <span>
-              <strong>1. Промпт RU</strong>
-              <small>копировать</small>
-            </span>
-          </button>
-          <button type="button" className="workflow-action" onClick={switchToJson}>
-            <Code2 size={18} />
-            <span>
-              <strong>2. JSON</strong>
-              <small>вставить готовый</small>
-            </span>
-          </button>
-          <button type="button" className="workflow-action" onClick={() => setShowTranslationPaste(v => !v)}>
-            <Upload size={18} />
-            <span>
-              <strong>Переводы</strong>
-              <small>AI JSON</small>
-            </span>
-          </button>
-          <button type="button" className="workflow-action success" onClick={saveLanding}>
-            <Save size={18} />
-            <span>
-              <strong>3. Сохранить</strong>
-              <small>{data.is_published ? "в приложении" : "черновик"}</small>
-            </span>
-          </button>
+        <div className="landing-step-grid">
+          <section className="landing-step-card">
+            <div className="landing-step-number">1</div>
+            <div className="landing-step-content">
+              <h3>Подготовить JSON</h3>
+              <p>Скопируйте промпт или заполните лендинг через AI внутри админки.</p>
+              <div className="landing-step-actions">
+                <button type="button" className="btn btn-primary" onClick={copyPrompt}>
+                  <Clipboard size={15} />
+                  Промпт RU
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAiPrompt((v) => !v)}
+                  disabled={isAiLoading}
+                >
+                  <Bot size={15} />
+                  AI заполнить
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="landing-step-card">
+            <div className="landing-step-number">2</div>
+            <div className="landing-step-content">
+              <h3>Вставить и проверить</h3>
+              <p>Откройте JSON-режим, вставьте ответ AI и проверьте структуру.</p>
+              <div className="landing-step-actions">
+                <button type="button" className="btn btn-secondary" onClick={switchToJson}>
+                  <Code2 size={15} />
+                  Открыть JSON
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="landing-step-card">
+            <div className="landing-step-number">3</div>
+            <div className="landing-step-content">
+              <h3>Переводы</h3>
+              <p>Сгенерируйте переводы через DeepL или вставьте JSON переводов от AI.</p>
+              <div className="landing-step-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={translateAll}
+                  disabled={isTranslating}
+                >
+                  <Globe2 size={15} />
+                  {isTranslating ? "Перевожу..." : "DeepL"}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={copyTranslationPrompt}>
+                  <Languages size={15} />
+                  Промпт переводов
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowTranslationPaste(v => !v)}>
+                  <Upload size={15} />
+                  Вставить переводы
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="landing-step-card landing-step-card-final">
+            <div className="landing-step-number">4</div>
+            <div className="landing-step-content">
+              <h3>Сохранить</h3>
+              <p>Выберите статус публикации и сохраните результат в приложение.</p>
+              <div className="landing-step-actions">
+                <button
+                  type="button"
+                  className={data.is_published ? "btn btn-success" : "btn btn-secondary"}
+                  onClick={() => upd({ is_published: !data.is_published })}
+                >
+                  <CheckCircle2 size={15} />
+                  {data.is_published ? "Опубликован" : "Черновик"}
+                </button>
+                <button type="button" className="btn btn-primary" onClick={saveLanding}>
+                  <Save size={15} />
+                  Сохранить
+                </button>
+                <button type="button" className="btn btn-danger" onClick={deleteLanding}>
+                  <Trash2 size={15} />
+                  Удалить
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -1018,16 +1079,6 @@ ${base}
               );
             })}
           </div>
-          <button
-            className="btn btn-secondary"
-            onClick={translateAll}
-            disabled={isTranslating}
-            style={{ fontSize: "12px", whiteSpace: "nowrap", opacity: isTranslating ? 0.6 : 1 }}
-            title="Автоматически перевести все секции через DeepL на 7 языков"
-          >
-            <Globe2 size={15} />
-            {isTranslating ? "Перевожу..." : "DeepL"}
-          </button>
         </div>
         {activeLang !== "ru" && (
           <div style={{ marginTop: "8px", padding: "8px 12px", background: "rgba(0,122,255,0.06)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
@@ -1092,99 +1143,23 @@ ${base}
         </div>
       )}
 
-      {/* ── Toolbar ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
-        {/* Mode tabs */}
-        <div style={{ display: "flex", background: "var(--bg-hover)", borderRadius: "8px", padding: "3px", gap: "2px" }}>
+      {/* ── Editor mode ── */}
+      <div className="editor-mode-bar">
+        <div className="editor-mode-tabs">
           {(["form", "json"] as const).map((m) => (
             <button
               key={m}
               onClick={() => m === "json" ? switchToJson() : switchToForm()}
-              style={{
-                padding: "6px 16px", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600,
-                background: mode === m ? "var(--bg-surface)" : "transparent",
-                color: mode === m ? "var(--text-primary)" : "var(--text-secondary)",
-                boxShadow: mode === m ? "0 1px 3px rgba(0,0,0,0.15)" : "none",
-              }}
+              className={mode === m ? "is-active" : ""}
             >
               {m === "form" ? "Форма" : "JSON"}
             </button>
           ))}
         </div>
-
-        {/* Publish toggle */}
-        <button
-          onClick={() => upd({ is_published: !data.is_published })}
-          style={{
-            padding: "6px 14px", borderRadius: "8px", border: "1px solid", cursor: "pointer", fontSize: "13px", fontWeight: 700,
-            background: data.is_published ? "rgba(52,199,89,0.12)" : "var(--bg-hover)",
-            color: data.is_published ? "#34c759" : "var(--text-secondary)",
-            borderColor: data.is_published ? "rgba(52,199,89,0.4)" : "var(--border-light)",
-          }}
-          title={data.is_published ? "Нажми чтобы скрыть из приложения" : "Нажми чтобы опубликовать в приложении"}
-        >
-          {data.is_published ? "● Опубликован" : "○ Черновик"}
-        </button>
-
-        {/* Copy prompt */}
-        <button
-          className="btn btn-secondary"
-          onClick={copyPrompt}
-          style={{ marginLeft: "auto", fontSize: "13px" }}
-          title="Скопировать промпт для генерации русского JSON через внешний AI-чат"
-        >
-          <Clipboard size={15} />
-          Промпт RU
-        </button>
-
-        {/* Copy translation prompt */}
-        <button
-          className="btn btn-secondary"
-          onClick={copyTranslationPrompt}
-          style={{ fontSize: "13px" }}
-          title="Скопировать промпт для перевода на 7 языков"
-        >
-          <Globe2 size={15} />
-          Промпт переводов
-        </button>
-
-        {/* Paste translations from AI */}
-        <button
-          className="btn btn-secondary"
-          onClick={() => setShowTranslationPaste(v => !v)}
-          style={{ fontSize: "13px", background: showTranslationPaste ? "rgba(52,199,89,0.1)" : undefined, color: "#34c759", borderColor: "rgba(52,199,89,0.3)", fontWeight: 700 }}
-          title="Вставить ответ AI с переводами"
-        >
-          <Upload size={15} />
-          Вставить переводы
-        </button>
-
-        {/* AI */}
-        <button
-          className="btn btn-secondary"
-          onClick={() => setShowAiPrompt((v) => !v)}
-          disabled={isAiLoading}
-          style={{ background: showAiPrompt ? "rgba(99,102,241,0.12)" : undefined, color: "#6366f1", borderColor: "rgba(99,102,241,0.3)", fontWeight: 700 }}
-        >
-          <Bot size={15} />
-          AI заполнить
-        </button>
-
-        {/* Save */}
-        <button className="btn btn-primary" onClick={saveLanding}>
-          <Save size={15} />
-          Сохранить
-        </button>
-
-        {/* Delete — separated visually */}
-        <button
-          className="btn btn-secondary"
-          onClick={deleteLanding}
-          style={{ color: "var(--accent-danger)", borderColor: "rgba(255,59,48,0.3)", marginLeft: "4px" }}
-        >
-          <Trash2 size={15} />
-          Удалить
-        </button>
+        <span className={data.is_published ? "status-pill success" : "status-pill muted"}>
+          <CheckCircle2 size={14} />
+          {data.is_published ? "Опубликован" : "Черновик"}
+        </span>
       </div>
 
       {/* ── Status bar ── */}

@@ -844,61 +844,108 @@ select.input-sm {
   color: #b45309;
 }
 
-.landing-workflow-actions {
+.landing-step-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(4, minmax(210px, 1fr));
   gap: 10px;
 }
 
-.workflow-action {
-  min-height: 64px;
-  display: flex;
-  align-items: center;
+.landing-step-card {
+  display: grid;
+  grid-template-columns: 28px 1fr;
   gap: 10px;
-  padding: 11px 12px;
+  min-height: 150px;
+  padding: 12px;
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  cursor: pointer;
-  text-align: left;
+  background: rgba(255, 255, 255, 0.82);
 }
 
-.workflow-action svg {
-  flex: 0 0 auto;
-  color: var(--accent-primary);
+.landing-step-card-final {
+  border-color: rgba(52, 199, 89, 0.28);
+  background: rgba(255, 255, 255, 0.9);
 }
 
-.workflow-action strong,
-.workflow-action small {
-  display: block;
-}
-
-.workflow-action strong {
+.landing-step-number {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--accent-primary);
+  color: #ffffff;
   font-size: 13px;
+  font-weight: 800;
 }
 
-.workflow-action small {
-  margin-top: 1px;
+.landing-step-content {
+  min-width: 0;
+}
+
+.landing-step-content h3 {
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.landing-step-content p {
+  min-height: 38px;
+  margin-bottom: 10px;
   color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.landing-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.landing-step-actions .btn {
+  min-height: 34px;
+  padding: 7px 10px;
   font-size: 12px;
 }
 
-.workflow-action.primary {
-  border-color: rgba(0, 122, 255, 0.35);
+.editor-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-surface);
 }
 
-.workflow-action.success {
-  border-color: rgba(52, 199, 89, 0.3);
+.editor-mode-tabs {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--bg-hover);
 }
 
-.workflow-action.success svg {
-  color: var(--accent-success);
+.editor-mode-tabs button {
+  min-width: 74px;
+  height: 34px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.workflow-action:hover {
-  border-color: var(--accent-primary);
-  box-shadow: var(--shadow-sm);
+.editor-mode-tabs button.is-active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .json-mode-header {
@@ -945,19 +992,20 @@ select.input-sm {
     flex-direction: column;
   }
 
-  .landing-workflow-actions {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  .landing-step-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 }
 
 @media (max-width: 720px) {
   .catalog-grid,
-  .landing-workflow-actions {
+  .landing-step-grid {
     grid-template-columns: 1fr;
   }
 
   .modal-footer,
-  .json-mode-header {
+  .json-mode-header,
+  .editor-mode-bar {
     flex-direction: column;
     align-items: stretch;
   }
