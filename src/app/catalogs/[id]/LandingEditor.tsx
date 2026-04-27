@@ -527,156 +527,70 @@ export default function LandingEditor({
 
   function buildCopyPrompt(): string {
     const priceHint = cuisinePrice || "$2";
-    return `Ты создаёшь JSON для лендинга платного кулинарного каталога в мобильном приложении (iOS, 8 языков).
+    return `Оформи контент кулинарного каталога в JSON для мобильного приложения.
 
 КАТАЛОГ: ${cuisineName}${cuisineDescription ? `\nОПИСАНИЕ: ${cuisineDescription}` : ""}
 ЦЕНА: ${priceHint}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 МОЙ КОНТЕНТ (заполни перед отправкой):
+📝 МОЙ КОНТЕНТ (заполни перед отправкой — впиши свои пункты вместо примеров):
 
-Что внутри — перечисли все пункты:
--
--
+Что внутри:
+1. ...
+2. ...
 
-Кому подойдёт — перечисли все пункты:
--
--
+Кому подойдёт:
+1. ...
+2. ...
 
-До/После — перечисли все пары:
-До: ... → После: ...
-До: ... → После: ...
+До → После:
+1. До: ... | После: ...
+2. До: ... | После: ...
 
-Преимущества — перечисли все:
--
--
+Преимущества:
+1. ...
+2. ...
 
-FAQ — перечисли вопросы и ответы:
-В: ? О: ...
-В: ? О: ...
+FAQ:
+1. В: ... О: ...
+2. В: ... О: ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ЗАДАЧА: Возьми МОЙ КОНТЕНТ выше и оформи его в JSON. Не придумывай новые пункты — только форматируй то что дано. Если раздел не заполнен — придумай сам. Добавь переводы на 7 языков.
+ШАГ 1 — перед JSON выпиши счётчик (plain text):
+Счётчик: inside=N, audience=N, pairs=N, benefits=N, faq=N
+
+ШАГ 2 — сгенерируй JSON на русском языке со всеми секциями.
+Каждый массив содержит РОВНО столько элементов, сколько указано в счётчике.
+Не добавляй лишних, не пропускай ни одного пункта из МОЙ КОНТЕНТ.
 
 ПРАВИЛА:
-- Верни ТОЛЬКО валидный JSON без markdown-обёртки и без комментариев
-- UUID v4 для всех "id" (формат: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)
-- HEX без # (FF375F, не #FF375F)
-- Цвета подбери под тему каталога: тёмный насыщенный фон, яркий акцент
-- "imageUrl" всегда null, "recipe_preview_ids" всегда [], "is_published" false, "sort_order" 0
-- Добавь служебный блок "_cuisine.recommendation" для выбора подарка после анкеты
+- Верни plain text счётчик, затем ТОЛЬКО валидный JSON без markdown-обёртки
+- UUID v4 для всех "id"
+- HEX без # (например FF375F)
+- "imageUrl" всегда null, "recipe_preview_ids" [], "is_published" false, "sort_order" 0
+- Добавь блок "_cuisine.recommendation" для онбординга
 - ${CATALOG_RECOMMENDATION_PROMPT}
-- Тексты живые, дружелюбные, продающие — не канцелярит
+- Тексты живые, дружелюбные, без канцелярита
 
-СТРУКТУРА (строго соблюдай, количество элементов в массивах — по содержанию каталога):
+СТРУКТУРА JSON:
 {
   "_cuisine": { "recommendation": { "levels": ["beginner"], "times": ["from20to40"], "dietary": [], "tags": ["quick","simple"] } },
   "preview_card": { "title": "до 40 символов", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX" },
   "hero": { "title": "заголовок (\\n для переноса)", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX" },
-  "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [{"id":"uuid","emoji":"🍜","title":null,"text":"..."},{"id":"uuid","emoji":"🧾","title":null,"text":"..."}] },
+  "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [{"id":"uuid","emoji":"emoji","title":null,"text":"пункт из МОЙ КОНТЕНТ"}] },
   "recipe_showcase": { "title": "...", "subtitle": "..." },
-  "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [{"id":"uuid","emoji":"✨","title":null,"text":"..."},{"id":"uuid","emoji":"⏱","title":null,"text":"..."}] },
-  "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [{"id":"uuid","beforeText":"проблема","afterText":"решение"},{"id":"uuid","beforeText":"проблема","afterText":"решение"}] },
-  "benefits_section": { "title": "Преимущества", "subtitle": "...", "cards": [{"id":"uuid","eyebrow":"метка","title":"заголовок","text":"описание"},{"id":"uuid","eyebrow":"метка","title":"заголовок","text":"описание"}] },
-  "faq_items": [{"id":"uuid","question":"вопрос?","answer":"ответ"},{"id":"uuid","question":"вопрос?","answer":"ответ"},{"id":"uuid","question":"вопрос?","answer":"ответ"}],
+  "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [{"id":"uuid","emoji":"emoji","title":null,"text":"пункт из МОЙ КОНТЕНТ"}] },
+  "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [{"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"}] },
+  "benefits_section": { "title": "Преимущества", "subtitle": "...", "cards": [{"id":"uuid","eyebrow":"метка","title":"заголовок","text":"из МОЙ КОНТЕНТ"}] },
+  "faq_items": [{"id":"uuid","question":"из МОЙ КОНТЕНТ","answer":"из МОЙ КОНТЕНТ"}],
   "purchase_cta": { "title": "Открыть каталог", "subtitle": "...", "priceBadge": "${priceHint}", "features": [{"id":"uuid","icon":"book.closed","title":"N рецептов","subtitle":"внутри каталога"},{"id":"uuid","icon":"list.bullet.rectangle","title":"Пошаговые инструкции","subtitle":"без лишней теории"},{"id":"uuid","icon":"arrow.clockwise","title":"Обновления","subtitle":"бесплатно навсегда"}], "buttonTitle": "Открыть каталог" },
   "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
   "recipe_preview_ids": [],
   "is_published": false,
-  "sort_order": 0,
-  "translations": {
-    "ru": {
-      "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Что внутри","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."}]},
-      "recipe_showcase": {"title":"...","subtitle":"..."},
-      "audience_section": {"title":"Кому подойдёт","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
-      "transformation_section": {"title":"Узнаёшь себя?","subtitle":null,"beforeLabel":"До","afterLabel":"После","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
-      "benefits_section": {"title":"Преимущества","subtitle":"...","cards":[{"eyebrow":"...","title":"...","text":"..."},{"eyebrow":"...","title":"...","text":"..."}]},
-      "faq_items": [{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."}],
-      "purchase_cta": {"title":"Открыть каталог","subtitle":"...","features":[{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."}],"buttonTitle":"Открыть каталог"}
-    },
-    "en": {
-      "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"What's inside","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."}]},
-      "recipe_showcase": {"title":"...","subtitle":"..."},
-      "audience_section": {"title":"Who is it for","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
-      "transformation_section": {"title":"Sound familiar?","subtitle":null,"beforeLabel":"Before","afterLabel":"After","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
-      "benefits_section": {"title":"Benefits","subtitle":"...","cards":[{"eyebrow":"...","title":"...","text":"..."},{"eyebrow":"...","title":"...","text":"..."}]},
-      "faq_items": [{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."}],
-      "purchase_cta": {"title":"Open catalog","subtitle":"...","features":[{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."}],"buttonTitle":"Open catalog"}
-    },
-    "de": {
-      "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Was ist drin","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."}]},
-      "recipe_showcase": {"title":"...","subtitle":"..."},
-      "audience_section": {"title":"Für wen ist es","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
-      "transformation_section": {"title":"Klingt bekannt?","subtitle":null,"beforeLabel":"Vorher","afterLabel":"Nachher","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
-      "benefits_section": {"title":"Vorteile","subtitle":"...","cards":[{"eyebrow":"...","title":"...","text":"..."},{"eyebrow":"...","title":"...","text":"..."}]},
-      "faq_items": [{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."}],
-      "purchase_cta": {"title":"Katalog öffnen","subtitle":"...","features":[{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."}],"buttonTitle":"Katalog öffnen"}
-    },
-    "fr": {
-      "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Ce qu'il y a dedans","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."}]},
-      "recipe_showcase": {"title":"...","subtitle":"..."},
-      "audience_section": {"title":"Pour qui","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
-      "transformation_section": {"title":"Ça vous parle ?","subtitle":null,"beforeLabel":"Avant","afterLabel":"Après","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
-      "benefits_section": {"title":"Avantages","subtitle":"...","cards":[{"eyebrow":"...","title":"...","text":"..."},{"eyebrow":"...","title":"...","text":"..."}]},
-      "faq_items": [{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."}],
-      "purchase_cta": {"title":"Ouvrir le catalogue","subtitle":"...","features":[{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."}],"buttonTitle":"Ouvrir le catalogue"}
-    },
-    "it": {
-      "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Cosa c'è dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."}]},
-      "recipe_showcase": {"title":"...","subtitle":"..."},
-      "audience_section": {"title":"Per chi è","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
-      "transformation_section": {"title":"Ti riconosci?","subtitle":null,"beforeLabel":"Prima","afterLabel":"Dopo","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
-      "benefits_section": {"title":"Vantaggi","subtitle":"...","cards":[{"eyebrow":"...","title":"...","text":"..."},{"eyebrow":"...","title":"...","text":"..."}]},
-      "faq_items": [{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."}],
-      "purchase_cta": {"title":"Apri il catalogo","subtitle":"...","features":[{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."}],"buttonTitle":"Apri il catalogo"}
-    },
-    "es": {
-      "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Qué hay dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."}]},
-      "recipe_showcase": {"title":"...","subtitle":"..."},
-      "audience_section": {"title":"¿Para quién?","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
-      "transformation_section": {"title":"¿Te suena familiar?","subtitle":null,"beforeLabel":"Antes","afterLabel":"Después","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
-      "benefits_section": {"title":"Ventajas","subtitle":"...","cards":[{"eyebrow":"...","title":"...","text":"..."},{"eyebrow":"...","title":"...","text":"..."}]},
-      "faq_items": [{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."}],
-      "purchase_cta": {"title":"Abrir catálogo","subtitle":"...","features":[{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."}],"buttonTitle":"Abrir catálogo"}
-    },
-    "pt-BR": {
-      "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"O que tem dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."}]},
-      "recipe_showcase": {"title":"...","subtitle":"..."},
-      "audience_section": {"title":"Para quem é","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
-      "transformation_section": {"title":"Parece familiar?","subtitle":null,"beforeLabel":"Antes","afterLabel":"Depois","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
-      "benefits_section": {"title":"Benefícios","subtitle":"...","cards":[{"eyebrow":"...","title":"...","text":"..."},{"eyebrow":"...","title":"...","text":"..."}]},
-      "faq_items": [{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."}],
-      "purchase_cta": {"title":"Abrir catálogo","subtitle":"...","features":[{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."}],"buttonTitle":"Abrir catálogo"}
-    },
-    "uk": {
-      "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Що всередині","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."}]},
-      "recipe_showcase": {"title":"...","subtitle":"..."},
-      "audience_section": {"title":"Кому підійде","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
-      "transformation_section": {"title":"Впізнаєш себе?","subtitle":null,"beforeLabel":"До","afterLabel":"Після","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
-      "benefits_section": {"title":"Переваги","subtitle":"...","cards":[{"eyebrow":"...","title":"...","text":"..."},{"eyebrow":"...","title":"...","text":"..."}]},
-      "faq_items": [{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."},{"question":"...","answer":"..."}],
-      "purchase_cta": {"title":"Відкрити каталог","subtitle":"...","features":[{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."},{"title":"...","subtitle":"..."}],"buttonTitle":"Відкрити каталог"}
-    }
-  }
+  "sort_order": 0
 }
 
-ВАЖНО: Все "..." замени реальным контентом на соответствующем языке. Верни ТОЛЬКО JSON без markdown-обёртки.`;
+Переводы на 7 языков — не нужны, они делаются отдельно через DeepL.`;
   }
 
   function copyPrompt() {
