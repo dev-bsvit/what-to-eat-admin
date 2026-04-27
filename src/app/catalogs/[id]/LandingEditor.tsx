@@ -556,15 +556,12 @@ FAQ:
 2. В: ... О: ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ШАГ 1 — перед JSON выпиши счётчик (plain text):
-Счётчик: inside=N, audience=N, pairs=N, benefits=N, faq=N
-
-ШАГ 2 — сгенерируй JSON на русском языке со всеми секциями.
-Каждый массив содержит РОВНО столько элементов, сколько указано в счётчике.
-Не добавляй лишних, не пропускай ни одного пункта из МОЙ КОНТЕНТ.
+ЗАДАЧА — сгенерируй валидный JSON на русском языке со всеми секциями.
+Перед генерацией мысленно подсчитай пункты из МОЙ КОНТЕНТ и включи в JSON поле "_counts".
+Каждый массив содержит РОВНО столько элементов, сколько в "_counts". Не пропускай ни одного пункта.
 
 ПРАВИЛА:
-- Верни plain text счётчик, затем ТОЛЬКО валидный JSON без markdown-обёртки
+- Верни ТОЛЬКО валидный JSON без markdown-обёртки и без любого текста до/после
 - UUID v4 для всех "id"
 - HEX без # (например FF375F)
 - "imageUrl" всегда null, "recipe_preview_ids" [], "is_published" false, "sort_order" 0
@@ -574,6 +571,7 @@ FAQ:
 
 СТРУКТУРА JSON:
 {
+  "_counts": { "inside": N, "audience": N, "pairs": N, "benefits": N, "faq": N },
   "_cuisine": { "recommendation": { "levels": ["beginner"], "times": ["from20to40"], "dietary": [], "tags": ["quick","simple"] } },
   "preview_card": { "title": "до 40 символов", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX" },
   "hero": { "title": "заголовок (\\n для переноса)", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX" },
@@ -643,7 +641,7 @@ FAQ:
   }
 
   function extractTranslationsFromJson(parsed: Record<string, unknown>): { landingData: Record<string, unknown>; extractedTranslations: Record<string, unknown> } {
-    const { translations: t, _cuisine, ...rest } = parsed;
+    const { translations: t, _cuisine, _counts, ...rest } = parsed;
     const extractedTranslations = (t && typeof t === "object" && !Array.isArray(t)) ? t as Record<string, unknown> : {};
     // If _cuisine block present — sync name/description/price back to parent form
     if (_cuisine && typeof _cuisine === "object" && onCuisineImport) {
