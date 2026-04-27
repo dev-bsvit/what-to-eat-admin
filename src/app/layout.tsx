@@ -18,16 +18,10 @@ export default function RootLayout({
   return (
     <html lang="ru" suppressHydrationWarning>
       <body className="antialiased">
-        <div style={{ display: 'flex' }}>
+        <div className="admin-shell">
           <Sidebar />
           <main
-            className="custom-scrollbar"
-            style={{
-              marginLeft: '240px',
-              minHeight: '100vh',
-              flex: 1,
-              padding: 'var(--spacing-2xl)',
-            }}
+            className="custom-scrollbar admin-main"
           >
             {children}
           </main>

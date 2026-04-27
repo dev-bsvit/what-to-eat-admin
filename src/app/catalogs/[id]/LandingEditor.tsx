@@ -398,7 +398,8 @@ export default function LandingEditor({
           !Array.isArray(rawLoaded.translations)
         ) ? rawLoaded.translations as Record<string, unknown> : {};
         // Strip the translations column from the LandingData object
-        const { translations: _t, ...cleanLoaded } = rawLoaded;
+        const cleanLoaded = { ...rawLoaded };
+        delete cleanLoaded.translations;
         const loaded = cleanLoaded as unknown as LandingData;
 
         // Migration: sync imageUrl between preview_card and hero (they should always match)
@@ -750,7 +751,8 @@ ${base}
   }
 
   function extractTranslationsFromJson(parsed: Record<string, unknown>): { landingData: Record<string, unknown>; extractedTranslations: Record<string, unknown> } {
-    const { translations: t, _cuisine, _counts, ...rest } = parsed;
+    const { translations: t, _cuisine, ...rest } = parsed;
+    delete rest._counts;
     const extractedTranslations = (t && typeof t === "object" && !Array.isArray(t)) ? t as Record<string, unknown> : {};
     // If _cuisine block present — sync name/description/price back to parent form
     if (_cuisine && typeof _cuisine === "object" && onCuisineImport) {
@@ -777,7 +779,7 @@ ${base}
       }
       setJsonError("");
       setMode("form");
-    } catch (e) {
+    } catch {
       setJsonError("Невалидный JSON — исправь ошибки перед переключением");
     }
   }
@@ -838,7 +840,8 @@ ${base}
           typeof savedRaw.translations === "object" &&
           !Array.isArray(savedRaw.translations)
         ) ? savedRaw.translations as Record<string, unknown> : effectiveTranslations;
-        const { translations: _t, ...cleanSaved } = savedRaw;
+        const cleanSaved = { ...savedRaw };
+        delete cleanSaved.translations;
         const saved = cleanSaved as unknown as LandingData;
         applyLanding(saved, savedTranslations);
         writeLocalDraft(saved, savedTranslations);
