@@ -549,7 +549,7 @@ export default function LandingEditor({
   "_cuisine": { "recommendation": { "levels": ["beginner"], "times": ["from20to40"], "dietary": [], "tags": ["quick","simple"] } },
   "preview_card": { "title": "до 40 символов", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX" },
   "hero": { "title": "заголовок (\\n для переноса)", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX" },
-  "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}] },
+  "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}] },
   "recipe_showcase": { "title": "...", "subtitle": "..." },
   "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}] },
   "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [{"id":"uuid","beforeText":"проблема","afterText":"решение"},{"id":"uuid","beforeText":"проблема","afterText":"решение"},{"id":"uuid","beforeText":"проблема","afterText":"решение"}] },
@@ -564,7 +564,7 @@ export default function LandingEditor({
     "ru": {
       "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
       "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Что внутри","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}]},
+      "inside_section": {"title":"Что внутри","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
       "recipe_showcase": {"title":"...","subtitle":"..."},
       "audience_section": {"title":"Кому подойдёт","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}]},
       "transformation_section": {"title":"Узнаёшь себя?","subtitle":null,"beforeLabel":"До","afterLabel":"После","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
@@ -575,7 +575,7 @@ export default function LandingEditor({
     "en": {
       "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
       "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"What's inside","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}]},
+      "inside_section": {"title":"What's inside","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
       "recipe_showcase": {"title":"...","subtitle":"..."},
       "audience_section": {"title":"Who is it for","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}]},
       "transformation_section": {"title":"Sound familiar?","subtitle":null,"beforeLabel":"Before","afterLabel":"After","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
@@ -586,7 +586,7 @@ export default function LandingEditor({
     "de": {
       "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
       "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Was ist drin","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}]},
+      "inside_section": {"title":"Was ist drin","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
       "recipe_showcase": {"title":"...","subtitle":"..."},
       "audience_section": {"title":"Für wen ist es","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}]},
       "transformation_section": {"title":"Klingt bekannt?","subtitle":null,"beforeLabel":"Vorher","afterLabel":"Nachher","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
@@ -597,7 +597,7 @@ export default function LandingEditor({
     "fr": {
       "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
       "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Ce qu'il y a dedans","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}]},
+      "inside_section": {"title":"Ce qu'il y a dedans","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
       "recipe_showcase": {"title":"...","subtitle":"..."},
       "audience_section": {"title":"Pour qui","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}]},
       "transformation_section": {"title":"Ça vous parle ?","subtitle":null,"beforeLabel":"Avant","afterLabel":"Après","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
@@ -608,7 +608,7 @@ export default function LandingEditor({
     "it": {
       "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
       "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Cosa c'è dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}]},
+      "inside_section": {"title":"Cosa c'è dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
       "recipe_showcase": {"title":"...","subtitle":"..."},
       "audience_section": {"title":"Per chi è","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}]},
       "transformation_section": {"title":"Ti riconosci?","subtitle":null,"beforeLabel":"Prima","afterLabel":"Dopo","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
@@ -619,7 +619,7 @@ export default function LandingEditor({
     "es": {
       "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
       "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Qué hay dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}]},
+      "inside_section": {"title":"Qué hay dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
       "recipe_showcase": {"title":"...","subtitle":"..."},
       "audience_section": {"title":"¿Para quién?","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}]},
       "transformation_section": {"title":"¿Te suena familiar?","subtitle":null,"beforeLabel":"Antes","afterLabel":"Después","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
@@ -630,7 +630,7 @@ export default function LandingEditor({
     "pt-BR": {
       "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
       "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"O que tem dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}]},
+      "inside_section": {"title":"O que tem dentro","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
       "recipe_showcase": {"title":"...","subtitle":"..."},
       "audience_section": {"title":"Para quem é","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}]},
       "transformation_section": {"title":"Parece familiar?","subtitle":null,"beforeLabel":"Antes","afterLabel":"Depois","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},
@@ -641,7 +641,7 @@ export default function LandingEditor({
     "uk": {
       "preview_card": {"title":"...","subtitle":"...","badges":["...","...","..."]},
       "hero": {"title":"...","subtitle":"...","badges":["...","...","..."]},
-      "inside_section": {"title":"Що всередині","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}]},
+      "inside_section": {"title":"Що всередині","subtitle":"...","items":[{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."},{"emoji":"💪","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."}]},
       "recipe_showcase": {"title":"...","subtitle":"..."},
       "audience_section": {"title":"Кому підійде","subtitle":"...","items":[{"emoji":"✨","title":null,"text":"..."},{"emoji":"⏱","title":null,"text":"..."},{"emoji":"👨‍👩‍👧","title":null,"text":"..."}]},
       "transformation_section": {"title":"Впізнаєш себе?","subtitle":null,"beforeLabel":"До","afterLabel":"Після","pairs":[{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."},{"beforeText":"...","afterText":"..."}]},

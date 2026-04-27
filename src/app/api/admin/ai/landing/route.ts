@@ -42,7 +42,7 @@ const SCHEMA_DESCRIPTION = `
   "inside_section": {
     "title": "Что внутри",
     "subtitle": string,
-    "items": [                  // 3-4 пункта с emoji
+    "items": [                  // 5-7 пунктов с emoji — раскрой всё содержимое каталога
       {"id": "<uuid>", "emoji": string, "title": string|null, "text": string}
     ]
   },
