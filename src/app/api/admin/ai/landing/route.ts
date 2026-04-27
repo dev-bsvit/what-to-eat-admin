@@ -42,8 +42,9 @@ const SCHEMA_DESCRIPTION = `
   "inside_section": {
     "title": "Что внутри",
     "subtitle": string,
-    "items": [                  // 5-7 пунктов с emoji — раскрой всё содержимое каталога
+    "items": [                  // столько пунктов, сколько реально есть в каталоге — не обрезай
       {"id": "<uuid>", "emoji": string, "title": string|null, "text": string}
+      // ... повтори для каждого реального пункта
     ]
   },
   "recipe_showcase": {
@@ -53,22 +54,32 @@ const SCHEMA_DESCRIPTION = `
   "audience_section": {
     "title": "Кому подойдёт",
     "subtitle": string,
-    "items": [{"id": "<uuid>", "emoji": string, "title": null, "text": string}]
+    "items": [                  // столько аудиторий, сколько реально подходит — не обрезай
+      {"id": "<uuid>", "emoji": string, "title": null, "text": string}
+      // ... повтори для каждой группы
+    ]
   },
   "transformation_section": {
     "title": "Узнаёшь себя?",
     "subtitle": null,
     "beforeLabel": "До",
     "afterLabel": "После",
-    "pairs": [{"id": "<uuid>", "beforeText": string, "afterText": string}]
+    "pairs": [                  // столько пар, сколько реально актуально для каталога
+      {"id": "<uuid>", "beforeText": string, "afterText": string}
+      // ... повтори
+    ]
   },
   "benefits_section": {
     "title": "Преимущества",
     "subtitle": string,
-    "cards": [{"id": "<uuid>", "eyebrow": string, "title": string, "text": string}]
+    "cards": [                  // столько карточек, сколько реальных преимуществ — не обрезай
+      {"id": "<uuid>", "eyebrow": string, "title": string, "text": string}
+      // ... повтори
+    ]
   },
-  "faq_items": [
+  "faq_items": [                // 3-5 реальных вопросов покупателя
     {"id": "<uuid>", "question": string, "answer": string}
+    // ...
   ],
   "purchase_cta": {
     "title": "Открыть каталог",
@@ -140,7 +151,8 @@ ${contextBlock}
 - Текст живой, дружелюбный, без канцелярита
 - Заголовки короткие и ёмкие
 - Секции transformation_section и benefits_section — обязательны, они продают
-- FAQ — 3-4 реальных вопроса покупателя
+- Количество items/pairs/cards в каждой секции определяй по содержанию каталога — НЕ обрезай до фиксированного числа, НЕ добавляй пустые пункты ради количества
+- FAQ — 3-5 реальных вопросов покупателя
 - Цвета подбери под тему кухни (backgroundHex — тёмный насыщенный, accentHex — яркий)
 - Все id замени на реальные UUID v4
 - Верни ТОЛЬКО валидный JSON, без markdown-обёртки
