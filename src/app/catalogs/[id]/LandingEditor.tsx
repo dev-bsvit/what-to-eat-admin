@@ -585,33 +585,10 @@ FAQ:
   "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
   "recipe_preview_ids": [],
   "is_published": false,
-  "sort_order": 0,
-  "translations": {
-    "en": {
-      "preview_card": { "title": "...", "subtitle": "...", "badges": ["..."] },
-      "hero": { "title": "...", "subtitle": "...", "badges": ["..."] },
-      "inside_section": { "title": "What's inside", "subtitle": "...", "items": [{"id":"SAME_ID","emoji":"SAME_EMOJI","title":null,"text":"translated"}] },
-      "recipe_showcase": { "title": "...", "subtitle": "..." },
-      "audience_section": { "title": "Who it's for", "subtitle": "...", "items": [{"id":"SAME_ID","emoji":"SAME_EMOJI","title":null,"text":"translated"}] },
-      "transformation_section": { "title": "Sound familiar?", "subtitle": null, "beforeLabel": "Before", "afterLabel": "After", "pairs": [{"id":"SAME_ID","beforeText":"translated","afterText":"translated"}] },
-      "benefits_section": { "title": "Benefits", "subtitle": "...", "cards": [{"id":"SAME_ID","eyebrow":"translated","title":"translated","text":"translated"}] },
-      "faq_items": [{"id":"SAME_ID","question":"translated?","answer":"translated"}],
-      "purchase_cta": { "title": "Open catalog", "subtitle": "...", "features": [{"id":"SAME_ID","title":"translated","subtitle":"translated"}], "buttonTitle": "Open catalog" }
-    },
-    "de": { /* то же самое на немецком — все секции, те же id и emoji, тексты на DE */ },
-    "fr": { /* то же самое на французском */ },
-    "it": { /* то же самое на итальянском */ },
-    "es": { /* то же самое на испанском */ },
-    "pt-BR": { /* то же самое на португальском (Бразилия) */ },
-    "uk": { /* то же самое на украинском */ }
-  }
+  "sort_order": 0
 }
 
-ВАЖНО для translations:
-- Для "en" показана полная структура — повтори такую же для de, fr, it, es, pt-BR, uk
-- SAME_ID = тот же id что в основном блоке, SAME_EMOJI = тот же emoji
-- Количество элементов в каждом массиве = значения из _counts (не меньше, не больше)
-- Верни ТОЛЬКО JSON без markdown и без комментариев /* */`;
+Верни ТОЛЬКО JSON без markdown-обёртки и без комментариев.`;
   }
 
   function copyPrompt() {
@@ -619,6 +596,55 @@ FAQ:
     navigator.clipboard.writeText(prompt).then(() => {
       setSaveStatus("Промпт скопирован ✅ — вставь в AI-чат");
       setTimeout(() => setSaveStatus(""), 4000);
+    });
+  }
+
+  function buildTranslationPrompt(): string {
+    if (!data) return "";
+    const base = JSON.stringify(data, null, 2);
+    return `Переведи JSON лендинга кулинарного каталога на 7 языков.
+
+ИСХОДНЫЙ JSON (русский язык):
+${base}
+
+ЗАДАЧА: Верни ТОЛЬКО объект "translations" со всеми 7 языками.
+
+ПРАВИЛА:
+- Переводи ВСЕ текстовые поля: title, subtitle, text, question, answer, beforeText, afterText, eyebrow, badges, buttonTitle
+- id и emoji — НЕ меняй
+- Количество элементов в каждом массиве = точно такое же как в исходном JSON
+- Верни ТОЛЬКО валидный JSON без markdown-обёртки
+
+СТРУКТУРА ответа:
+{
+  "en": {
+    "preview_card": { "title": "...", "subtitle": "...", "badges": ["..."] },
+    "hero": { "title": "...", "subtitle": "...", "badges": ["..."] },
+    "inside_section": { "title": "What's inside", "subtitle": "...", "items": [{ "id": "SAME", "emoji": "SAME", "title": null, "text": "..." }] },
+    "recipe_showcase": { "title": "...", "subtitle": "..." },
+    "audience_section": { "title": "Who it's for", "subtitle": "...", "items": [{ "id": "SAME", "emoji": "SAME", "title": null, "text": "..." }] },
+    "transformation_section": { "title": "Sound familiar?", "subtitle": null, "beforeLabel": "Before", "afterLabel": "After", "pairs": [{ "id": "SAME", "beforeText": "...", "afterText": "..." }] },
+    "benefits_section": { "title": "Benefits", "subtitle": "...", "cards": [{ "id": "SAME", "eyebrow": "...", "title": "...", "text": "..." }] },
+    "faq_items": [{ "id": "SAME", "question": "...", "answer": "..." }],
+    "purchase_cta": { "title": "Open catalog", "subtitle": "...", "features": [{ "id": "SAME", "title": "...", "subtitle": "..." }], "buttonTitle": "Open catalog" }
+  },
+  "de": { /* то же самое на немецком — полные секции, те же id/emoji */ },
+  "fr": { /* то же самое на французском */ },
+  "it": { /* то же самое на итальянском */ },
+  "es": { /* то же самое на испанском */ },
+  "pt-BR": { /* то же самое на португальском бразильском */ },
+  "uk": { /* то же самое на украинском */ }
+}
+
+КРИТИЧНО: для de, fr, it, es, pt-BR, uk — полная структура как в "en", все секции, все поля переведены на соответствующий язык.`;
+  }
+
+  function copyTranslationPrompt() {
+    const prompt = buildTranslationPrompt();
+    if (!prompt) { setSaveStatus("Нет данных для перевода — сначала сохрани лендинг"); return; }
+    navigator.clipboard.writeText(prompt).then(() => {
+      setSaveStatus("Промпт переводов скопирован ✅ — вставь в AI, получи JSON, вставь в поле JSON и сохрани");
+      setTimeout(() => setSaveStatus(""), 6000);
     });
   }
 
@@ -952,9 +978,19 @@ FAQ:
           className="btn btn-secondary"
           onClick={copyPrompt}
           style={{ marginLeft: "auto", fontSize: "13px" }}
-          title="Скопировать промпт для заполнения через внешний AI-чат"
+          title="Скопировать промпт для генерации русского JSON через внешний AI-чат"
         >
-          📋 Скопировать промпт
+          📋 Промпт (RU)
+        </button>
+
+        {/* Copy translation prompt */}
+        <button
+          className="btn btn-secondary"
+          onClick={copyTranslationPrompt}
+          style={{ fontSize: "13px" }}
+          title="Скопировать промпт для перевода на 7 языков — вставь текущий JSON в AI и получи translations"
+        >
+          🌍 Промпт переводов
         </button>
 
         {/* AI */}
