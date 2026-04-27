@@ -587,20 +587,31 @@ FAQ:
   "is_published": false,
   "sort_order": 0,
   "translations": {
-    "en": { /* все секции на английском: same keys, same ids/emojis, все тексты переведены */ },
-    "de": { /* на немецком */ },
-    "fr": { /* на французском */ },
-    "it": { /* на итальянском */ },
-    "es": { /* на испанском */ },
-    "pt-BR": { /* на португальском бразильском */ },
-    "uk": { /* на украинском */ }
+    "en": {
+      "preview_card": { "title": "...", "subtitle": "...", "badges": ["..."] },
+      "hero": { "title": "...", "subtitle": "...", "badges": ["..."] },
+      "inside_section": { "title": "What's inside", "subtitle": "...", "items": [{"id":"SAME_ID","emoji":"SAME_EMOJI","title":null,"text":"translated"}] },
+      "recipe_showcase": { "title": "...", "subtitle": "..." },
+      "audience_section": { "title": "Who it's for", "subtitle": "...", "items": [{"id":"SAME_ID","emoji":"SAME_EMOJI","title":null,"text":"translated"}] },
+      "transformation_section": { "title": "Sound familiar?", "subtitle": null, "beforeLabel": "Before", "afterLabel": "After", "pairs": [{"id":"SAME_ID","beforeText":"translated","afterText":"translated"}] },
+      "benefits_section": { "title": "Benefits", "subtitle": "...", "cards": [{"id":"SAME_ID","eyebrow":"translated","title":"translated","text":"translated"}] },
+      "faq_items": [{"id":"SAME_ID","question":"translated?","answer":"translated"}],
+      "purchase_cta": { "title": "Open catalog", "subtitle": "...", "features": [{"id":"SAME_ID","title":"translated","subtitle":"translated"}], "buttonTitle": "Open catalog" }
+    },
+    "de": { /* то же самое на немецком — все секции, те же id и emoji, тексты на DE */ },
+    "fr": { /* то же самое на французском */ },
+    "it": { /* то же самое на итальянском */ },
+    "es": { /* то же самое на испанском */ },
+    "pt-BR": { /* то же самое на португальском (Бразилия) */ },
+    "uk": { /* то же самое на украинском */ }
   }
 }
 
-Правила для translations:
-- Каждый языковой блок содержит те же секции что основной JSON
-- id и emoji — без изменений, только тексты переведены
-- Количество элементов в каждом массиве = значения из _counts`;
+ВАЖНО для translations:
+- Для "en" показана полная структура — повтори такую же для de, fr, it, es, pt-BR, uk
+- SAME_ID = тот же id что в основном блоке, SAME_EMOJI = тот же emoji
+- Количество элементов в каждом массиве = значения из _counts (не меньше, не больше)
+- Верни ТОЛЬКО JSON без markdown и без комментариев /* */`;
   }
 
   function copyPrompt() {
