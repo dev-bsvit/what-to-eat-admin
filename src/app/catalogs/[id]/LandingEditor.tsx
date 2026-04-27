@@ -1,6 +1,19 @@
 "use client";
 import { useState, useEffect } from "react";
 import {
+  Bot,
+  CheckCircle2,
+  Clipboard,
+  Code2,
+  FileJson2,
+  Globe2,
+  Languages,
+  Save,
+  Trash2,
+  Upload,
+  Wand2,
+} from "lucide-react";
+import {
   isLandingTableMissingError,
   LANDING_TABLE_MISSING_WARNING,
 } from "@/lib/landingErrors";
@@ -595,10 +608,12 @@ FAQ:
 
   function copyPrompt() {
     const prompt = buildCopyPrompt();
-    navigator.clipboard.writeText(prompt).then(() => {
-      setSaveStatus("Промпт скопирован ✅ — вставь в AI-чат");
-      setTimeout(() => setSaveStatus(""), 4000);
-    });
+    navigator.clipboard.writeText(prompt)
+      .then(() => {
+        setSaveStatus("Промпт скопирован ✅ — вставь в AI-чат");
+        setTimeout(() => setSaveStatus(""), 4000);
+      })
+      .catch(() => setSaveStatus("Не удалось скопировать промпт — открой JSON-режим и скопируй вручную"));
   }
 
   function buildTranslationPrompt(): string {
@@ -644,10 +659,23 @@ ${base}
   function copyTranslationPrompt() {
     const prompt = buildTranslationPrompt();
     if (!prompt) { setSaveStatus("Нет данных для перевода — сначала сохрани лендинг"); return; }
-    navigator.clipboard.writeText(prompt).then(() => {
-      setSaveStatus("Промпт переводов скопирован ✅ — вставь в AI, получи JSON, вставь в поле JSON и сохрани");
-      setTimeout(() => setSaveStatus(""), 6000);
-    });
+    navigator.clipboard.writeText(prompt)
+      .then(() => {
+        setSaveStatus("Промпт переводов скопирован ✅ — вставь в AI, получи JSON, вставь в поле JSON и сохрани");
+        setTimeout(() => setSaveStatus(""), 6000);
+      })
+      .catch(() => setSaveStatus("Не удалось скопировать промпт переводов"));
+  }
+
+  function formatJsonText() {
+    try {
+      const parsed = JSON.parse(jsonText);
+      setJsonText(JSON.stringify(parsed, null, 2));
+      setJsonError("");
+      setSaveStatus("JSON отформатирован");
+    } catch {
+      setJsonError("Невалидный JSON — форматирование невозможно");
+    }
   }
 
   function applyTranslationPaste() {
@@ -879,6 +907,16 @@ ${base}
   // isRO: form fields show translated content but are not editable
   const isRO = activeLang !== "ru";
   const roStyle = isRO ? { background: "var(--bg-hover)", opacity: 0.85 } : undefined;
+  const translationCount = Object.keys(translations).filter((code) => code !== "ru").length;
+  const sectionScore = [
+    data?.inside_section?.items?.length,
+    data?.audience_section?.items?.length,
+    data?.transformation_section?.pairs?.length,
+    data?.benefits_section?.cards?.length,
+    data?.faq_items?.length,
+    data?.purchase_cta?.features?.length,
+  ].filter((count) => typeof count === "number" && count > 0).length;
+  const isJsonReady = sectionScore >= 4 && (data?.faq_items?.length ?? 0) > 0;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -899,6 +937,60 @@ ${base}
 
   return (
     <div>
+      <div className="landing-workflow-panel">
+        <div className="landing-workflow-header">
+          <div>
+            <div className="landing-eyebrow">JSON лендинг</div>
+            <h2>Промпт и готовый JSON</h2>
+          </div>
+          <div className="landing-status-pills">
+            <span className={data.is_published ? "status-pill success" : "status-pill muted"}>
+              <CheckCircle2 size={14} />
+              {data.is_published ? "Опубликован" : "Черновик"}
+            </span>
+            <span className={isJsonReady ? "status-pill success" : "status-pill warning"}>
+              <FileJson2 size={14} />
+              {sectionScore}/6 секций
+            </span>
+            <span className={translationCount >= 7 ? "status-pill success" : "status-pill muted"}>
+              <Languages size={14} />
+              {translationCount}/7 переводов
+            </span>
+          </div>
+        </div>
+
+        <div className="landing-workflow-actions">
+          <button type="button" className="workflow-action primary" onClick={copyPrompt}>
+            <Clipboard size={18} />
+            <span>
+              <strong>1. Промпт RU</strong>
+              <small>копировать</small>
+            </span>
+          </button>
+          <button type="button" className="workflow-action" onClick={switchToJson}>
+            <Code2 size={18} />
+            <span>
+              <strong>2. JSON</strong>
+              <small>вставить готовый</small>
+            </span>
+          </button>
+          <button type="button" className="workflow-action" onClick={() => setShowTranslationPaste(v => !v)}>
+            <Upload size={18} />
+            <span>
+              <strong>Переводы</strong>
+              <small>AI JSON</small>
+            </span>
+          </button>
+          <button type="button" className="workflow-action success" onClick={saveLanding}>
+            <Save size={18} />
+            <span>
+              <strong>3. Сохранить</strong>
+              <small>{data.is_published ? "в приложении" : "черновик"}</small>
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* ── Language tabs ── */}
       <div style={{ marginBottom: "14px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
@@ -929,7 +1021,8 @@ ${base}
             style={{ fontSize: "12px", whiteSpace: "nowrap", opacity: isTranslating ? 0.6 : 1 }}
             title="Автоматически перевести все секции через DeepL на 7 языков"
           >
-            {isTranslating ? "Перевожу..." : "🌐 Перевести через DeepL"}
+            <Globe2 size={15} />
+            {isTranslating ? "Перевожу..." : "DeepL"}
           </button>
         </div>
         {activeLang !== "ru" && (
@@ -987,7 +1080,8 @@ ${base}
               disabled={isAiLoading}
               style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", border: "none", opacity: isAiLoading ? 0.6 : 1 }}
             >
-              {isAiLoading ? "Генерирую..." : "✨ Сгенерировать"}
+              <Wand2 size={16} />
+              {isAiLoading ? "Генерирую..." : "Сгенерировать"}
             </button>
             <button className="btn btn-secondary" onClick={() => { setShowAiPrompt(false); setAiUserPrompt(""); }}>Отмена</button>
           </div>
@@ -1035,7 +1129,8 @@ ${base}
           style={{ marginLeft: "auto", fontSize: "13px" }}
           title="Скопировать промпт для генерации русского JSON через внешний AI-чат"
         >
-          📋 Промпт (RU)
+          <Clipboard size={15} />
+          Промпт RU
         </button>
 
         {/* Copy translation prompt */}
@@ -1045,7 +1140,8 @@ ${base}
           style={{ fontSize: "13px" }}
           title="Скопировать промпт для перевода на 7 языков"
         >
-          🌍 Промпт переводов
+          <Globe2 size={15} />
+          Промпт переводов
         </button>
 
         {/* Paste translations from AI */}
@@ -1055,7 +1151,8 @@ ${base}
           style={{ fontSize: "13px", background: showTranslationPaste ? "rgba(52,199,89,0.1)" : undefined, color: "#34c759", borderColor: "rgba(52,199,89,0.3)", fontWeight: 700 }}
           title="Вставить ответ AI с переводами"
         >
-          📥 Вставить переводы
+          <Upload size={15} />
+          Вставить переводы
         </button>
 
         {/* AI */}
@@ -1065,11 +1162,15 @@ ${base}
           disabled={isAiLoading}
           style={{ background: showAiPrompt ? "rgba(99,102,241,0.12)" : undefined, color: "#6366f1", borderColor: "rgba(99,102,241,0.3)", fontWeight: 700 }}
         >
-          ✨ AI заполнить
+          <Bot size={15} />
+          AI заполнить
         </button>
 
         {/* Save */}
-        <button className="btn btn-primary" onClick={saveLanding}>Сохранить</button>
+        <button className="btn btn-primary" onClick={saveLanding}>
+          <Save size={15} />
+          Сохранить
+        </button>
 
         {/* Delete — separated visually */}
         <button
@@ -1077,6 +1178,7 @@ ${base}
           onClick={deleteLanding}
           style={{ color: "var(--accent-danger)", borderColor: "rgba(255,59,48,0.3)", marginLeft: "4px" }}
         >
+          <Trash2 size={15} />
           Удалить
         </button>
       </div>
@@ -1106,8 +1208,15 @@ ${base}
       {/* ── JSON mode ── */}
       {mode === "json" && (
         <>
-          <div style={{ padding: "8px 12px", background: "rgba(0,122,255,0.06)", border: "1px solid rgba(0,122,255,0.15)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)", marginBottom: "8px" }}>
-            Вставь JSON с полем <code style={{ background: "rgba(0,0,0,0.1)", padding: "1px 5px", borderRadius: "4px" }}>translations</code> (из промпта) → <strong>Сохранить</strong> — переводы на все 8 языков подхватятся автоматически
+          <div className="json-mode-header">
+            <div>
+              <strong>JSON редактор</strong>
+              <span>Поддерживает поле <code>translations</code> и блок <code>_cuisine.recommendation</code>.</span>
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={formatJsonText}>
+              <FileJson2 size={15} />
+              Форматировать
+            </button>
           </div>
           <textarea
             value={jsonText}
@@ -1286,7 +1395,7 @@ ${base}
           {/* ── FAQ ── */}
           <SectionBlock title="❓ FAQ">
             <div style={{ gridColumn: "1 / -1" }}>
-              {viewData.faq_items.map((item, i) => (
+              {(viewData.faq_items ?? []).map((item, i) => (
                 <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "6px", marginBottom: "8px", alignItems: "start" }}>
                   <input className="input" style={roStyle} readOnly={isRO} placeholder="Вопрос *" value={item.question} onChange={(e) => { const f = [...data.faq_items]; f[i] = { ...item, question: e.target.value }; upd({ faq_items: f }); }} />
                   <textarea className="input" readOnly={isRO} rows={2} placeholder="Ответ *" value={item.answer} onChange={(e) => { const f = [...data.faq_items]; f[i] = { ...item, answer: e.target.value }; upd({ faq_items: f }); }} style={{ resize: "vertical", ...(roStyle ?? {}) }} />
