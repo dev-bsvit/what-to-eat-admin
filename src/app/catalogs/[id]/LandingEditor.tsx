@@ -4,6 +4,7 @@ import {
   isLandingTableMissingError,
   LANDING_TABLE_MISSING_WARNING,
 } from "@/lib/landingErrors";
+import { CATALOG_RECOMMENDATION_PROMPT } from "@/lib/catalogRecommendationTags";
 
 const TRANSLATION_LANGUAGES = [
   { code: "ru", label: "Русский" },
@@ -60,6 +61,13 @@ interface LocalLandingDraft {
   data: LandingData;
   translations: Record<string, unknown>;
   updatedAt: string;
+}
+
+interface CuisineRecommendationImport {
+  recommendation_levels?: string[];
+  recommendation_times?: string[];
+  recommendation_dietary?: string[];
+  recommendation_tags?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -259,11 +267,27 @@ interface Props {
   cuisineDescription?: string | null;
   cuisinePrice?: string | null;
   cuisineImageUrl?: string | null;
+  recommendationLevels?: string[];
+  recommendationTimes?: string[];
+  recommendationDietary?: string[];
+  recommendationTags?: string[];
   saveTrigger?: number;
-  onCuisineImport?: (imported: { name?: string; description?: string; price?: string }) => void;
+  onCuisineImport?: (imported: { name?: string; description?: string; price?: string } & CuisineRecommendationImport) => void;
 }
 
-export default function LandingEditor({ cuisineId, cuisineName, cuisineDescription, cuisinePrice, cuisineImageUrl, saveTrigger, onCuisineImport }: Props) {
+export default function LandingEditor({
+  cuisineId,
+  cuisineName,
+  cuisineDescription,
+  cuisinePrice,
+  cuisineImageUrl,
+  recommendationLevels = [],
+  recommendationTimes = [],
+  recommendationDietary = [],
+  recommendationTags = [],
+  saveTrigger,
+  onCuisineImport,
+}: Props) {
   const [data, setData] = useState<LandingData | null>(null);
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
@@ -447,7 +471,8 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
         setSaveStatus(`AI ошибка: ${result.error}`);
         return;
       }
-      const generated = { ...result.data, cuisine_id: cuisineId };
+      const { landingData } = extractTranslationsFromJson(result.data ?? {});
+      const generated = { ...landingData, cuisine_id: cuisineId } as unknown as LandingData;
       setData(generated);
       setJsonText(JSON.stringify(generated, null, 2));
       if (result.translations && Object.keys(result.translations).length > 0) {
@@ -515,10 +540,13 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
 - HEX без # (FF375F, не #FF375F)
 - Цвета подбери под тему каталога: тёмный насыщенный фон, яркий акцент
 - "imageUrl" всегда null, "recipe_preview_ids" всегда [], "is_published" false, "sort_order" 0
+- Добавь служебный блок "_cuisine.recommendation" для выбора подарка после анкеты
+- ${CATALOG_RECOMMENDATION_PROMPT}
 - Тексты живые, дружелюбные, продающие — не канцелярит
 
 СТРУКТУРА (строго соблюдай):
 {
+  "_cuisine": { "recommendation": { "levels": ["beginner"], "times": ["from20to40"], "dietary": [], "tags": ["quick","simple"] } },
   "preview_card": { "title": "до 40 символов", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX" },
   "hero": { "title": "заголовок (\\n для переноса)", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX" },
   "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [{"emoji":"🍜","title":null,"text":"..."},{"emoji":"🧾","title":null,"text":"..."},{"emoji":"🛒","title":null,"text":"..."}] },
@@ -642,6 +670,12 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
           name: cuisineName,
           description: cuisineDescription ?? undefined,
           price: cuisinePrice ?? undefined,
+          recommendation: {
+            levels: recommendationLevels,
+            times: recommendationTimes,
+            dietary: recommendationDietary,
+            tags: recommendationTags,
+          },
         },
       };
       const full = Object.keys(translations).length > 0
@@ -651,6 +685,23 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
     }
     setJsonError("");
     setMode("json");
+  }
+
+  function extractRecommendation(cuisineMeta: Record<string, unknown>): CuisineRecommendationImport {
+    const recommendation = cuisineMeta.recommendation;
+    if (!recommendation || typeof recommendation !== "object" || Array.isArray(recommendation)) {
+      return {};
+    }
+    const rec = recommendation as Record<string, unknown>;
+    const readArray = (key: string) => Array.isArray(rec[key])
+      ? (rec[key] as unknown[]).map((item) => String(item)).filter(Boolean)
+      : undefined;
+    return {
+      recommendation_levels: readArray("levels"),
+      recommendation_times: readArray("times"),
+      recommendation_dietary: readArray("dietary"),
+      recommendation_tags: readArray("tags"),
+    };
   }
 
   function extractTranslationsFromJson(parsed: Record<string, unknown>): { landingData: Record<string, unknown>; extractedTranslations: Record<string, unknown> } {
@@ -663,6 +714,7 @@ export default function LandingEditor({ cuisineId, cuisineName, cuisineDescripti
         name: typeof c.name === "string" ? c.name : undefined,
         description: typeof c.description === "string" ? c.description : undefined,
         price: typeof c.price === "string" ? c.price : undefined,
+        ...extractRecommendation(c),
       });
     }
     return { landingData: rest, extractedTranslations };

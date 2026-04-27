@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import LandingEditor from "./LandingEditor";
+import {
+  CATALOG_DIETARY_OPTIONS,
+  CATALOG_GENERAL_TAG_OPTIONS,
+  CATALOG_LEVEL_OPTIONS,
+  CATALOG_TIME_OPTIONS,
+} from "@/lib/catalogRecommendationTags";
 
 interface Recipe {
   id: string;
@@ -37,9 +43,60 @@ interface Cuisine {
   downloads_count?: number | null;
   purchases_count?: number | null;
   tags?: string[] | null;
+  recommendation_levels?: string[] | null;
+  recommendation_times?: string[] | null;
+  recommendation_dietary?: string[] | null;
+  recommendation_tags?: string[] | null;
   revenue_share?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+function toggleValue(items: string[], value: string) {
+  return items.includes(value) ? items.filter((item) => item !== value) : [...items, value];
+}
+
+function RecommendationCheckboxGroup({
+  title,
+  values,
+  options,
+  onChange,
+}: {
+  title: string;
+  values: string[];
+  options: readonly { value: string; label: string }[];
+  onChange: (values: string[]) => void;
+}) {
+  return (
+    <div className="form-group">
+      <label className="form-label">{title}</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {options.map((option) => {
+          const selected = values.includes(option.value);
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(toggleValue(values, option.value))}
+              style={{
+                border: "1px solid",
+                borderColor: selected ? "#007aff" : "var(--border-light)",
+                background: selected ? "rgba(0,122,255,0.12)" : "var(--bg-surface)",
+                color: selected ? "#007aff" : "var(--text-primary)",
+                borderRadius: 999,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function CatalogDetailPage() {
@@ -67,6 +124,10 @@ export default function CatalogDetailPage() {
     downloads_count: "",
     purchases_count: "",
     tags: "",
+    recommendation_levels: [] as string[],
+    recommendation_times: [] as string[],
+    recommendation_dietary: [] as string[],
+    recommendation_tags: [] as string[],
     translations: "",
     revenue_share: "",
   });
@@ -116,6 +177,10 @@ export default function CatalogDetailPage() {
           downloads_count: loadedCuisine.downloads_count?.toString() || "",
           purchases_count: loadedCuisine.purchases_count?.toString() || "",
           tags: Array.isArray(loadedCuisine.tags) ? loadedCuisine.tags.join(", ") : "",
+          recommendation_levels: Array.isArray(loadedCuisine.recommendation_levels) ? loadedCuisine.recommendation_levels : [],
+          recommendation_times: Array.isArray(loadedCuisine.recommendation_times) ? loadedCuisine.recommendation_times : [],
+          recommendation_dietary: Array.isArray(loadedCuisine.recommendation_dietary) ? loadedCuisine.recommendation_dietary : [],
+          recommendation_tags: Array.isArray(loadedCuisine.recommendation_tags) ? loadedCuisine.recommendation_tags : [],
           translations: loadedCuisine.translations ? JSON.stringify(loadedCuisine.translations) : "",
           revenue_share: loadedCuisine.revenue_share?.toString() || "",
         });
@@ -154,12 +219,24 @@ export default function CatalogDetailPage() {
     router.push(`/recipes?new=true&cuisine=${cuisineId}`);
   }
 
-  function handleCuisineImport(imported: { name?: string; description?: string; price?: string }) {
+  function handleCuisineImport(imported: {
+    name?: string;
+    description?: string;
+    price?: string;
+    recommendation_levels?: string[];
+    recommendation_times?: string[];
+    recommendation_dietary?: string[];
+    recommendation_tags?: string[];
+  }) {
     setEditForm(prev => ({
       ...prev,
       name: imported.name ?? prev.name,
       description: imported.description ?? prev.description,
       price: imported.price ?? prev.price,
+      recommendation_levels: imported.recommendation_levels ?? prev.recommendation_levels,
+      recommendation_times: imported.recommendation_times ?? prev.recommendation_times,
+      recommendation_dietary: imported.recommendation_dietary ?? prev.recommendation_dietary,
+      recommendation_tags: imported.recommendation_tags ?? prev.recommendation_tags,
     }));
   }
 
@@ -180,6 +257,15 @@ export default function CatalogDetailPage() {
 
     if (editForm.type === "premium" && !nextCatalogId) {
       alert("Для premium каталога нужно выбрать Catalog ID (StoreKit)");
+      return;
+    }
+
+    if ((editForm.type === "premium" || editForm.type === "gift") && (
+      editForm.recommendation_levels.length === 0 ||
+      editForm.recommendation_times.length === 0 ||
+      editForm.recommendation_tags.length === 0
+    )) {
+      alert("Для premium/gift каталога выберите уровень, время и общие теги для подарка");
       return;
     }
 
@@ -204,6 +290,10 @@ export default function CatalogDetailPage() {
         downloads_count: editForm.downloads_count ? parseInt(editForm.downloads_count) : null,
         purchases_count: editForm.purchases_count ? parseInt(editForm.purchases_count) : null,
         tags: editForm.tags || null,
+        recommendation_levels: editForm.recommendation_levels,
+        recommendation_times: editForm.recommendation_times,
+        recommendation_dietary: editForm.recommendation_dietary,
+        recommendation_tags: editForm.recommendation_tags,
         translations: editForm.translations || null,
           revenue_share: editForm.revenue_share ? parseFloat(editForm.revenue_share) : null,
         };
@@ -388,6 +478,8 @@ export default function CatalogDetailPage() {
               >
                 <option value="free">Бесплатный</option>
                 <option value="premium">Платный (premium)</option>
+                <option value="gift">Подарочный (gift)</option>
+                <option value="unlockable">Разблокируемый (unlockable)</option>
               </select>
             </div>
 
@@ -472,6 +564,49 @@ export default function CatalogDetailPage() {
 
           </div>
 
+          {(editForm.type === "premium" || editForm.type === "gift") && (
+            <div style={{
+              marginTop: 16,
+              border: "1px solid var(--border-light)",
+              borderRadius: "var(--radius-md)",
+              padding: 14,
+              background: "var(--bg-hover)",
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: "var(--text-primary)" }}>
+                Наклейки для подарка *
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+                Эти поля использует анкета регистрации, чтобы выбрать подходящий подарок.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <RecommendationCheckboxGroup
+                  title="Уровень *"
+                  values={editForm.recommendation_levels}
+                  options={CATALOG_LEVEL_OPTIONS}
+                  onChange={(values) => setEditForm({ ...editForm, recommendation_levels: values })}
+                />
+                <RecommendationCheckboxGroup
+                  title="Время *"
+                  values={editForm.recommendation_times}
+                  options={CATALOG_TIME_OPTIONS}
+                  onChange={(values) => setEditForm({ ...editForm, recommendation_times: values })}
+                />
+                <RecommendationCheckboxGroup
+                  title="Питание"
+                  values={editForm.recommendation_dietary}
+                  options={CATALOG_DIETARY_OPTIONS}
+                  onChange={(values) => setEditForm({ ...editForm, recommendation_dietary: values })}
+                />
+                <RecommendationCheckboxGroup
+                  title="Общие теги *"
+                  values={editForm.recommendation_tags}
+                  options={CATALOG_GENERAL_TAG_OPTIONS}
+                  onChange={(values) => setEditForm({ ...editForm, recommendation_tags: values })}
+                />
+              </div>
+            </div>
+          )}
+
           <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
             <button className="btn btn-primary" onClick={saveAll} disabled={isSavingAll}>
               {isSavingAll ? 'Сохраняю...' : '💾 Сохранить всё'}
@@ -515,10 +650,10 @@ export default function CatalogDetailPage() {
           </details>
         </div>
 
-        {/* Landing editor (only for premium) */}
-        {editForm.type !== 'premium' && (
+        {/* Landing editor (for premium/gift catalogs) */}
+        {editForm.type !== 'premium' && editForm.type !== 'gift' && (
           <div style={{ padding: '12px 16px', background: 'rgba(255,159,10,0.1)', borderRadius: '10px', color: '#ff9f0a', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
-            ⚠️ Лендинг показывается в приложении только для каталогов с типом «premium». Текущий тип: {editForm.type || 'не задан'}.
+            ⚠️ Лендинг для подарка/продажи нужен каталогам «premium» или «gift». Текущий тип: {editForm.type || 'не задан'}.
           </div>
         )}
         <LandingEditor
@@ -527,6 +662,10 @@ export default function CatalogDetailPage() {
           cuisineDescription={editForm.description}
           cuisinePrice={editForm.price ? `$${editForm.price}` : undefined}
           cuisineImageUrl={editForm.landing_image_url || editForm.image_url || undefined}
+          recommendationLevels={editForm.recommendation_levels}
+          recommendationTimes={editForm.recommendation_times}
+          recommendationDietary={editForm.recommendation_dietary}
+          recommendationTags={editForm.recommendation_tags}
           saveTrigger={triggerLandingSave}
           onCuisineImport={handleCuisineImport}
         />

@@ -61,6 +61,14 @@ export default function HomePage() {
       href: "/products",
       stat: `${stats.products} продуктов`,
     },
+    {
+      title: "Подписки",
+      description: "Правила и настройки подписки",
+      icon: "💎",
+      color: "#9775fa",
+      href: "/subscription-rules",
+      stat: "правила подписки",
+    },
   ];
 
   if (loading) {

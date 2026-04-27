@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizeText, parseBoolean, parseJson, parseNumber, parseTextArray } from "@/lib/parseFields";
+import {
+  CATALOG_DIETARY_VALUES,
+  CATALOG_GENERAL_TAG_VALUES,
+  CATALOG_LEVEL_VALUES,
+  CATALOG_TIME_VALUES,
+} from "@/lib/catalogRecommendationTags";
+
+const onlyAllowed = (items: string[] | null, allowed: string[]) => {
+  if (!items) return [];
+  const allowedSet = new Set(allowed);
+  return items
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && allowedSet.has(item));
+};
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -35,6 +49,23 @@ export async function POST(request: Request) {
       );
     }
 
+    const type = normalizeText(body.type);
+    const recommendationLevels = onlyAllowed(parseTextArray(body.recommendation_levels), CATALOG_LEVEL_VALUES);
+    const recommendationTimes = onlyAllowed(parseTextArray(body.recommendation_times), CATALOG_TIME_VALUES);
+    const recommendationDietary = onlyAllowed(parseTextArray(body.recommendation_dietary), CATALOG_DIETARY_VALUES);
+    const recommendationTags = onlyAllowed(parseTextArray(body.recommendation_tags), CATALOG_GENERAL_TAG_VALUES);
+
+    if ((type === "premium" || type === "gift") && (
+      recommendationLevels.length === 0 ||
+      recommendationTimes.length === 0 ||
+      recommendationTags.length === 0
+    )) {
+      return NextResponse.json(
+        { error: "Для premium/gift каталога обязательны recommendation_levels, recommendation_times и recommendation_tags" },
+        { status: 400 }
+      );
+    }
+
     const payload = {
       id: normalizeText(body.id),
       name: normalizeText(body.name),
@@ -42,7 +73,7 @@ export async function POST(request: Request) {
       image_url: normalizeText(body.image_url),
       landing_image_url: normalizeText(body.landing_image_url),
       catalog_id: normalizeText(body.catalog_id),
-      type: normalizeText(body.type),
+      type,
       price: parseNumber(body.price),
       is_default: parseBoolean(body.is_default),
       unlock_conditions: parseJson(body.unlock_conditions),
@@ -54,6 +85,10 @@ export async function POST(request: Request) {
       downloads_count: parseNumber(body.downloads_count),
       purchases_count: parseNumber(body.purchases_count),
       tags: parseTextArray(body.tags),
+      recommendation_levels: recommendationLevels,
+      recommendation_times: recommendationTimes,
+      recommendation_dietary: recommendationDietary,
+      recommendation_tags: recommendationTags,
       revenue_share: parseNumber(body.revenue_share),
     };
 

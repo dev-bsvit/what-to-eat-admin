@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { translateLandingToAllLanguages } from "@/lib/translate";
+import { CATALOG_RECOMMENDATION_PROMPT } from "@/lib/catalogRecommendationTags";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
@@ -13,6 +14,14 @@ function stripMarkdown(content: string): string {
 
 const SCHEMA_DESCRIPTION = `
 {
+  "_cuisine": {
+    "recommendation": {
+      "levels": string[],       // machine values only
+      "times": string[],        // machine values only
+      "dietary": string[],      // machine values only, can be []
+      "tags": string[]          // machine values only
+    }
+  },
   "preview_card": {
     "title": string,            // короткий заголовок для карточки в списке (до 40 символов)
     "subtitle": string,         // 1-2 предложения о пользе каталога
@@ -126,6 +135,8 @@ ${contextBlock}
 
 ТРЕБОВАНИЯ:
 - ${langInstruction}
+- Добавь служебный блок _cuisine.recommendation для выбора подарка в онбординге
+- ${CATALOG_RECOMMENDATION_PROMPT}
 - Текст живой, дружелюбный, без канцелярита
 - Заголовки короткие и ёмкие
 - Секции transformation_section и benefits_section — обязательны, они продают

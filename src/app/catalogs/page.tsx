@@ -2,15 +2,73 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  CATALOG_DIETARY_OPTIONS,
+  CATALOG_GENERAL_TAG_OPTIONS,
+  CATALOG_LEVEL_OPTIONS,
+  CATALOG_TIME_OPTIONS,
+} from "@/lib/catalogRecommendationTags";
 
 interface Cuisine {
   id: string;
   name: string;
   image_url?: string;
   landing_image_url?: string;
+  type?: string | null;
+  recommendation_levels?: string[] | null;
+  recommendation_times?: string[] | null;
+  recommendation_dietary?: string[] | null;
+  recommendation_tags?: string[] | null;
   recipe_count?: number;
   is_user_generated?: boolean;
   owner_id?: string;
+}
+
+function toggleValue(items: string[], value: string) {
+  return items.includes(value) ? items.filter((item) => item !== value) : [...items, value];
+}
+
+function CheckboxGroup({
+  title,
+  values,
+  options,
+  onChange,
+}: {
+  title: string;
+  values: string[];
+  options: readonly { value: string; label: string }[];
+  onChange: (values: string[]) => void;
+}) {
+  return (
+    <div className="form-group">
+      <label className="form-label">{title}</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {options.map((option) => {
+          const selected = values.includes(option.value);
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(toggleValue(values, option.value))}
+              style={{
+                border: "1px solid",
+                borderColor: selected ? "#007aff" : "var(--border-light)",
+                background: selected ? "rgba(0,122,255,0.12)" : "var(--bg-surface)",
+                color: selected ? "#007aff" : "var(--text-primary)",
+                borderRadius: 999,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function CatalogsPage() {
@@ -26,6 +84,10 @@ export default function CatalogsPage() {
     image_url: "",
     landing_image_url: "",
     type: "free",
+    recommendation_levels: [] as string[],
+    recommendation_times: [] as string[],
+    recommendation_dietary: [] as string[],
+    recommendation_tags: [] as string[],
   });
 
   useEffect(() => {
@@ -56,20 +118,34 @@ export default function CatalogsPage() {
   }
 
   async function handleCreateCuisine() {
-    if (!newCuisine.id || !newCuisine.name) {
-      alert("Заполните все обязательные поля: ID и Название");
+    if (!newCuisine.name) {
+      alert("Заполните обязательное поле: Название");
+      return;
+    }
+
+    const needsRecommendation = newCuisine.type === "premium" || newCuisine.type === "gift";
+    if (needsRecommendation && (
+      newCuisine.recommendation_levels.length === 0 ||
+      newCuisine.recommendation_times.length === 0 ||
+      newCuisine.recommendation_tags.length === 0
+    )) {
+      alert("Для premium/gift каталога выберите уровень, время и общие теги для подарка");
       return;
     }
 
     try {
       const payload = {
-        id: newCuisine.id.trim(),
+        id: newCuisine.id.trim() || null,
         name: newCuisine.name.trim(),
         image_url: newCuisine.image_url.trim() || null,
         landing_image_url: newCuisine.landing_image_url.trim() || null,
         type: newCuisine.type || "free",
         status: "active",
         moderation_status: "approved",
+        recommendation_levels: newCuisine.recommendation_levels,
+        recommendation_times: newCuisine.recommendation_times,
+        recommendation_dietary: newCuisine.recommendation_dietary,
+        recommendation_tags: newCuisine.recommendation_tags,
       };
 
       console.log("Отправка данных:", payload);
@@ -82,7 +158,17 @@ export default function CatalogsPage() {
 
       if (response.ok) {
         setShowAddModal(false);
-        setNewCuisine({ id: "", name: "", image_url: "", landing_image_url: "", type: "free" });
+        setNewCuisine({
+          id: "",
+          name: "",
+          image_url: "",
+          landing_image_url: "",
+          type: "free",
+          recommendation_levels: [],
+          recommendation_times: [],
+          recommendation_dietary: [],
+          recommendation_tags: [],
+        });
         loadCuisines();
       } else {
         const error = await response.json();
@@ -425,6 +511,44 @@ export default function CatalogsPage() {
                 <option value="unlockable">unlockable — разблокируемый</option>
               </select>
             </div>
+
+            {(newCuisine.type === "premium" || newCuisine.type === "gift") && (
+              <div style={{
+                border: "1px solid var(--border-light)",
+                borderRadius: "var(--radius-md)",
+                padding: "12px",
+                marginBottom: "var(--spacing-md)",
+                background: "var(--bg-hover)",
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: "var(--text-primary)" }}>
+                  Наклейки для подарка *
+                </div>
+                <CheckboxGroup
+                  title="Уровень *"
+                  values={newCuisine.recommendation_levels}
+                  options={CATALOG_LEVEL_OPTIONS}
+                  onChange={(values) => setNewCuisine({ ...newCuisine, recommendation_levels: values })}
+                />
+                <CheckboxGroup
+                  title="Время *"
+                  values={newCuisine.recommendation_times}
+                  options={CATALOG_TIME_OPTIONS}
+                  onChange={(values) => setNewCuisine({ ...newCuisine, recommendation_times: values })}
+                />
+                <CheckboxGroup
+                  title="Питание"
+                  values={newCuisine.recommendation_dietary}
+                  options={CATALOG_DIETARY_OPTIONS}
+                  onChange={(values) => setNewCuisine({ ...newCuisine, recommendation_dietary: values })}
+                />
+                <CheckboxGroup
+                  title="Общие теги *"
+                  values={newCuisine.recommendation_tags}
+                  options={CATALOG_GENERAL_TAG_OPTIONS}
+                  onChange={(values) => setNewCuisine({ ...newCuisine, recommendation_tags: values })}
+                />
+              </div>
+            )}
 
             <div className="modal-footer">
               <button
