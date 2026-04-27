@@ -300,6 +300,8 @@ export default function LandingEditor({
   const [activeLang, setActiveLang] = useState("ru");
   const [translations, setTranslations] = useState<Record<string, unknown>>({});
   const [isTranslating, setIsTranslating] = useState(false);
+  const [showTranslationPaste, setShowTranslationPaste] = useState(false);
+  const [translationPasteText, setTranslationPasteText] = useState("");
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
 
@@ -648,6 +650,35 @@ ${base}
     });
   }
 
+  function applyTranslationPaste() {
+    const raw = translationPasteText.trim();
+    if (!raw) return;
+    let parsed: Record<string, unknown>;
+    try {
+      let cleaned = raw;
+      if (cleaned.startsWith("```")) cleaned = cleaned.replace(/^```[a-z]*\n?/, "").replace(/```$/, "").trim();
+      parsed = JSON.parse(cleaned);
+    } catch {
+      setSaveStatus("❌ Невалидный JSON — проверь что AI вернул корректный JSON");
+      return;
+    }
+    // Accept either {"en":{...},"de":{...}} or {"translations":{"en":{...}}}
+    const tx = (parsed.translations && typeof parsed.translations === "object")
+      ? parsed.translations as Record<string, unknown>
+      : parsed;
+    const langKeys = ["en","de","fr","it","es","pt-BR","uk","ru"];
+    const isTranslationsObj = Object.keys(tx).some(k => langKeys.includes(k));
+    if (!isTranslationsObj) {
+      setSaveStatus("❌ Не похоже на объект переводов — ожидается {\"en\":{...},\"de\":{...},...}");
+      return;
+    }
+    setTranslations(prev => ({ ...prev, ...tx }));
+    setTranslationPasteText("");
+    setShowTranslationPaste(false);
+    const count = Object.keys(tx).length;
+    setSaveStatus(`Переводы на ${count} языков добавлены ✅ — нажми Сохранить`);
+  }
+
   function switchToJson() {
     if (data) {
       const cuisineMeta = {
@@ -910,6 +941,30 @@ ${base}
         )}
       </div>
 
+      {/* ── Translation paste panel ── */}
+      {showTranslationPaste && (
+        <div style={{ background: "linear-gradient(135deg,rgba(0,122,255,0.07),rgba(52,199,89,0.07))", border: "1px solid rgba(0,122,255,0.25)", borderRadius: "14px", padding: "16px", marginBottom: "14px" }}>
+          <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "6px" }}>🌍 Вставь ответ AI с переводами</div>
+          <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "10px", marginTop: 0 }}>
+            Вставь JSON который вернул AI — объект вида {`{"en":{...},"de":{...},...}`} или с полем "translations".
+          </p>
+          <textarea
+            className="input"
+            rows={6}
+            placeholder={`{"en":{"preview_card":{"title":"..."},...},"de":{...},...}`}
+            value={translationPasteText}
+            onChange={(e) => setTranslationPasteText(e.target.value)}
+            style={{ fontFamily: "monospace", fontSize: "12px", marginBottom: "10px", resize: "vertical" }}
+          />
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button className="btn btn-primary" onClick={applyTranslationPaste} disabled={!translationPasteText.trim()}>
+              Применить переводы
+            </button>
+            <button className="btn btn-secondary" onClick={() => { setShowTranslationPaste(false); setTranslationPasteText(""); }}>Отмена</button>
+          </div>
+        </div>
+      )}
+
       {/* ── AI Prompt panel ── */}
       {showAiPrompt && (
         <div style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "14px", padding: "16px", marginBottom: "14px" }}>
@@ -988,9 +1043,19 @@ ${base}
           className="btn btn-secondary"
           onClick={copyTranslationPrompt}
           style={{ fontSize: "13px" }}
-          title="Скопировать промпт для перевода на 7 языков — вставь текущий JSON в AI и получи translations"
+          title="Скопировать промпт для перевода на 7 языков"
         >
           🌍 Промпт переводов
+        </button>
+
+        {/* Paste translations from AI */}
+        <button
+          className="btn btn-secondary"
+          onClick={() => setShowTranslationPaste(v => !v)}
+          style={{ fontSize: "13px", background: showTranslationPaste ? "rgba(52,199,89,0.1)" : undefined, color: "#34c759", borderColor: "rgba(52,199,89,0.3)", fontWeight: 700 }}
+          title="Вставить ответ AI с переводами"
+        >
+          📥 Вставить переводы
         </button>
 
         {/* AI */}
