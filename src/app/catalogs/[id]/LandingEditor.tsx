@@ -585,10 +585,22 @@ FAQ:
   "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
   "recipe_preview_ids": [],
   "is_published": false,
-  "sort_order": 0
+  "sort_order": 0,
+  "translations": {
+    "en": { /* все секции на английском: same keys, same ids/emojis, все тексты переведены */ },
+    "de": { /* на немецком */ },
+    "fr": { /* на французском */ },
+    "it": { /* на итальянском */ },
+    "es": { /* на испанском */ },
+    "pt-BR": { /* на португальском бразильском */ },
+    "uk": { /* на украинском */ }
+  }
 }
 
-Переводы на 7 языков — не нужны, они делаются отдельно через DeepL.`;
+Правила для translations:
+- Каждый языковой блок содержит те же секции что основной JSON
+- id и emoji — без изменений, только тексты переведены
+- Количество элементов в каждом массиве = значения из _counts`;
   }
 
   function copyPrompt() {
