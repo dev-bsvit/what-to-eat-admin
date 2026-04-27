@@ -206,7 +206,8 @@ function ColorField({ label, value, onChange }: { label: string; value?: string;
   );
 }
 
-function BadgesField({ label = "Значки", value, onChange }: { label?: string; value: string[]; onChange: (v: string[]) => void }) {
+function BadgesField({ label = "Значки", value: valueProp, onChange }: { label?: string; value?: string[]; onChange: (v: string[]) => void }) {
+  const value = valueProp ?? [];
   const [newBadge, setNewBadge] = useState("");
   const add = () => { if (newBadge.trim()) { onChange([...value, newBadge.trim()]); setNewBadge(""); } };
   return (
@@ -1279,7 +1280,7 @@ ${base}
           <SectionBlock title="🏷️ Значки (карточка и лендинг)" open={false}>
             <BadgesField
               label="Значки — показываются и в карточке каталога, и в шапке лендинга"
-              value={viewData.preview_card.badges}
+              value={viewData.preview_card?.badges ?? []}
               onChange={isRO ? () => {} : (v) => upd({
                 preview_card: { ...data.preview_card, badges: v },
                 hero: { ...data.hero, badges: v },
