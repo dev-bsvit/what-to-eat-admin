@@ -34,15 +34,20 @@ const extractOnboarding = (settings: any) => {
   const onboarding = settings?.onboarding || {};
   const priorities = Array.isArray(onboarding?.priorities) ? onboarding.priorities : [];
   const cookingLevel = onboarding?.cookingLevel || onboarding?.cooking_level || "—";
+  const cookingTime = onboarding?.cookingTime || onboarding?.cooking_time || "—";
+  const dietaryRestriction = onboarding?.dietaryRestriction || onboarding?.dietary_restriction || "—";
+  const cookingPriority = onboarding?.cookingPriority || onboarding?.cooking_priority || "—";
+  const cuisinePreference = onboarding?.cuisinePreference || onboarding?.cuisine_preference || "—";
+  const giftedCatalogId = onboarding?.giftedCatalogId || onboarding?.gifted_catalog_id || null;
   const mealStyle = onboarding?.mealStyle || onboarding?.meal_style || "—";
   const householdSize = onboarding?.householdSize || onboarding?.household_size || "—";
   const completed =
     onboarding?.completed === true ||
     priorities.length > 0 ||
     cookingLevel !== "—" ||
-    mealStyle !== "—" ||
-    householdSize !== "—";
-  return { completed, priorities, cookingLevel, mealStyle, householdSize };
+    cookingPriority !== "—" ||
+    cuisinePreference !== "—";
+  return { completed, priorities, cookingLevel, cookingTime, dietaryRestriction, cookingPriority, cuisinePreference, giftedCatalogId, mealStyle, householdSize };
 };
 
 export default function UsersPage() {
@@ -481,10 +486,16 @@ export default function UsersPage() {
                                 flexWrap: "wrap",
                               }}>
                                 <span>📝 Анкета: {onboarding.completed ? "заполнена" : "не заполнена"}</span>
-                                {onboarding.priorities.length > 0 && (
+                                {onboarding.cookingLevel !== "—" && (
                                   <>
                                     <span>•</span>
-                                    <span>{onboarding.priorities.length} приоритетов</span>
+                                    <span>{onboarding.cookingLevel}</span>
+                                  </>
+                                )}
+                                {onboarding.cuisinePreference !== "—" && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{onboarding.cuisinePreference}</span>
                                   </>
                                 )}
                               </div>
@@ -930,21 +941,33 @@ export default function UsersPage() {
                                     color: "var(--text-secondary)",
                                   }}>
                                     <div>
-                                      <strong style={{ color: "var(--text-primary)" }}>Приоритеты:</strong>{" "}
-                                      {onboarding.priorities.length ? onboarding.priorities.join(", ") : "—"}
-                                    </div>
-                                    <div>
                                       <strong style={{ color: "var(--text-primary)" }}>Уровень:</strong>{" "}
                                       {onboarding.cookingLevel}
                                     </div>
                                     <div>
-                                      <strong style={{ color: "var(--text-primary)" }}>Стиль:</strong>{" "}
-                                      {onboarding.mealStyle}
+                                      <strong style={{ color: "var(--text-primary)" }}>Время:</strong>{" "}
+                                      {onboarding.cookingTime}
                                     </div>
                                     <div>
-                                      <strong style={{ color: "var(--text-primary)" }}>Семья:</strong>{" "}
-                                      {onboarding.householdSize}
+                                      <strong style={{ color: "var(--text-primary)" }}>Ограничения:</strong>{" "}
+                                      {onboarding.dietaryRestriction}
                                     </div>
+                                    <div>
+                                      <strong style={{ color: "var(--text-primary)" }}>Приоритет:</strong>{" "}
+                                      {onboarding.cookingPriority}
+                                    </div>
+                                    <div>
+                                      <strong style={{ color: "var(--text-primary)" }}>Кухня:</strong>{" "}
+                                      {onboarding.cuisinePreference}
+                                    </div>
+                                    {onboarding.giftedCatalogId && (
+                                      <div>
+                                        <strong style={{ color: "var(--text-primary)" }}>Каталог в подарок:</strong>{" "}
+                                        <span style={{ fontFamily: "monospace", fontSize: "11px" }}>
+                                          {onboarding.giftedCatalogId.slice(0, 8)}...
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>
