@@ -64,6 +64,7 @@ export default function UsersPage() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
   const [loadingRecipe, setLoadingRecipe] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadProfiles(1, true);
@@ -166,6 +167,30 @@ export default function UsersPage() {
 
   function closeRecipeModal() {
     setSelectedRecipe(null);
+  }
+
+  async function deleteUser(userId: string, userName: string | null) {
+    const confirmed = window.confirm(
+      `Удалить аккаунт "${userName || userId}"?\n\nЭто действие нельзя отменить — все данные пользователя будут удалены.`
+    );
+    if (!confirmed) return;
+
+    setDeletingUserId(userId);
+    try {
+      const res = await fetch(`/api/admin/profiles/${userId}`, { method: "DELETE" });
+      const result = await res.json();
+      if (!res.ok) {
+        alert(`Ошибка: ${result.error || "не удалось удалить"}`);
+        return;
+      }
+      setProfiles((prev) => prev.filter((p) => p.id !== userId));
+      setTotalCount((prev) => (prev !== null ? prev - 1 : null));
+      if (expandedUserId === userId) setExpandedUserId(null);
+    } catch {
+      alert("Ошибка: не удалось подключиться");
+    } finally {
+      setDeletingUserId(null);
+    }
   }
 
   return (
@@ -299,7 +324,7 @@ export default function UsersPage() {
                     const settings = extractSettings(profile.settings || {});
                     const onboarding = extractOnboarding(profile.settings || {});
                     const isExpanded = expandedUserId === profile.id;
-                    const hasData = (profile.cuisines_count || 0) > 0 || (profile.favorites_count || 0) > 0;
+                    const hasData = (profile.cuisines_count || 0) > 0 || (profile.favorites_count || 0) > 0 || onboarding.completed;
 
                     return (
                       <>
@@ -507,7 +532,45 @@ export default function UsersPage() {
                             color: "var(--text-secondary)",
                             verticalAlign: "middle",
                           }}>
-                            {formatDate(profile.created_at)}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                              <span>{formatDate(profile.created_at)}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void deleteUser(profile.id, profile.name ?? null);
+                                }}
+                                disabled={deletingUserId === profile.id}
+                                title="Удалить аккаунт"
+                                style={{
+                                  flexShrink: 0,
+                                  width: "30px",
+                                  height: "30px",
+                                  border: "1px solid rgba(239,68,68,0.3)",
+                                  borderRadius: "8px",
+                                  background: "rgba(239,68,68,0.06)",
+                                  color: "#ef4444",
+                                  cursor: deletingUserId === profile.id ? "not-allowed" : "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontSize: "14px",
+                                  opacity: deletingUserId === profile.id ? 0.5 : 1,
+                                  transition: "all 0.15s ease",
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (deletingUserId !== profile.id) {
+                                    e.currentTarget.style.background = "rgba(239,68,68,0.15)";
+                                    e.currentTarget.style.borderColor = "rgba(239,68,68,0.6)";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "rgba(239,68,68,0.06)";
+                                  e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)";
+                                }}
+                              >
+                                {deletingUserId === profile.id ? "…" : "🗑"}
+                              </button>
+                            </div>
                           </td>
                         </tr>
 
