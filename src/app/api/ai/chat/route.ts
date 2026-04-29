@@ -1,6 +1,6 @@
 // POST /api/ai/chat
 // Потоковый AI-чат для кулинарного ассистента.
-// Возвращает SSE: сначала чанки текста, потом рецепты (если уместно).
+// Возвращает SSE: сначала чанки текста, потом рецепты (если AI решил их показать).
 
 import { after } from "next/server";
 import { verifyUser, checkAndIncrementAiUsage, logTokenUsage, AuthError } from "@/lib/verifyUser";
@@ -14,6 +14,8 @@ const OPENAI_EMBED_URL = "https://api.openai.com/v1/embeddings";
 const CHAT_MODEL = "gpt-4o-mini";
 const EMBED_MODEL = "text-embedding-3-small";
 
+// AI сам решает когда показывать рецепты и что именно искать.
+// Тег [SEARCH: ...] вырезается из отображаемого текста и используется для embedding-поиска.
 const SYSTEM_PROMPT = `Ты кулинарный ассистент приложения «Что поесть». Отвечай ТОЛЬКО на кулинарные вопросы:
 — рецепты и способы приготовления
 — ингредиенты, замены, сочетания продуктов
@@ -22,21 +24,25 @@ const SYSTEM_PROMPT = `Ты кулинарный ассистент прилож
 — хранение продуктов и планирование меню
 
 На любые НЕкулинарные вопросы (политика, история, знаменитости, спорт, медицина вне питания и т.д.) — вежливо откажи одним предложением и предложи спросить про еду.
-Если пользователь хочет найти рецепты — ответь коротко и упомяни, что покажешь варианты ниже.
+
+ВАЖНО — теги для поиска рецептов:
+Если пользователь хочет конкретные рецепты или блюда — в самом конце своего ответа добавь тег:
+[SEARCH: <запрос на английском для поиска, 3-8 слов, описывает нужные блюда>]
+Пример: [SEARCH: quick pasta dinner tomato sauce italian]
+Если рецепты не нужны (вопрос про технику, замену ингредиента, советы) — тег НЕ добавляй.
+Тег невидим пользователю — он только для внутреннего поиска.
+
 Отвечай на языке пользователя. Будь дружелюбным, кратким и конкретным.`;
 
-// Ключевые слова, по которым определяем намерение найти рецепты
-const RECIPE_INTENT_KEYWORDS = [
-  "рецепт", "приготов", "поесть", "блюд", "обед", "ужин", "завтрак",
-  "перекус", "что сделать", "что скушать", "что съесть", "из чего",
-  "найди", "подбери", "посоветуй", "покажи",
-  "рецептів", "приготув", "їжа", "страв",
-  "recipe", "cook", "eat", "dish", "meal", "make", "prepare", "find",
-];
+// Регулярное выражение для извлечения тега [SEARCH: ...]
+const SEARCH_TAG_RE = /\[SEARCH:\s*([^\]]+)\]/i;
 
-function hasRecipeIntent(text: string): boolean {
-  const lower = text.toLowerCase();
-  return RECIPE_INTENT_KEYWORDS.some((kw) => lower.includes(kw));
+function extractSearchQuery(text: string): { clean: string; query: string | null } {
+  const match = text.match(SEARCH_TAG_RE);
+  if (!match) return { clean: text, query: null };
+  const query = match[1].trim();
+  const clean = text.replace(match[0], "").replace(/\s{2,}/g, " ").trim();
+  return { clean, query };
 }
 
 async function getEmbedding(text: string, apiKey: string): Promise<number[] | null> {
@@ -74,7 +80,6 @@ async function searchRecipes(query: string, apiKey: string) {
     if (data?.length) rows = data;
   }
 
-  // Fallback — просто любые рецепты с картинкой
   if (!rows.length) {
     const { data } = await supabaseAdmin
       .from("recipes")
@@ -117,7 +122,6 @@ export async function POST(request: Request) {
     return new Response(JSON.stringify({ error: "Server misconfiguration" }), { status: 500 });
   }
 
-  // 1. Аутентификация
   let user: Awaited<ReturnType<typeof verifyUser>>;
   let body: RequestBody;
 
@@ -139,32 +143,32 @@ export async function POST(request: Request) {
 
   const { messages = [], pantry_items = [], language = "ru" } = body;
 
-  // Вставляем системный промт если его нет
+  // Всегда подставляем наш системный промт первым
   const chatMessages: ChatMessage[] =
     messages[0]?.role === "system"
-      ? messages
+      ? [{ role: "system", content: SYSTEM_PROMPT }, ...messages.slice(1)]
       : [{ role: "system", content: SYSTEM_PROMPT }, ...messages];
 
-  // Последнее сообщение пользователя — для поиска рецептов
-  const lastUserText =
-    [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  // Если есть продукты из кладовки — добавляем контекст к последнему сообщению пользователя
+  if (pantry_items.length > 0) {
+    const lastUserIdx = [...chatMessages].reverse().findIndex((m) => m.role === "user");
+    if (lastUserIdx !== -1) {
+      const realIdx = chatMessages.length - 1 - lastUserIdx;
+      chatMessages[realIdx] = {
+        ...chatMessages[realIdx],
+        content:
+          chatMessages[realIdx].content +
+          `\n\n[Доступные продукты у пользователя: ${pantry_items.slice(0, 10).join(", ")}]`,
+      };
+    }
+  }
 
-  const shouldSearchRecipes = hasRecipeIntent(lastUserText);
-
-  // Контекст для поиска: запрос + продукты из кладовки
-  const recipeSearchQuery =
-    pantry_items.length > 0
-      ? `${lastUserText} из: ${pantry_items.slice(0, 8).join(", ")}`
-      : lastUserText;
-
-  // 2. Собираем SSE-поток
   const stream = new ReadableStream({
     async start(controller) {
       let totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
       let accumulatedText = "";
 
       try {
-        // 2a. Запрос к OpenAI с stream: true
         const openAIRes = await fetch(OPENAI_CHAT_URL, {
           method: "POST",
           headers: {
@@ -176,7 +180,7 @@ export async function POST(request: Request) {
             messages: chatMessages,
             stream: true,
             temperature: 0.75,
-            max_tokens: 500,
+            max_tokens: 600,
           }),
         });
 
@@ -186,7 +190,6 @@ export async function POST(request: Request) {
           return;
         }
 
-        // 2b. Читаем OpenAI SSE и транслируем клиенту
         const reader = openAIRes.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -209,23 +212,35 @@ export async function POST(request: Request) {
               const delta: string | undefined = parsed.choices?.[0]?.delta?.content;
               if (delta) {
                 accumulatedText += delta;
+                // Стримим дельту, но вырезаем тег [SEARCH:...] если он начал появляться
+                // Тег всегда в конце, поэтому просто передаём дельту как есть —
+                // клиент получит тег в потоке, но iOS-сторона его не показывает
+                // (финальный clean-текст придёт отдельным событием)
                 controller.enqueue(sseChunk({ delta }));
               }
               if (parsed.usage) totalUsage = parsed.usage;
             } catch {
-              // Пропускаем битые чанки
+              // ignore malformed chunks
             }
           }
         }
 
-        // 2c. Поиск рецептов (параллельно с концом стрима или после)
-        if (shouldSearchRecipes) {
-          const recipes = await searchRecipes(recipeSearchQuery, apiKey);
+        // Извлекаем тег [SEARCH: ...] из полного ответа
+        const { clean: cleanText, query: searchQuery } = extractSearchQuery(accumulatedText);
+
+        // Отправляем финальный чистый текст (без тега) и рецепты
+        if (searchQuery) {
+          const recipes = await searchRecipes(searchQuery, apiKey);
           controller.enqueue(
-            sseChunk({ recipes: recipes.length > 0 ? recipes : [], done: true })
+            sseChunk({
+              // clean_text нужен чтобы iOS заменил стриминговый текст (с тегом) на чистый
+              clean_text: cleanText,
+              recipes: recipes.length > 0 ? recipes : [],
+              done: true,
+            })
           );
         } else {
-          controller.enqueue(sseChunk({ done: true }));
+          controller.enqueue(sseChunk({ clean_text: cleanText, done: true }));
         }
       } catch (err) {
         console.error("[ai/chat] error:", err);
@@ -234,7 +249,6 @@ export async function POST(request: Request) {
         controller.close();
       }
 
-      // Логируем токены в фоне — не блокируем ответ
       if (totalUsage.total_tokens > 0) {
         after(() => logTokenUsage(user.userId, "ai-chat", totalUsage));
       }
@@ -246,7 +260,7 @@ export async function POST(request: Request) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
-      "X-Accel-Buffering": "no", // отключаем буферизацию nginx на Vercel
+      "X-Accel-Buffering": "no",
     },
   });
 }
