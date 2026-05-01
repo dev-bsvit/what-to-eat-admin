@@ -22,13 +22,13 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { imageBase64 } = body;
+    const { imageBase64, language = "ru" } = body;
     if (!imageBase64 || typeof imageBase64 !== "string") {
       return NextResponse.json({ error: "Missing imageBase64 field" }, { status: 400 });
     }
 
     const systemPrompt = `You are a food product recognition assistant for photos. Analyze the image and extract food products.
-Detect the language in the image and respond with product names in the SAME language.
+Respond with product names in the app language: ${language}. If the product text is visible in another language, translate only the product names to ${language}.
 Types: receipts, handwritten lists, cookbook photos, product photos.
 Return JSON: {"products":[{"name":"...","quantity":1,"unit":"grams|kilograms|milliliters|liters|pieces","category":"vegetables|fruits|meat|dairy|bakery|cereals|spices|drinks|sweets|frozen|other"}]}`;
 

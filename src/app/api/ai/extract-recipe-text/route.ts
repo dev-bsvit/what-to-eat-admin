@@ -1,6 +1,5 @@
-// POST /api/ai/recognize-text
-// Голосовой ввод продуктов — распознаёт список продуктов из текста.
-// Free: 1 запрос/день. Premium: без ограничений.
+// POST /api/ai/extract-recipe-text
+// Converts a free-form chat recipe into structured recipe JSON for iOS import form.
 
 import { after } from "next/server";
 import { NextResponse } from "next/server";
@@ -16,35 +15,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
     }
 
-    // 1. Проверяем пользователя
     const user = await verifyUser(request);
-
-    // 2. Для free пользователей проверяем лимит
     if (!user.isPremium) {
       await checkAndIncrementAiUsage(user.userId);
     }
 
-    // 3. Читаем тело запроса
     const body = await request.json();
-    const { text, language = "ru" } = body;
+    const { text } = body;
     if (!text || typeof text !== "string") {
       return NextResponse.json({ error: "Missing text field" }, { status: 400 });
     }
 
-    // 4. Шлём запрос к OpenAI
-    const systemPrompt = `You are a precise food product recognition assistant. Extract EACH product separately with its EXACT quantity and unit from the text.
+    const systemPrompt = `You extract a complete recipe from a chat message.
 
-CRITICAL RULES:
-1. Respond with product names in the app language: ${language}. If the input is in another language, translate only product names to ${language}
-2. Parse EACH product individually
-3. Extract the EXACT quantity and unit mentioned
-4. Pay attention: "полкилограмма"=0.5kg, "штука/штуки"=pieces
-5. NEVER guess quantities — use exactly what was said
-6. If no unit mentioned, default to pieces for countable items
-7. If no quantity mentioned, use 1
+Rules:
+- Keep the original language of the recipe.
+- Extract only data present or strongly implied in the message.
+- Do not invent ingredients, steps, image URLs, or nutrition.
+- If the text contains multiple recipes, extract the main/first complete recipe.
+- Split ingredients into name, amount, unit. Put notes in note.
+- Steps must be actionable cooking instructions, in order.
+- Return valid JSON only.
 
 Return JSON:
-{"products":[{"name":"...","quantity":1,"unit":"grams|kilograms|milliliters|liters|pieces","category":"vegetables|fruits|meat|dairy|bakery|cereals|spices|drinks|sweets|frozen|other"}]}`;
+{
+  "t": "title",
+  "d": "short description or null",
+  "pt": prep_time_minutes_or_null,
+  "ct": cook_time_minutes_or_null,
+  "s": servings_or_null,
+  "cu": "cuisine or null",
+  "tags": [],
+  "ing": [{"n":"name","a":"amount","u":"unit","note":"optional note"}],
+  "steps": [{"text":"step text","timer": timer_minutes_or_null}]
+}`;
 
     const openAIResponse = await fetch(OPENAI_URL, {
       method: "POST",
@@ -58,8 +62,8 @@ Return JSON:
           { role: "system", content: systemPrompt },
           { role: "user", content: text },
         ],
-        temperature: 0.2,
-        max_tokens: 500,
+        temperature: 0.1,
+        max_tokens: 2500,
         response_format: { type: "json_object" },
       }),
     });
@@ -76,9 +80,8 @@ Return JSON:
       return NextResponse.json({ error: "Empty AI response" }, { status: 502 });
     }
 
-    // Log tokens in background — does not block the response
     if (data.usage) {
-      after(() => logTokenUsage(user.userId, "recognize-text", data.usage));
+      after(() => logTokenUsage(user.userId, "extract-recipe-text", data.usage));
     }
 
     return NextResponse.json(JSON.parse(content));
@@ -89,7 +92,7 @@ Return JSON:
         { status: e.status }
       );
     }
-    console.error("recognize-text error:", e);
+    console.error("extract-recipe-text error:", e);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
