@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { cleanIngredientName } from "@/lib/stringUtils";
@@ -353,12 +354,95 @@ export async function POST(request: Request) {
       }
     }
 
+    after(() => autoFillRecipe(savedRecipeId));
+
     return NextResponse.json({ data });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
+  }
+}
+
+// Runs in background after save — generates embedding and mood_tags if missing
+async function autoFillRecipe(recipeId: string) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return;
+
+  const { data: recipe } = await supabaseAdmin
+    .from("recipes")
+    .select("id, title, description, embedding, mood_tags")
+    .eq("id", recipeId)
+    .single();
+
+  if (!recipe) return;
+
+  const updates: Record<string, unknown> = {};
+
+  // Generate embedding if missing
+  if (!recipe.embedding) {
+    try {
+      const text = [recipe.title, recipe.description].filter(Boolean).join(" ");
+      const res = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: "text-embedding-3-small", input: text }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        updates.embedding = json.data?.[0]?.embedding ?? null;
+      }
+    } catch {
+      // non-blocking
+    }
+  }
+
+  // Generate mood_tags if missing
+  if (!recipe.mood_tags?.length) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: `Assign mood tags from: light, hearty, junk, usual.
+- light: salads, soups, vegetables, fish, healthy
+- hearty: meat, pasta, stews, high-protein
+- junk: burgers, pizza, fries, fast food
+- usual: everyday simple dishes
+Return ONLY a JSON array, e.g. ["light"]. No explanation.`,
+            },
+            { role: "user", content: `Recipe: ${recipe.title}\nDescription: ${recipe.description ?? "none"}` },
+          ],
+          max_tokens: 30,
+          temperature: 0,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const raw = json.choices?.[0]?.message?.content?.trim() ?? '["usual"]';
+        try {
+          const tags = (JSON.parse(raw) as string[]).filter((t) =>
+            ["light", "hearty", "junk", "usual"].includes(t)
+          );
+          updates.mood_tags = tags.length ? tags : ["usual"];
+        } catch {
+          updates.mood_tags = ["usual"];
+        }
+      }
+    } catch {
+      // non-blocking
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await supabaseAdmin.from("recipes").update(updates).eq("id", recipeId);
   }
 }
 
