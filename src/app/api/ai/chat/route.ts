@@ -25,10 +25,28 @@ const SYSTEM_PROMPT = `Ты кулинарный ассистент прилож
 
 На любые НЕкулинарные вопросы (политика, история, знаменитости, спорт, медицина вне питания и т.д.) — вежливо откажи одним предложением и предложи спросить про еду.
 
+ПРАВИЛА ИСПОЛЬЗОВАНИЯ КОНТЕКСТА ХОЛОДИЛЬНИКА:
+Пользователю доступен список продуктов из его холодильника (передаётся в системном контексте).
+Используй список ТОЛЬКО в двух случаях:
+1. Пользователь явно просит рецепт «из того что есть», «из холодильника», «из того что дома» или похожие фразы.
+2. Быстрые команды «Из того что есть дома».
+Во ВСЕХ остальных случаях — предлагай любые рецепты без ограничений по наличию продуктов.
+
+ПРИОРИТЕТ ПРЕДПОЧТЕНИЙ ПОЛЬЗОВАТЕЛЯ:
+Всегда точно соблюдай ограничения и предпочтения из запроса:
+— «диетическое» / «ПП» / «низкокалорийное» → только лёгкие блюда, никакой колбасы/жирного
+— «вегетарианское» / «без мяса» → строго без мяса
+— «быстрое» / «за 15 минут» → блюда с коротким временем готовки
+— «новое» / «что-нибудь необычное» → не предлагай обычные домашние блюда
+Предпочтения из сообщения важнее наличия продуктов в холодильнике.
+
 ВАЖНО — теги для поиска рецептов:
 Если пользователь хочет конкретные рецепты или блюда — в самом конце своего ответа добавь тег:
-[SEARCH: <запрос на английском для поиска, 3-8 слов, описывает нужные блюда>]
-Пример: [SEARCH: quick pasta dinner tomato sauce italian]
+[SEARCH: <запрос на английском для поиска, 3-8 слов, точно отражает пожелания пользователя>]
+Примеры:
+— «диетический ужин» → [SEARCH: healthy low calorie dinner light recipes]
+— «из холодильника» → [SEARCH: quick recipes with chicken vegetables pasta]
+— «что-нибудь новое» → [SEARCH: creative unusual dishes exotic cuisine]
 Если рецепты не нужны (вопрос про технику, замену ингредиента, советы) — тег НЕ добавляй.
 Тег невидим пользователю — он только для внутреннего поиска.
 
@@ -143,25 +161,20 @@ export async function POST(request: Request) {
 
   const { messages = [], pantry_items = [], language = "ru" } = body;
 
-  // Всегда подставляем наш системный промт первым
-  const chatMessages: ChatMessage[] =
-    messages[0]?.role === "system"
-      ? [{ role: "system", content: SYSTEM_PROMPT }, ...messages.slice(1)]
-      : [{ role: "system", content: SYSTEM_PROMPT }, ...messages];
+  // Системный промт + контекст холодильника (один раз, не дублируем в каждом сообщении)
+  const languageInstruction =
+    `\n\nЯзык интерфейса пользователя: ${language}. Отвечай на этом языке, если пользователь явно не попросил другой язык.`;
+  const systemContent =
+    pantry_items.length > 0
+      ? SYSTEM_PROMPT + languageInstruction +
+        `\n\n[Контекст холодильника пользователя: ${pantry_items.slice(0, 15).join(", ")}. Используй ТОЛЬКО если пользователь явно просит рецепты из того что есть дома.]`
+      : SYSTEM_PROMPT + languageInstruction;
 
-  // Если есть продукты из кладовки — добавляем контекст к последнему сообщению пользователя
-  if (pantry_items.length > 0) {
-    const lastUserIdx = [...chatMessages].reverse().findIndex((m) => m.role === "user");
-    if (lastUserIdx !== -1) {
-      const realIdx = chatMessages.length - 1 - lastUserIdx;
-      chatMessages[realIdx] = {
-        ...chatMessages[realIdx],
-        content:
-          chatMessages[realIdx].content +
-          `\n\n[Доступные продукты у пользователя: ${pantry_items.slice(0, 10).join(", ")}]`,
-      };
-    }
-  }
+  const userMessages = messages.filter((m) => m.role !== "system");
+  const chatMessages: ChatMessage[] = [
+    { role: "system", content: systemContent },
+    ...userMessages,
+  ];
 
   const stream = new ReadableStream({
     async start(controller) {

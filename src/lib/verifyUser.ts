@@ -14,7 +14,7 @@ export interface VerifiedUser {
 
 // Лимиты бесплатного тарифа (зеркало из iOS Subscription.swift)
 export const FREE_LIMITS = {
-  aiUsesPerDay: 1,
+  aiUsesPerDay: 2,
 };
 
 // Создаём клиент без service role — для проверки пользовательского JWT
