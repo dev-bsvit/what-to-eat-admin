@@ -143,6 +143,15 @@ const AI_ENDPOINTS = [
     desc: "Извлекает полный рецепт из фото: название, ингредиенты, шаги",
   },
   {
+    name: "Рецепт из чата",
+    endpoint: "/api/ai/extract-recipe-text",
+    model: "gpt-4o-mini",
+    maxTokens: 2500,
+    freeLimit: "1 / день (общий AI лимит)",
+    premiumLimit: "∞",
+    desc: "Преобразует текстовый рецепт из AI-чата в форму сохранения",
+  },
+  {
     name: "AI улучшение рецепта",
     endpoint: "/api/ai/process-recipe",
     model: "gpt-4o-mini",

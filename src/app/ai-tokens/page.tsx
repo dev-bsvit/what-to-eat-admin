@@ -6,6 +6,7 @@ const ENDPOINT_LABELS: Record<string, string> = {
   "recognize-text": "🎤 Голос",
   "recognize-image": "📷 Фото",
   "recognize-recipe": "📖 Рецепт (скан)",
+  "extract-recipe-text": "💬 Рецепт (чат)",
   "process-recipe": "✨ Рецепт (AI)",
 };
 
