@@ -73,7 +73,7 @@ export async function sendPush(
   console.log(`[APNs] sent=${result.sent.length} failed=${result.failed.length}`);
   if (result.failed.length > 0) {
     result.failed.forEach((f) => {
-      console.log(`[APNs] failed token=${f.device} reason=${f.response?.reason} status=${f.response?.statusCode} error=${f.error}`);
+      console.log(`[APNs] failed token=${f.device} reason=${f.response?.reason} error=${f.error}`);
     });
   }
 
