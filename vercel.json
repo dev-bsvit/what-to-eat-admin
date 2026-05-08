@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/normalize-ingredients",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/send-catalog-notification",
+      "schedule": "0 10 * * *"
     }
   ]
 }
