@@ -16,6 +16,19 @@ type ReviewRecord = {
   cuisine_id?: string;
 };
 
+type ReportTarget = {
+  targetType: ReviewType;
+  reviewId: string;
+};
+
+function reviewTable(type: ReviewType) {
+  return type === "recipe_review" ? "recipe_reviews" : "cuisine_reviews";
+}
+
+function reportReviewColumn(type: ReviewType) {
+  return type === "recipe_review" ? "recipe_review_id" : "cuisine_review_id";
+}
+
 async function getProfile(userId?: string | null) {
   if (!userId) return null;
   const { data } = await supabaseAdmin
@@ -47,7 +60,7 @@ async function getCuisineTitle(cuisineId?: string | null) {
 }
 
 async function getReview(type: ReviewType, reviewId: string): Promise<ReviewRecord | null> {
-  const table = type === "recipe_review" ? "recipe_reviews" : "cuisine_reviews";
+  const table = reviewTable(type);
   const { data } = await supabaseAdmin
     .from(table)
     .select("*")
@@ -70,6 +83,64 @@ async function enrichReview(type: ReviewType, review: ReviewRecord) {
     author,
     source,
   };
+}
+
+async function getReportTarget(reportId: string): Promise<{ target?: ReportTarget; error?: string }> {
+  const { data, error } = await supabaseAdmin
+    .from("review_reports")
+    .select("target_type, recipe_review_id, cuisine_review_id")
+    .eq("id", reportId)
+    .maybeSingle();
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  if (!data) {
+    return { error: "Report not found" };
+  }
+
+  const targetType = data.target_type as ReviewType;
+  const reviewId = targetType === "recipe_review"
+    ? data.recipe_review_id
+    : data.cuisine_review_id;
+
+  if (!reviewId) {
+    return { error: "Report has no linked review" };
+  }
+
+  return { target: { targetType, reviewId } };
+}
+
+async function maybeApproveReviewAfterDismiss(targetType: ReviewType, reviewId: string) {
+  const column = reportReviewColumn(targetType);
+  const { data: pendingReports, error: pendingError } = await supabaseAdmin
+    .from("review_reports")
+    .select("id")
+    .eq("target_type", targetType)
+    .eq(column, reviewId)
+    .eq("status", "pending")
+    .limit(1);
+
+  if (pendingError) {
+    return pendingError.message;
+  }
+
+  if ((pendingReports || []).length > 0) {
+    return null;
+  }
+
+  const review = await getReview(targetType, reviewId);
+  if (!review || review.is_hidden || review.moderation_status !== "reported") {
+    return null;
+  }
+
+  const { error } = await supabaseAdmin
+    .from(reviewTable(targetType))
+    .update({ moderation_status: "approved" })
+    .eq("id", reviewId);
+
+  return error?.message ?? null;
 }
 
 export async function GET(request: Request) {
@@ -156,7 +227,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { action, reportId, targetType, reviewId, authorId, notes } = body as {
+    const { action, reportId, authorId, notes } = body as {
       action?: "hide" | "restore" | "dismiss" | "block_author";
       reportId?: string;
       targetType?: ReviewType;
@@ -164,9 +235,27 @@ export async function PATCH(request: Request) {
       authorId?: string;
       notes?: string;
     };
+    let { targetType, reviewId } = body as {
+      targetType?: ReviewType;
+      reviewId?: string;
+    };
 
     if (!action) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 });
+    }
+
+    if (reportId && (!targetType || !reviewId)) {
+      const { target, error } = await getReportTarget(reportId);
+      if (error) {
+        return NextResponse.json({ error }, { status: 400 });
+      }
+
+      targetType = target?.targetType;
+      reviewId = target?.reviewId;
+    }
+
+    if (action === "dismiss" && !reportId) {
+      return NextResponse.json({ error: "Missing reportId" }, { status: 400 });
     }
 
     if (action === "block_author") {
@@ -185,12 +274,12 @@ export async function PATCH(request: Request) {
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
       }
-    } else {
+    } else if (action !== "dismiss") {
       if (!targetType || !reviewId) {
         return NextResponse.json({ error: "Missing targetType or reviewId" }, { status: 400 });
       }
 
-      const table = targetType === "recipe_review" ? "recipe_reviews" : "cuisine_reviews";
+      const table = reviewTable(targetType);
       const update = action === "hide"
         ? { is_hidden: true, moderation_status: "rejected" }
         : action === "restore"
@@ -222,6 +311,13 @@ export async function PATCH(request: Request) {
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+    }
+
+    if (action === "dismiss" && targetType && reviewId) {
+      const error = await maybeApproveReviewAfterDismiss(targetType, reviewId);
+      if (error) {
+        return NextResponse.json({ error }, { status: 400 });
       }
     }
 

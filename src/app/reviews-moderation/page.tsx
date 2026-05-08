@@ -59,6 +59,19 @@ function typeLabel(type: TargetType) {
   return type === "recipe_review" ? "Рецепт" : "Каталог";
 }
 
+function actionSuccessMessage(action: "hide" | "restore" | "dismiss" | "block_author") {
+  switch (action) {
+    case "hide":
+      return "Отзыв скрыт";
+    case "restore":
+      return "Отзыв возвращён";
+    case "dismiss":
+      return "Жалоба отклонена";
+    case "block_author":
+      return "Автор заблокирован";
+  }
+}
+
 export default function ReviewsModerationPage() {
   const [tab, setTab] = useState<Tab>("reports");
   const [reports, setReports] = useState<ReviewReport[]>([]);
@@ -73,7 +86,7 @@ export default function ReviewsModerationPage() {
 
     try {
       const url = tab === "reports"
-        ? "/api/admin/review-reports?mode=reports&status=all&limit=200"
+        ? "/api/admin/review-reports?mode=reports&status=pending&limit=200"
         : "/api/admin/review-reports?mode=reviews&limit=200";
 
       const res = await fetch(url);
@@ -131,6 +144,7 @@ export default function ReviewsModerationPage() {
       }
 
       await loadData();
+      setStatus(actionSuccessMessage(params.action));
     } catch {
       setStatus("Ошибка: не удалось выполнить действие");
     } finally {
@@ -143,7 +157,7 @@ export default function ReviewsModerationPage() {
       <div className="section-header">
         <h1 className="section-title">Модерация отзывов</h1>
         <p className="section-subtitle">
-          Здесь видны жалобы пользователей и все текстовые отзывы. Можно скрыть плохой отзыв или заблокировать автора.
+          Здесь видны новые жалобы пользователей и все текстовые отзывы. Можно скрыть плохой отзыв или заблокировать автора.
         </p>
       </div>
 
@@ -182,7 +196,7 @@ export default function ReviewsModerationPage() {
       ) : tab === "reports" ? (
         <div className="section">
           <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>
-            Жалобы ({reports.length})
+            Новые жалобы ({reports.length})
           </h2>
           {reports.length === 0 ? (
             <p style={{ color: "var(--text-secondary)" }}>Жалоб пока нет.</p>
@@ -252,6 +266,16 @@ function ReviewCard({
       <div className="card" style={{ padding: 18 }}>
         <strong>Отзыв не найден</strong>
         {report && <p style={{ marginTop: 8 }}>Жалоба: {report.id}</p>}
+        {onDismiss && (
+          <button
+            className="btn btn-secondary"
+            disabled={busy}
+            onClick={onDismiss}
+            style={{ marginTop: 16 }}
+          >
+            Отклонить жалобу
+          </button>
+        )}
       </div>
     );
   }
