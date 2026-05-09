@@ -47,7 +47,7 @@ function getProvider(): apn.Provider {
 export interface PushResult {
   sent: number;
   failed: number;
-  invalidTokens: string[]; // Unregistered / 410 Gone — should be deleted from DB
+  invalidTokens: string[]; // Stale or environment-mismatched tokens to delete from DB
   failures: Array<{
     tokenSuffix: string;
     reason: string;
