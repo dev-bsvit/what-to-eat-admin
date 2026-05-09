@@ -101,7 +101,7 @@ async function handle(request: Request) {
         : `Добавлено ${unnotified.length} новых каталога — посмотри что нового`;
 
     // 6. Send pushes
-    const { sent, invalidTokens } = await sendPush(eligible, title, body, { type: "catalog" });
+    const { sent, failed, invalidTokens } = await sendPush(eligible, title, body, { type: "catalog" });
 
     // 7. Remove stale tokens
     if (invalidTokens.length > 0) {
@@ -121,7 +121,7 @@ async function handle(request: Request) {
     });
 
     console.log(`✅ Catalog notification sent to ${sent}/${eligible.length} devices`);
-    return NextResponse.json({ ok: true, sent, cuisines: unnotified.length });
+    return NextResponse.json({ ok: true, sent, failed, total: eligible.length, cuisines: unnotified.length });
 
   } catch (err) {
     console.error("send-catalog-notification error:", err);
