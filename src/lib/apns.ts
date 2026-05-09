@@ -17,19 +17,28 @@ import apn from "@parse/node-apn";
 // Singleton provider — reused across requests in the same Node process
 let _provider: apn.Provider | null = null;
 
+function requiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Missing ${name}`);
+  }
+  return value;
+}
+
 function getProvider(): apn.Provider {
   if (_provider) return _provider;
 
   // Replace literal \n sequences with real newlines (Render stores multiline env vars this way)
-  const keyPem = (process.env.APNS_PRIVATE_KEY ?? "").replace(/\\n/g, "\n");
+  const keyPem = requiredEnv("APNS_PRIVATE_KEY").replace(/\\n/g, "\n");
+  const production = process.env.APNS_PRODUCTION !== "false";
 
   _provider = new apn.Provider({
     token: {
       key: keyPem,
-      keyId: process.env.APNS_KEY_ID!,
-      teamId: process.env.APNS_TEAM_ID!,
+      keyId: requiredEnv("APNS_KEY_ID"),
+      teamId: requiredEnv("APNS_TEAM_ID"),
     },
-    production: process.env.APNS_PRODUCTION === "true",
+    production,
   });
 
   return _provider;
@@ -62,9 +71,9 @@ export async function sendPush(
   const note = new apn.Notification();
   note.alert = { title, body };
   note.sound = "default";
-  note.contentAvailable = true;
-  note.topic = process.env.APNS_BUNDLE_ID!;
-  note.priority = 5;   // battery-friendly
+  note.topic = requiredEnv("APNS_BUNDLE_ID");
+  note.pushType = "alert";
+  note.priority = 10;
   note.expiry = 0;     // deliver once, don't retry
   note.payload = extraData;
 
@@ -78,10 +87,7 @@ export async function sendPush(
   }
 
   const invalidTokens = result.failed
-    .filter((f) => {
-      const reason = f.response?.reason;
-      return reason === "Unregistered" || reason === "BadDeviceToken";
-    })
+    .filter((f) => f.response?.reason === "Unregistered")
     .map((f) => f.device);
 
   return {
