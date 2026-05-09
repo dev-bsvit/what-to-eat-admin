@@ -24,7 +24,14 @@ export default function NotificationsPage() {
   const [ctaAction, setCtaAction] = useState<CtaAction>("none");
   const [ctaTitle, setCtaTitle] = useState("");
   const [sending, setSending] = useState(false);
-  const [sendResult, setSendResult] = useState<{ ok: boolean; sent?: number; failed?: number; total?: number; error?: string } | null>(null);
+  const [sendResult, setSendResult] = useState<{
+    ok: boolean;
+    sent?: number;
+    failed?: number;
+    total?: number;
+    error?: string;
+    failures?: Array<{ tokenSuffix: string; reason: string; status?: number; error?: string }>;
+  } | null>(null);
 
   // History
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -397,7 +404,7 @@ export default function NotificationsPage() {
               fontSize: "14px",
             }}>
               {sendResult.ok
-                ? `✅ Отправлено: ${sendResult.sent ?? 0} из ${sendResult.total ?? sendResult.sent ?? 0} устройств${sendResult.failed ? `, ошибок: ${sendResult.failed}` : ""}`
+                ? `✅ Отправлено: ${sendResult.sent ?? 0} из ${sendResult.total ?? sendResult.sent ?? 0} устройств${sendResult.failed ? `, ошибок: ${sendResult.failed}: ${sendResult.failures?.[0]?.reason ?? "Unknown"}` : ""}`
                 : `❌ Ошибка: ${sendResult.error}`}
             </div>
           )}
