@@ -14,8 +14,8 @@
 
 import apn from "@parse/node-apn";
 
-// Singleton provider — reused across requests in the same Node process
-let _provider: apn.Provider | null = null;
+// Singleton providers — reused across requests in the same Node process
+const providers = new Map<boolean, apn.Provider>();
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -25,14 +25,18 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function getProvider(): apn.Provider {
-  if (_provider) return _provider;
+function configuredProduction(): boolean {
+  return process.env.APNS_PRODUCTION?.trim().toLowerCase() !== "false";
+}
+
+function getProvider(production: boolean): apn.Provider {
+  const cached = providers.get(production);
+  if (cached) return cached;
 
   // Replace literal \n sequences with real newlines (Render stores multiline env vars this way)
   const keyPem = requiredEnv("APNS_PRIVATE_KEY").replace(/\\n/g, "\n");
-  const production = process.env.APNS_PRODUCTION !== "false";
 
-  _provider = new apn.Provider({
+  const provider = new apn.Provider({
     token: {
       key: keyPem,
       keyId: requiredEnv("APNS_KEY_ID"),
@@ -41,7 +45,8 @@ function getProvider(): apn.Provider {
     production,
   });
 
-  return _provider;
+  providers.set(production, provider);
+  return provider;
 }
 
 export interface PushResult {
@@ -72,36 +77,50 @@ export async function sendPush(
 ): Promise<PushResult> {
   if (tokens.length === 0) return { sent: 0, failed: 0, invalidTokens: [], failures: [] };
 
-  const provider = getProvider();
+  const primaryProduction = configuredProduction();
 
-  const note = new apn.Notification();
-  note.alert = { title, body };
-  note.sound = "default";
-  note.topic = requiredEnv("APNS_BUNDLE_ID");
-  note.pushType = "alert";
-  note.priority = 10;
-  note.expiry = 0;     // deliver once, don't retry
-  note.payload = extraData;
+  const makeNotification = () => {
+    const note = new apn.Notification();
+    note.alert = { title, body };
+    note.sound = "default";
+    note.topic = requiredEnv("APNS_BUNDLE_ID");
+    note.pushType = "alert";
+    note.priority = 10;
+    note.expiry = 0;     // deliver once, don't retry
+    note.payload = extraData;
+    return note;
+  };
 
-  const result = await provider.send(note, tokens);
+  const result = await getProvider(primaryProduction).send(makeNotification(), tokens);
+  const environmentMismatchTokens = result.failed
+    .filter((f) => f.response?.reason === "BadEnvironmentKeyInToken")
+    .map((f) => f.device);
 
-  console.log(`[APNs] sent=${result.sent.length} failed=${result.failed.length}`);
-  if (result.failed.length > 0) {
-    result.failed.forEach((f) => {
+  const retryResult = environmentMismatchTokens.length > 0
+    ? await getProvider(!primaryProduction).send(makeNotification(), environmentMismatchTokens)
+    : { sent: [], failed: [] };
+
+  const allFailed = [
+    ...result.failed.filter((f) => f.response?.reason !== "BadEnvironmentKeyInToken"),
+    ...retryResult.failed,
+  ];
+  const sentCount = result.sent.length + retryResult.sent.length;
+
+  console.log(`[APNs] sent=${sentCount} failed=${allFailed.length}`);
+  if (environmentMismatchTokens.length > 0) {
+    console.log(`[APNs] retried ${environmentMismatchTokens.length} environment-mismatched tokens with production=${!primaryProduction}`);
+  }
+  if (allFailed.length > 0) {
+    allFailed.forEach((f) => {
       console.log(`[APNs] failed token=${f.device} reason=${f.response?.reason} error=${f.error}`);
     });
   }
 
-  const invalidTokenReasons = new Set([
-    "Unregistered",
-    "BadEnvironmentKeyInToken",
-  ]);
-
-  const invalidTokens = result.failed
-    .filter((f) => invalidTokenReasons.has(f.response?.reason ?? ""))
+  const invalidTokens = allFailed
+    .filter((f) => f.response?.reason === "Unregistered")
     .map((f) => f.device);
 
-  const failures = result.failed.map((f) => ({
+  const failures = allFailed.map((f) => ({
     tokenSuffix: f.device.slice(-8),
     reason: f.response?.reason ?? "Unknown",
     status: f.status,
@@ -109,8 +128,8 @@ export async function sendPush(
   }));
 
   return {
-    sent: result.sent.length,
-    failed: result.failed.length,
+    sent: sentCount,
+    failed: allFailed.length,
     invalidTokens,
     failures,
   };
