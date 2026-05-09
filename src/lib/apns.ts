@@ -92,8 +92,13 @@ export async function sendPush(
     });
   }
 
+  const invalidTokenReasons = new Set([
+    "Unregistered",
+    "BadEnvironmentKeyInToken",
+  ]);
+
   const invalidTokens = result.failed
-    .filter((f) => f.response?.reason === "Unregistered")
+    .filter((f) => invalidTokenReasons.has(f.response?.reason ?? ""))
     .map((f) => f.device);
 
   const failures = result.failed.map((f) => ({
