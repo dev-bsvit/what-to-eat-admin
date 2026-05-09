@@ -48,6 +48,12 @@ export interface PushResult {
   sent: number;
   failed: number;
   invalidTokens: string[]; // Unregistered / 410 Gone — should be deleted from DB
+  failures: Array<{
+    tokenSuffix: string;
+    reason: string;
+    status?: number;
+    error?: string;
+  }>;
 }
 
 /**
@@ -64,7 +70,7 @@ export async function sendPush(
   body: string,
   extraData: Record<string, unknown> = {}
 ): Promise<PushResult> {
-  if (tokens.length === 0) return { sent: 0, failed: 0, invalidTokens: [] };
+  if (tokens.length === 0) return { sent: 0, failed: 0, invalidTokens: [], failures: [] };
 
   const provider = getProvider();
 
@@ -90,9 +96,17 @@ export async function sendPush(
     .filter((f) => f.response?.reason === "Unregistered")
     .map((f) => f.device);
 
+  const failures = result.failed.map((f) => ({
+    tokenSuffix: f.device.slice(-8),
+    reason: f.response?.reason ?? "Unknown",
+    status: f.status,
+    error: f.error ? String(f.error) : undefined,
+  }));
+
   return {
     sent: result.sent.length,
     failed: result.failed.length,
     invalidTokens,
+    failures,
   };
 }
