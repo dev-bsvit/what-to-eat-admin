@@ -52,7 +52,7 @@ function getProvider(production: boolean): apn.Provider {
 export interface PushResult {
   sent: number;
   failed: number;
-  invalidTokens: string[]; // Stale or environment-mismatched tokens to delete from DB
+  invalidTokens: string[]; // Stale tokens to delete from DB
   failures: Array<{
     tokenSuffix: string;
     reason: string;
