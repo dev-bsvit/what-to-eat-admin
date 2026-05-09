@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       extraData.cta_title = ctaTitle;
     }
 
-    const { sent, invalidTokens } = await sendPush(eligible, title.trim(), body.trim(), extraData);
+    const { sent, failed, invalidTokens } = await sendPush(eligible, title.trim(), body.trim(), extraData);
 
     // 5. Remove stale tokens
     if (invalidTokens.length > 0) {
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
       sent_count: sent,
     });
 
-    return NextResponse.json({ ok: true, sent, total: eligible.length });
+    return NextResponse.json({ ok: true, sent, failed, total: eligible.length });
 
   } catch (err) {
     console.error("admin/notifications/send error:", err);
