@@ -29,6 +29,7 @@ export default function NotificationsPage() {
     sent?: number;
     failed?: number;
     total?: number;
+    reason?: string;
     error?: string;
     failures?: Array<{ tokenSuffix: string; reason: string; status?: number; error?: string }>;
   } | null>(null);
@@ -404,7 +405,7 @@ export default function NotificationsPage() {
               fontSize: "14px",
             }}>
               {sendResult.ok
-                ? `✅ Отправлено: ${sendResult.sent ?? 0} из ${sendResult.total ?? sendResult.sent ?? 0} устройств${sendResult.failed ? `, ошибок: ${sendResult.failed}: ${sendResult.failures?.[0]?.reason ?? "Unknown"}` : ""}`
+                ? `✅ Отправлено: ${sendResult.sent ?? 0} из ${sendResult.total ?? sendResult.sent ?? 0} устройств${sendResult.failed ? `, ошибок: ${sendResult.failed}: ${sendResult.failures?.[0]?.reason ?? "Unknown"}` : ""}${sendResult.reason ? `: ${sendResult.reason}` : ""}`
                 : `❌ Ошибка: ${sendResult.error}`}
             </div>
           )}
