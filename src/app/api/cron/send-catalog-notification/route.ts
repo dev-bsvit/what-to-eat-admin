@@ -13,6 +13,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendPush } from "@/lib/apns";
 
+const iosPlatform = `ios:${process.env.APNS_BUNDLE_ID ?? "com.bsvit.dishday"}`;
+
 function verifyCronAuth(request: Request): boolean {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -60,7 +62,7 @@ async function handle(request: Request) {
     const { data: tokenRows, error: tokenErr } = await supabaseAdmin
       .from("push_tokens")
       .select("token, user_id")
-      .eq("platform", "ios");
+      .eq("platform", iosPlatform);
 
     if (tokenErr) throw tokenErr;
     if (!tokenRows?.length) {
