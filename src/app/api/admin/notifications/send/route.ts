@@ -21,6 +21,7 @@ import { sendPush } from "@/lib/apns";
 
 type BroadcastType = "promo" | "system";
 type CtaAction = "subscription" | "catalog";
+const iosPlatform = `ios:${process.env.APNS_BUNDLE_ID ?? "com.bsvit.dishday"}`;
 
 interface SendBody {
   title: string;
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
     const { data: tokenRows, error: tokenErr } = await supabaseAdmin
       .from("push_tokens")
       .select("token, user_id")
-      .eq("platform", "ios");
+      .eq("platform", iosPlatform);
 
     if (tokenErr) throw tokenErr;
     if (!tokenRows?.length) {
