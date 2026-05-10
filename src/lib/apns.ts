@@ -92,8 +92,13 @@ export async function sendPush(
   };
 
   const result = await getProvider(primaryProduction).send(makeNotification(), tokens);
+  const retryableEnvironmentReasons = new Set([
+    "BadDeviceToken",
+    "BadEnvironmentKeyInToken",
+  ]);
+
   const environmentMismatchTokens = result.failed
-    .filter((f) => f.response?.reason === "BadEnvironmentKeyInToken")
+    .filter((f) => retryableEnvironmentReasons.has(f.response?.reason ?? ""))
     .map((f) => f.device);
 
   const retryResult = environmentMismatchTokens.length > 0
@@ -101,7 +106,7 @@ export async function sendPush(
     : { sent: [], failed: [] };
 
   const allFailed = [
-    ...result.failed.filter((f) => f.response?.reason !== "BadEnvironmentKeyInToken"),
+    ...result.failed.filter((f) => !retryableEnvironmentReasons.has(f.response?.reason ?? "")),
     ...retryResult.failed,
   ];
   const sentCount = result.sent.length + retryResult.sent.length;
@@ -117,7 +122,7 @@ export async function sendPush(
   }
 
   const invalidTokens = allFailed
-    .filter((f) => f.response?.reason === "Unregistered")
+    .filter((f) => f.response?.reason === "Unregistered" || f.response?.reason === "BadDeviceToken")
     .map((f) => f.device);
 
   const failures = allFailed.map((f) => ({
