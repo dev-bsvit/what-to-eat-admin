@@ -122,7 +122,7 @@ export async function sendPush(
   }
 
   const invalidTokens = allFailed
-    .filter((f) => f.response?.reason === "Unregistered" || f.response?.reason === "BadDeviceToken")
+    .filter((f) => f.response?.reason === "Unregistered")
     .map((f) => f.device);
 
   const failures = allFailed.map((f) => ({
