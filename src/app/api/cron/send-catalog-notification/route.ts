@@ -25,8 +25,8 @@ function verifyCronAuth(request: Request): boolean {
   return authHeader === `Bearer ${cronSecret}`;
 }
 
-async function handle(request: Request) {
-  if (!verifyCronAuth(request)) {
+async function handle(request: Request, options: { requireCronAuth: boolean }) {
+  if (options.requireCronAuth && !verifyCronAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -137,5 +137,10 @@ async function handle(request: Request) {
   }
 }
 
-export const GET = handle;
-export const POST = handle;
+export function GET(request: Request) {
+  return handle(request, { requireCronAuth: true });
+}
+
+export function POST(request: Request) {
+  return handle(request, { requireCronAuth: false });
+}
