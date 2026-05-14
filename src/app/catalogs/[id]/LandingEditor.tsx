@@ -1,17 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 import {
-  Bot,
   CheckCircle2,
   Clipboard,
-  Code2,
   FileJson2,
-  Globe2,
   Languages,
   Save,
   Trash2,
-  Upload,
-  Wand2,
 } from "lucide-react";
 import {
   isLandingTableMissingError,
@@ -308,14 +303,10 @@ export default function LandingEditor({
   const [jsonError, setJsonError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [showAiPrompt, setShowAiPrompt] = useState(false);
-  const [aiUserPrompt, setAiUserPrompt] = useState("");
   const [activeLang, setActiveLang] = useState("ru");
   const [translations, setTranslations] = useState<Record<string, unknown>>({});
-  const [isTranslating, setIsTranslating] = useState(false);
-  const [showTranslationPaste, setShowTranslationPaste] = useState(false);
   const [translationPasteText, setTranslationPasteText] = useState("");
+  const [basePasteText, setBasePasteText] = useState("");
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
 
@@ -467,81 +458,6 @@ export default function LandingEditor({
     setSaveStatus("Черновик создан");
   }
 
-  async function generateWithAi() {
-    setIsAiLoading(true);
-    setSaveStatus("AI генерирует лендинг + переводит на 8 языков...");
-    try {
-      const res = await fetch("/api/admin/ai/landing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cuisineName,
-          cuisineDescription,
-          price: cuisinePrice || "$2",
-          language: "ru",
-          userPrompt: aiUserPrompt,
-          existingJson: data ? JSON.stringify(data) : "",
-        }),
-      });
-      const result = await res.json();
-      if (!res.ok) {
-        setSaveStatus(`AI ошибка: ${result.error}`);
-        return;
-      }
-      const { landingData } = extractTranslationsFromJson(result.data ?? {});
-      const generated = { ...landingData, cuisine_id: cuisineId } as unknown as LandingData;
-      setData(generated);
-      setJsonText(JSON.stringify(generated, null, 2));
-      if (result.translations && Object.keys(result.translations).length > 0) {
-        setTranslations(result.translations);
-      }
-      setShowAiPrompt(false);
-      setAiUserPrompt("");
-      const langCount = result.translations ? Object.keys(result.translations).length : 1;
-      setSaveStatus(`AI заполнил лендинг на ${langCount} языках ✨ — проверь и сохрани`);
-    } catch {
-      setSaveStatus("Ошибка соединения с AI");
-    } finally {
-      setIsAiLoading(false);
-    }
-  }
-
-  async function translateAll() {
-    setIsTranslating(true);
-    setSaveStatus("Перевожу на 7 языков через DeepL...");
-    try {
-      // First save current state so DB has latest content
-      const saveResult = await saveLanding();
-      if (saveResult !== "saved") {
-        if (saveResult === "local") {
-          setSaveStatus("Перевод через DeepL недоступен: лендинг сохранён только локально (таблица catalog_landings не найдена).");
-        }
-        return;
-      }
-      const res = await fetch(`/api/admin/landings/${cuisineId}/translate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_language: activeLang }),
-      });
-      const result = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setSaveStatus(`Ошибка перевода: ${result.error}`);
-        return;
-      }
-      if (isTableMissingResponse(result)) {
-        setSaveStatus("Перевод через DeepL недоступен: таблица catalog_landings не найдена в текущей БД.");
-        return;
-      }
-      // Reload to get updated translations
-      await loadLanding();
-      setSaveStatus(`Переведено на ${result.languages_translated?.length ?? 7} языков ✅`);
-    } catch {
-      setSaveStatus("Ошибка соединения при переводе");
-    } finally {
-      setIsTranslating(false);
-    }
-  }
-
   function buildCopyPrompt(): string {
     const priceHint = cuisinePrice || "$2";
     return `Оформи контент кулинарного каталога в JSON для мобильного приложения.
@@ -550,32 +466,39 @@ export default function LandingEditor({
 ЦЕНА: ${priceHint}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 МОЙ КОНТЕНТ (заполни перед отправкой — впиши свои пункты вместо примеров):
+📝 МОЙ КОНТЕНТ — впиши все свои пункты (добавь столько, сколько нужно):
 
 Что внутри:
-1. ...
-2. ...
+1. (впиши пункт)
+2. (впиши пункт)
+... (добавь все свои пункты)
 
 Кому подойдёт:
-1. ...
-2. ...
+1. (впиши пункт)
+2. (впиши пункт)
+... (добавь все свои пункты)
 
 До → После:
-1. До: ... | После: ...
-2. До: ... | После: ...
+1. До: (впиши) | После: (впиши)
+2. До: (впиши) | После: (впиши)
+... (добавь все свои пары)
 
 Преимущества:
-1. ...
-2. ...
+1. (впиши пункт)
+2. (впиши пункт)
+... (добавь все свои пункты)
 
 FAQ:
-1. В: ... О: ...
-2. В: ... О: ...
+1. В: (вопрос) О: (ответ)
+2. В: (вопрос) О: (ответ)
+... (добавь все свои вопросы)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+‼️ КРИТИЧНО: сначала ПОСЧИТАЙ пункты в каждом разделе выше.
+Запиши точные числа в "_counts". В JSON должно быть РОВНО столько элементов — НЕ МЕНЬШЕ И НЕ БОЛЬШЕ.
+Если написано 6 пунктов — сгенерируй 6. Если 8 — сгенерируй 8. НЕ СОКРАЩАЙ.
+
 ЗАДАЧА — сгенерируй валидный JSON на русском языке со всеми секциями.
-Перед генерацией мысленно подсчитай пункты из МОЙ КОНТЕНТ и включи в JSON поле "_counts".
-Каждый массив содержит РОВНО столько элементов, сколько в "_counts". Не пропускай ни одного пункта.
 
 ПРАВИЛА:
 - Верни ТОЛЬКО валидный JSON без markdown-обёртки и без любого текста до/после
@@ -586,18 +509,18 @@ FAQ:
 - ${CATALOG_RECOMMENDATION_PROMPT}
 - Тексты живые, дружелюбные, без канцелярита
 
-СТРУКТУРА JSON:
+СТРУКТУРА JSON (items/pairs/cards/faq — по ТОЧНОМУ числу из "_counts"):
 {
-  "_counts": { "inside": N, "audience": N, "pairs": N, "benefits": N, "faq": N },
+  "_counts": { "inside": ТОЧНОЕ_ЧИСЛО, "audience": ТОЧНОЕ_ЧИСЛО, "pairs": ТОЧНОЕ_ЧИСЛО, "benefits": ТОЧНОЕ_ЧИСЛО, "faq": ТОЧНОЕ_ЧИСЛО },
   "_cuisine": { "recommendation": { "levels": ["beginner"], "times": ["from20to40"], "dietary": [], "tags": ["quick","simple"] } },
   "preview_card": { "title": "до 40 символов", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX" },
   "hero": { "title": "заголовок (\\n для переноса)", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX" },
-  "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [{"id":"uuid","emoji":"emoji","title":null,"text":"пункт из МОЙ КОНТЕНТ"}] },
+  "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [ /* РОВНО _counts.inside элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"каждый пункт из МОЙ КОНТЕНТ"} ] },
   "recipe_showcase": { "title": "...", "subtitle": "..." },
-  "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [{"id":"uuid","emoji":"emoji","title":null,"text":"пункт из МОЙ КОНТЕНТ"}] },
-  "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [{"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"}] },
-  "benefits_section": { "title": "Преимущества", "subtitle": "...", "cards": [{"id":"uuid","eyebrow":"метка","title":"заголовок","text":"из МОЙ КОНТЕНТ"}] },
-  "faq_items": [{"id":"uuid","question":"из МОЙ КОНТЕНТ","answer":"из МОЙ КОНТЕНТ"}],
+  "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [ /* РОВНО _counts.audience элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"каждый пункт из МОЙ КОНТЕНТ"} ] },
+  "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [ /* РОВНО _counts.pairs элементов */ {"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"} ] },
+  "benefits_section": { "title": "Преимущества", "subtitle": "...", "cards": [ /* РОВНО _counts.benefits элементов */ {"id":"uuid","eyebrow":"метка","title":"заголовок","text":"из МОЙ КОНТЕНТ"} ] },
+  "faq_items": [ /* РОВНО _counts.faq элементов */ {"id":"uuid","question":"из МОЙ КОНТЕНТ","answer":"из МОЙ КОНТЕНТ"} ],
   "purchase_cta": { "title": "Открыть каталог", "subtitle": "...", "priceBadge": "${priceHint}", "features": [{"id":"uuid","icon":"book.closed","title":"N рецептов","subtitle":"внутри каталога"},{"id":"uuid","icon":"list.bullet.rectangle","title":"Пошаговые инструкции","subtitle":"без лишней теории"},{"id":"uuid","icon":"arrow.clockwise","title":"Обновления","subtitle":"бесплатно навсегда"}], "buttonTitle": "Открыть каталог" },
   "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
   "recipe_preview_ids": [],
@@ -669,18 +592,49 @@ ${base}
       .catch(() => setSaveStatus("Не удалось скопировать промпт переводов"));
   }
 
-  function formatJsonText() {
+  async function applyBasePaste() {
+    const raw = basePasteText.trim();
+    if (!raw) return;
+    let parsed: Record<string, unknown>;
     try {
-      const parsed = JSON.parse(jsonText);
-      setJsonText(JSON.stringify(parsed, null, 2));
-      setJsonError("");
-      setSaveStatus("JSON отформатирован");
+      let cleaned = raw;
+      if (cleaned.startsWith("```")) cleaned = cleaned.replace(/^```[a-z]*\n?/, "").replace(/```$/, "").trim();
+      parsed = JSON.parse(cleaned);
     } catch {
-      setJsonError("Невалидный JSON — форматирование невозможно");
+      setSaveStatus("❌ Невалидный JSON — проверь ответ AI");
+      return;
+    }
+    const { landingData, extractedTranslations } = extractTranslationsFromJson(parsed);
+    const applied = { ...landingData, cuisine_id: cuisineId } as LandingData;
+    const effectiveTranslations = Object.keys(extractedTranslations).length > 0
+      ? { ...translations, ...extractedTranslations }
+      : translations;
+    setData(applied);
+    setJsonText(JSON.stringify(applied, null, 2));
+    setTranslations(effectiveTranslations);
+    setBasePasteText("");
+    setSaveStatus("Сохраняю...");
+    try {
+      const savePayload = Object.keys(effectiveTranslations).length > 0
+        ? { ...applied, translations: effectiveTranslations }
+        : applied;
+      const res = await fetch(`/api/admin/landings/${cuisineId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(savePayload),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSaveStatus(`Применено и сохранено ✅ (${new Date().toLocaleTimeString()})`);
+      } else {
+        setSaveStatus(`Применено, ошибка сохранения: ${result.error}`);
+      }
+    } catch {
+      setSaveStatus("Применено ✅ — ошибка соединения, сохрани вручную");
     }
   }
 
-  function applyTranslationPaste() {
+  async function applyTranslationPaste() {
     const raw = translationPasteText.trim();
     if (!raw) return;
     let parsed: Record<string, unknown>;
@@ -702,11 +656,28 @@ ${base}
       setSaveStatus("❌ Не похоже на объект переводов — ожидается {\"en\":{...},\"de\":{...},...}");
       return;
     }
-    setTranslations(prev => ({ ...prev, ...tx }));
+    const merged = { ...translations, ...tx };
+    setTranslations(merged);
     setTranslationPasteText("");
-    setShowTranslationPaste(false);
     const count = Object.keys(tx).length;
-    setSaveStatus(`Переводы на ${count} языков добавлены ✅ — нажми Сохранить`);
+    setSaveStatus("Сохраняю переводы...");
+    try {
+      if (data) {
+        const res = await fetch(`/api/admin/landings/${cuisineId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...data, translations: merged }),
+        });
+        const result = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setSaveStatus(`Переводы на ${count} языков сохранены ✅ (${new Date().toLocaleTimeString()})`);
+        } else {
+          setSaveStatus(`Переводы применены, ошибка сохранения: ${result.error}`);
+        }
+      }
+    } catch {
+      setSaveStatus(`Переводы на ${count} языков применены — ошибка соединения, сохрани вручную`);
+    }
   }
 
   function switchToJson() {
@@ -941,240 +912,64 @@ ${base}
 
   return (
     <div>
-      <div className="landing-workflow-panel">
-        <div className="landing-workflow-header">
-          <div>
-            <div className="landing-eyebrow">JSON лендинг</div>
-            <h2>Промпт и готовый JSON</h2>
-          </div>
-          <div className="landing-status-pills">
-            <span className={data.is_published ? "status-pill success" : "status-pill muted"}>
-              <CheckCircle2 size={14} />
-              {data.is_published ? "Опубликован" : "Черновик"}
-            </span>
-            <span className={isJsonReady ? "status-pill success" : "status-pill warning"}>
-              <FileJson2 size={14} />
-              {sectionScore}/6 секций
-            </span>
-            <span className={translationCount >= 7 ? "status-pill success" : "status-pill muted"}>
-              <Languages size={14} />
-              {translationCount}/7 переводов
-            </span>
-          </div>
-        </div>
-
-        <div className="landing-step-grid">
-          <section className="landing-step-card">
-            <div className="landing-step-number">1</div>
-            <div className="landing-step-content">
-              <h3>Подготовить JSON</h3>
-              <p>Скопируйте промпт или заполните лендинг через AI внутри админки.</p>
-              <div className="landing-step-actions">
-                <button type="button" className="btn btn-primary" onClick={copyPrompt}>
-                  <Clipboard size={15} />
-                  Промпт RU
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowAiPrompt((v) => !v)}
-                  disabled={isAiLoading}
-                >
-                  <Bot size={15} />
-                  AI заполнить
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="landing-step-card">
-            <div className="landing-step-number">2</div>
-            <div className="landing-step-content">
-              <h3>Вставить и проверить</h3>
-              <p>Откройте JSON-режим, вставьте ответ AI и проверьте структуру.</p>
-              <div className="landing-step-actions">
-                <button type="button" className="btn btn-secondary" onClick={switchToJson}>
-                  <Code2 size={15} />
-                  Открыть JSON
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="landing-step-card">
-            <div className="landing-step-number">3</div>
-            <div className="landing-step-content">
-              <h3>Переводы</h3>
-              <p>Сгенерируйте переводы через DeepL или вставьте JSON переводов от AI.</p>
-              <div className="landing-step-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={translateAll}
-                  disabled={isTranslating}
-                >
-                  <Globe2 size={15} />
-                  {isTranslating ? "Перевожу..." : "DeepL"}
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={copyTranslationPrompt}>
-                  <Languages size={15} />
-                  Промпт переводов
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowTranslationPaste(v => !v)}>
-                  <Upload size={15} />
-                  Вставить переводы
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="landing-step-card landing-step-card-final">
-            <div className="landing-step-number">4</div>
-            <div className="landing-step-content">
-              <h3>Сохранить</h3>
-              <p>Выберите статус публикации и сохраните результат в приложение.</p>
-              <div className="landing-step-actions">
-                <button
-                  type="button"
-                  className={data.is_published ? "btn btn-success" : "btn btn-secondary"}
-                  onClick={() => upd({ is_published: !data.is_published })}
-                >
-                  <CheckCircle2 size={15} />
-                  {data.is_published ? "Опубликован" : "Черновик"}
-                </button>
-                <button type="button" className="btn btn-primary" onClick={saveLanding}>
-                  <Save size={15} />
-                  Сохранить
-                </button>
-                <button type="button" className="btn btn-danger" onClick={deleteLanding}>
-                  <Trash2 size={15} />
-                  Удалить
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
-
-      {/* ── Language tabs ── */}
-      <div style={{ marginBottom: "14px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 600, marginRight: "4px" }}>Язык:</span>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", flex: 1 }}>
-            {TRANSLATION_LANGUAGES.map(({ code, label }) => {
-              const hasTranslation = code !== "ru" && !!translations[code];
-              return (
-                <button
-                  key={code}
-                  onClick={() => setActiveLang(code)}
-                  style={{
-                    padding: "5px 12px", border: "1px solid", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600,
-                    background: activeLang === code ? "var(--accent-primary, #007aff)" : "var(--bg-surface)",
-                    color: activeLang === code ? "#fff" : hasTranslation ? "var(--accent-primary, #007aff)" : "var(--text-secondary)",
-                    borderColor: activeLang === code ? "var(--accent-primary, #007aff)" : hasTranslation ? "rgba(0,122,255,0.35)" : "var(--border-light)",
-                  }}
-                >
-                  {label}{hasTranslation ? " ✓" : ""}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        {activeLang !== "ru" && (
-          <div style={{ marginTop: "8px", padding: "8px 12px", background: "rgba(0,122,255,0.06)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
-            {translations[activeLang]
-              ? `Показан перевод на ${TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label}. Базовый контент редактируется на вкладке «Русский».`
-              : `Перевод на ${TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label} ещё не создан. Нажми «Перевести через DeepL».`}
-          </div>
-        )}
-      </div>
-
-      {/* ── Translation paste panel ── */}
-      {showTranslationPaste && (
-        <div style={{ background: "linear-gradient(135deg,rgba(0,122,255,0.07),rgba(52,199,89,0.07))", border: "1px solid rgba(0,122,255,0.25)", borderRadius: "14px", padding: "16px", marginBottom: "14px" }}>
-          <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "6px" }}>🌍 Вставь ответ AI с переводами</div>
-          <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "10px", marginTop: 0 }}>
-            Вставь JSON который вернул AI — объект вида {`{"en":{...},"de":{...},...}`} или с полем &quot;translations&quot;.
-          </p>
-          <textarea
-            className="input"
-            rows={6}
-            placeholder={`{"en":{"preview_card":{"title":"..."},...},"de":{...},...}`}
-            value={translationPasteText}
-            onChange={(e) => setTranslationPasteText(e.target.value)}
-            style={{ fontFamily: "monospace", fontSize: "12px", marginBottom: "10px", resize: "vertical" }}
-          />
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button className="btn btn-primary" onClick={applyTranslationPaste} disabled={!translationPasteText.trim()}>
-              Применить переводы
-            </button>
-            <button className="btn btn-secondary" onClick={() => { setShowTranslationPaste(false); setTranslationPasteText(""); }}>Отмена</button>
-          </div>
-        </div>
-      )}
-
-      {/* ── AI Prompt panel ── */}
-      {showAiPrompt && (
-        <div style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08))", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "14px", padding: "16px", marginBottom: "14px" }}>
-          <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--text-primary)", marginBottom: "8px" }}>✨ AI заполнит лендинг на всех 8 языках</div>
-          <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "10px", lineHeight: 1.5 }}>
-            AI создаст контент на русском, затем DeepL автоматически переведёт на English, Deutsch, Français, Italiano, Español, Português и Українська.
-          </p>
-          <textarea
-            className="input"
-            rows={3}
-            placeholder={`Например: акцент на быстрые блюда до 30 минут, аудитория — занятые люди 25–40 лет, цвета в тёмно-зелёном стиле`}
-            value={aiUserPrompt}
-            onChange={(e) => setAiUserPrompt(e.target.value)}
-            style={{ fontFamily: "inherit", fontSize: "13px", marginBottom: "10px", resize: "vertical" }}
-          />
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              className="btn btn-primary"
-              onClick={generateWithAi}
-              disabled={isAiLoading}
-              style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", border: "none", opacity: isAiLoading ? 0.6 : 1 }}
-            >
-              <Wand2 size={16} />
-              {isAiLoading ? "Генерирую..." : "Сгенерировать"}
-            </button>
-            <button className="btn btn-secondary" onClick={() => { setShowAiPrompt(false); setAiUserPrompt(""); }}>Отмена</button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Editor mode ── */}
-      <div className="editor-mode-bar">
-        <div className="editor-mode-tabs">
+      {/* ── Top bar: segment control + actions ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", gap: "12px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", background: "var(--bg-hover)", borderRadius: "10px", padding: "3px", gap: "2px" }}>
           {(["form", "json"] as const).map((m) => (
             <button
               key={m}
               onClick={() => m === "json" ? switchToJson() : switchToForm()}
-              className={mode === m ? "is-active" : ""}
+              style={{
+                padding: "6px 20px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "14px", fontWeight: 600, transition: "all 0.15s",
+                background: mode === m ? "var(--bg-base, #fff)" : "transparent",
+                color: mode === m ? "var(--text-primary)" : "var(--text-secondary)",
+                boxShadow: mode === m ? "0 1px 4px rgba(0,0,0,0.12)" : "none",
+              }}
             >
               {m === "form" ? "Форма" : "JSON"}
             </button>
           ))}
         </div>
-        <span className={data.is_published ? "status-pill success" : "status-pill muted"}>
-          <CheckCircle2 size={14} />
-          {data.is_published ? "Опубликован" : "Черновик"}
-        </span>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <span className={isJsonReady ? "status-pill success" : "status-pill warning"}>
+            <FileJson2 size={13} />
+            {sectionScore}/6 секций
+          </span>
+          <span className={translationCount >= 7 ? "status-pill success" : "status-pill muted"}>
+            <Languages size={13} />
+            {translationCount}/7 переводов
+          </span>
+          <button
+            type="button"
+            className={data.is_published ? "btn btn-success" : "btn btn-secondary"}
+            onClick={() => upd({ is_published: !data.is_published })}
+            style={{ fontSize: "13px" }}
+          >
+            <CheckCircle2 size={14} />
+            {data.is_published ? "Опубликован" : "Черновик"}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={saveLanding} style={{ fontSize: "13px" }}>
+            <Save size={14} />
+            Сохранить
+          </button>
+          <button type="button" className="btn btn-danger" onClick={deleteLanding} style={{ fontSize: "13px" }}>
+            <Trash2 size={14} />
+            Удалить
+          </button>
+        </div>
       </div>
 
       {/* ── Status bar ── */}
       {saveStatus && (
         <div style={{
           marginBottom: "12px", padding: "8px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 500,
-          background: saveStatus.includes("⚠️") ? "rgba(255,159,10,0.1)" : saveStatus.includes("Ошибка") ? "rgba(255,59,48,0.1)" : "rgba(52,199,89,0.1)",
-          color: saveStatus.includes("⚠️") ? "#ff9f0a" : saveStatus.includes("Ошибка") ? "var(--accent-danger)" : "var(--text-secondary)",
+          background: saveStatus.includes("⚠️") ? "rgba(255,159,10,0.1)" : saveStatus.includes("Ошибка") || saveStatus.includes("❌") ? "rgba(255,59,48,0.1)" : "rgba(52,199,89,0.1)",
+          color: saveStatus.includes("⚠️") ? "#ff9f0a" : saveStatus.includes("Ошибка") || saveStatus.includes("❌") ? "var(--accent-danger)" : "var(--text-secondary)",
           border: "1px solid",
-          borderColor: saveStatus.includes("⚠️") ? "rgba(255,159,10,0.25)" : saveStatus.includes("Ошибка") ? "rgba(255,59,48,0.25)" : "rgba(52,199,89,0.2)",
+          borderColor: saveStatus.includes("⚠️") ? "rgba(255,159,10,0.25)" : saveStatus.includes("Ошибка") || saveStatus.includes("❌") ? "rgba(255,59,48,0.25)" : "rgba(52,199,89,0.2)",
         }}>
           {saveStatus}
-          {mode === "json" && !saveStatus.includes("⚠️") && saveStatus.includes("Готово") && Object.keys(translations).length < 2 && (
-            <span style={{ marginLeft: "12px", color: "#ff9f0a" }}>— переводов нет, нажми 🌐 Перевести через DeepL</span>
-          )}
         </div>
       )}
 
@@ -1184,30 +979,113 @@ ${base}
         </div>
       )}
 
-      {/* ── JSON mode ── */}
+      {/* ── JSON mode: 2 cards ── */}
       {mode === "json" && (
-        <>
-          <div className="json-mode-header">
-            <div>
-              <strong>JSON редактор</strong>
-              <span>Поддерживает поле <code>translations</code> и блок <code>_cuisine.recommendation</code>.</span>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          {/* Card 1: Base JSON */}
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-light)", borderRadius: "14px", padding: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--text-primary)" }}>Базовое заполнение</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Скопируй промпт</span>
+              <button
+                className="btn btn-primary"
+                onClick={copyPrompt}
+                style={{ borderRadius: "20px", fontSize: "13px", padding: "6px 16px" }}
+              >
+                <Clipboard size={14} />
+                Скопировать
+              </button>
             </div>
-            <button type="button" className="btn btn-secondary" onClick={formatJsonText}>
-              <FileJson2 size={15} />
-              Форматировать
+            <textarea
+              className="input"
+              rows={14}
+              placeholder="Вставь результат"
+              value={basePasteText}
+              onChange={(e) => setBasePasteText(e.target.value)}
+              style={{ fontFamily: "monospace", fontSize: "12px", resize: "vertical", flex: 1 }}
+              spellCheck={false}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={applyBasePaste}
+              disabled={!basePasteText.trim()}
+              style={{ borderRadius: "20px", fontSize: "14px", fontWeight: 700 }}
+            >
+              Применить
             </button>
           </div>
-          <textarea
-            value={jsonText}
-            onChange={(e) => setJsonText(e.target.value)}
-            style={{ width: "100%", minHeight: "600px", fontFamily: "monospace", fontSize: "12px", padding: "16px", background: "var(--bg-surface)", border: "1px solid var(--border-light)", borderRadius: "var(--radius-md)", color: "var(--text-primary)", resize: "vertical", lineHeight: 1.5 }}
-            spellCheck={false}
-          />
-        </>
+
+          {/* Card 2: Translations */}
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-light)", borderRadius: "14px", padding: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--text-primary)" }}>Переводы</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Скопируй промпт</span>
+              <button
+                className="btn btn-primary"
+                onClick={copyTranslationPrompt}
+                disabled={!data}
+                style={{ borderRadius: "20px", fontSize: "13px", padding: "6px 16px" }}
+              >
+                <Languages size={14} />
+                Скопировать
+              </button>
+            </div>
+            <textarea
+              className="input"
+              rows={14}
+              placeholder="Вставь результат"
+              value={translationPasteText}
+              onChange={(e) => setTranslationPasteText(e.target.value)}
+              style={{ fontFamily: "monospace", fontSize: "12px", resize: "vertical", flex: 1 }}
+              spellCheck={false}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={applyTranslationPaste}
+              disabled={!translationPasteText.trim()}
+              style={{ borderRadius: "20px", fontSize: "14px", fontWeight: 700 }}
+            >
+              Применить
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── Form mode ── */}
       {mode === "form" && (
+        <>
+          {/* Language tabs */}
+          <div style={{ marginBottom: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 600, marginRight: "4px" }}>Язык:</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", flex: 1 }}>
+                {TRANSLATION_LANGUAGES.map(({ code, label }) => {
+                  const hasTranslation = code !== "ru" && !!translations[code];
+                  return (
+                    <button
+                      key={code}
+                      onClick={() => setActiveLang(code)}
+                      style={{
+                        padding: "5px 12px", border: "1px solid", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600,
+                        background: activeLang === code ? "var(--accent-primary, #007aff)" : "var(--bg-surface)",
+                        color: activeLang === code ? "#fff" : hasTranslation ? "var(--accent-primary, #007aff)" : "var(--text-secondary)",
+                        borderColor: activeLang === code ? "var(--accent-primary, #007aff)" : hasTranslation ? "rgba(0,122,255,0.35)" : "var(--border-light)",
+                      }}
+                    >
+                      {label}{hasTranslation ? " ✓" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {activeLang !== "ru" && (
+              <div style={{ marginTop: "8px", padding: "8px 12px", background: "rgba(0,122,255,0.06)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                {translations[activeLang]
+                  ? `Показан перевод на ${TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label}. Базовый контент редактируется на вкладке «Русский».`
+                  : `Перевод на ${TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label} ещё не создан. Нажми «Перевести через DeepL» — или переключись в JSON и вставь переводы.`}
+              </div>
+            )}
+          </div>
         <div>
           {/* ── Цвета оформления (единый блок для всех трёх структур) ── */}
           <SectionBlock title="🎨 Цвета оформления">
@@ -1417,6 +1295,7 @@ ${base}
             </OptionalSection>
           </SectionBlock>
         </div>
+      </>
       )}
     </div>
   );
