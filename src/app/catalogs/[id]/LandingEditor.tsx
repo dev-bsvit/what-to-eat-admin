@@ -267,15 +267,50 @@ function BulletItemsList({ items, onChange }: { items: BulletItem[]; onChange: (
   );
 }
 
+function fixUnescapedQuotes(s: string): string {
+  let result = "";
+  let i = 0;
+  let inString = false;
+  while (i < s.length) {
+    const ch = s[i];
+    if (!inString) {
+      result += ch;
+      if (ch === '"') inString = true;
+    } else {
+      if (ch === "\\") {
+        result += ch + (s[i + 1] ?? "");
+        i++;
+      } else if (ch === '"') {
+        let j = i + 1;
+        while (j < s.length && " \t\n\r".includes(s[j])) j++;
+        const next = s[j] ?? "";
+        if (":,}]".includes(next) || next === "") {
+          inString = false;
+          result += ch;
+        } else {
+          result += '\\"';
+        }
+      } else {
+        result += ch;
+      }
+    }
+    i++;
+  }
+  return result;
+}
+
 function extractJson(text: string): Record<string, unknown> {
   let s = text.trim();
-  // Strip markdown code fences (```json ... ``` or ``` ... ```)
   s = s.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/i, "").trim();
-  // Find the first { and last } to extract pure JSON
   const start = s.indexOf("{");
   const end = s.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) throw new Error("No JSON object found");
-  return JSON.parse(s.slice(start, end + 1));
+  const slice = s.slice(start, end + 1);
+  try {
+    return JSON.parse(slice);
+  } catch {
+    return JSON.parse(fixUnescapedQuotes(slice));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
