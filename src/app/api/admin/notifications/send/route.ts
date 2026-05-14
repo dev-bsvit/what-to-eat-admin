@@ -21,6 +21,7 @@ import { sendPush } from "@/lib/apns";
 
 type BroadcastType = "promo" | "system";
 type CtaAction = "subscription" | "catalog";
+const iosPlatform = `ios:${process.env.APNS_BUNDLE_ID ?? "com.bsvit.dishday"}`;
 
 interface SendBody {
   title: string;
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
     const { data: tokenRows, error: tokenErr } = await supabaseAdmin
       .from("push_tokens")
       .select("token, user_id")
-      .eq("platform", "ios");
+      .eq("platform", iosPlatform);
 
     if (tokenErr) throw tokenErr;
     if (!tokenRows?.length) {
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
       extraData.cta_title = ctaTitle;
     }
 
-    const { sent, failed, invalidTokens } = await sendPush(eligible, title.trim(), body.trim(), extraData);
+    const { sent, failed, invalidTokens, failures } = await sendPush(eligible, title.trim(), body.trim(), extraData);
 
     // 5. Remove stale tokens
     if (invalidTokens.length > 0) {
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
       sent_count: sent,
     });
 
-    return NextResponse.json({ ok: true, sent, failed, total: eligible.length });
+    return NextResponse.json({ ok: true, sent, failed, total: eligible.length, failures });
 
   } catch (err) {
     console.error("admin/notifications/send error:", err);

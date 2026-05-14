@@ -13,6 +13,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendPush } from "@/lib/apns";
 
+const iosPlatform = `ios:${process.env.APNS_BUNDLE_ID ?? "com.bsvit.dishday"}`;
+
 function verifyCronAuth(request: Request): boolean {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -23,8 +25,8 @@ function verifyCronAuth(request: Request): boolean {
   return authHeader === `Bearer ${cronSecret}`;
 }
 
-async function handle(request: Request) {
-  if (!verifyCronAuth(request)) {
+async function handle(request: Request, options: { requireCronAuth: boolean }) {
+  if (options.requireCronAuth && !verifyCronAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -60,7 +62,7 @@ async function handle(request: Request) {
     const { data: tokenRows, error: tokenErr } = await supabaseAdmin
       .from("push_tokens")
       .select("token, user_id")
-      .eq("platform", "ios");
+      .eq("platform", iosPlatform);
 
     if (tokenErr) throw tokenErr;
     if (!tokenRows?.length) {
@@ -101,7 +103,7 @@ async function handle(request: Request) {
         : `Добавлено ${unnotified.length} новых каталога — посмотри что нового`;
 
     // 6. Send pushes
-    const { sent, failed, invalidTokens } = await sendPush(eligible, title, body, { type: "catalog" });
+    const { sent, failed, invalidTokens, failures } = await sendPush(eligible, title, body, { type: "catalog" });
 
     // 7. Remove stale tokens
     if (invalidTokens.length > 0) {
@@ -121,7 +123,7 @@ async function handle(request: Request) {
     });
 
     console.log(`✅ Catalog notification sent to ${sent}/${eligible.length} devices`);
-    return NextResponse.json({ ok: true, sent, failed, total: eligible.length, cuisines: unnotified.length });
+    return NextResponse.json({ ok: true, sent, failed, total: eligible.length, cuisines: unnotified.length, failures });
 
   } catch (err) {
     console.error("send-catalog-notification error:", err);
@@ -135,5 +137,10 @@ async function handle(request: Request) {
   }
 }
 
-export const GET = handle;
-export const POST = handle;
+export function GET(request: Request) {
+  return handle(request, { requireCronAuth: true });
+}
+
+export function POST(request: Request) {
+  return handle(request, { requireCronAuth: false });
+}
