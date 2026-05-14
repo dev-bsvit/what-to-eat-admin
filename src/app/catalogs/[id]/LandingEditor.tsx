@@ -609,8 +609,8 @@ ${base}
     let parsed: Record<string, unknown>;
     try {
       parsed = extractJson(raw);
-    } catch {
-      setSaveStatus("❌ Невалидный JSON — проверь ответ AI");
+    } catch (e) {
+      setSaveStatus(`❌ JSON ошибка: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
     const { landingData, extractedTranslations } = extractTranslationsFromJson(parsed);
@@ -649,8 +649,8 @@ ${base}
     let parsed: Record<string, unknown>;
     try {
       parsed = extractJson(raw);
-    } catch {
-      setSaveStatus("❌ Невалидный JSON — проверь что AI вернул корректный JSON");
+    } catch (e) {
+      setSaveStatus(`❌ JSON ошибка: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
     // Accept either {"en":{...},"de":{...}} or {"translations":{"en":{...}}}
