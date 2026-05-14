@@ -267,6 +267,17 @@ function BulletItemsList({ items, onChange }: { items: BulletItem[]; onChange: (
   );
 }
 
+function extractJson(text: string): Record<string, unknown> {
+  let s = text.trim();
+  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  s = s.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/i, "").trim();
+  // Find the first { and last } to extract pure JSON
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) throw new Error("No JSON object found");
+  return JSON.parse(s.slice(start, end + 1));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -597,9 +608,7 @@ ${base}
     if (!raw) return;
     let parsed: Record<string, unknown>;
     try {
-      let cleaned = raw;
-      if (cleaned.startsWith("```")) cleaned = cleaned.replace(/^```[a-z]*\n?/, "").replace(/```$/, "").trim();
-      parsed = JSON.parse(cleaned);
+      parsed = extractJson(raw);
     } catch {
       setSaveStatus("❌ Невалидный JSON — проверь ответ AI");
       return;
@@ -639,9 +648,7 @@ ${base}
     if (!raw) return;
     let parsed: Record<string, unknown>;
     try {
-      let cleaned = raw;
-      if (cleaned.startsWith("```")) cleaned = cleaned.replace(/^```[a-z]*\n?/, "").replace(/```$/, "").trim();
-      parsed = JSON.parse(cleaned);
+      parsed = extractJson(raw);
     } catch {
       setSaveStatus("❌ Невалидный JSON — проверь что AI вернул корректный JSON");
       return;
