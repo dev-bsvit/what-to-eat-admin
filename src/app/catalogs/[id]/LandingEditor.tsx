@@ -356,6 +356,23 @@ export default function LandingEditor({
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
 
+  // cuisineName is the single source of truth for the title.
+  // The parent loads it async, so it may arrive after loadLanding() already ran.
+  // Re-sync title fields whenever cuisineName / cuisineDescription change.
+  useEffect(() => {
+    if (!cuisineName) return;
+    setData(prev => {
+      if (!prev) return prev;
+      const updated: LandingData = {
+        ...prev,
+        preview_card: { ...prev.preview_card, title: cuisineName, subtitle: cuisineDescription ?? prev.preview_card.subtitle },
+        hero: { ...prev.hero, title: cuisineName, subtitle: cuisineDescription ?? prev.hero.subtitle },
+      };
+      setJsonText(JSON.stringify(updated, null, 2));
+      return updated;
+    });
+  }, [cuisineName, cuisineDescription]);
+
   // Auto-save when parent triggers (saveTrigger increments from "Сохранить всё")
   useEffect(() => {
     if (saveTrigger && saveTrigger > 0) { saveLanding(); }
@@ -830,6 +847,15 @@ ${base}
       }
     }
     if (!payload) return "error";
+
+    // Always use cuisineName as the authoritative title (overrides any stale value in data)
+    if (cuisineName) {
+      payload = {
+        ...payload,
+        preview_card: { ...payload.preview_card, title: cuisineName, subtitle: cuisineDescription ?? payload.preview_card.subtitle },
+        hero: { ...payload.hero, title: cuisineName, subtitle: cuisineDescription ?? payload.hero.subtitle },
+      };
+    }
 
     setSaveStatus("Сохраняю...");
     try {
