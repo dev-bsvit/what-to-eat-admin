@@ -649,7 +649,16 @@ ${base}
       return;
     }
     const { landingData, extractedTranslations } = extractTranslationsFromJson(parsed);
-    const applied = { ...landingData, cuisine_id: cuisineId } as LandingData;
+    const img = cuisineImageUrl ?? (landingData.preview_card as Record<string, unknown>)?.imageUrl as string | undefined;
+    const priceBadge = cuisinePrice ?? (landingData.purchase_cta as Record<string, unknown>)?.priceBadge as string ?? "$2";
+    const raw2 = landingData as unknown as LandingData;
+    const applied: LandingData = {
+      ...raw2,
+      cuisine_id: cuisineId,
+      preview_card: { ...raw2.preview_card, title: cuisineName, subtitle: cuisineDescription ?? raw2.preview_card.subtitle, imageUrl: img },
+      hero: { ...raw2.hero, title: cuisineName, subtitle: cuisineDescription ?? raw2.hero.subtitle, imageUrl: img, badges: raw2.preview_card.badges },
+      purchase_cta: raw2.purchase_cta ? { ...raw2.purchase_cta, priceBadge } : raw2.purchase_cta,
+    };
     const effectiveTranslations = Object.keys(extractedTranslations).length > 0
       ? { ...translations, ...extractedTranslations }
       : translations;
