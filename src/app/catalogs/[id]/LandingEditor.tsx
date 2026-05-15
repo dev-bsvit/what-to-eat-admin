@@ -37,6 +37,8 @@ interface BenefitsSection { title: string; subtitle?: string; cards: BenefitCard
 interface FAQItem { id: string; question: string; answer: string; }
 interface PurchaseFeature { id: string; icon?: string; title: string; subtitle?: string; }
 interface PurchaseCTA { title: string; subtitle?: string; priceBadge?: string; features: PurchaseFeature[]; buttonTitle?: string; }
+interface ColorGradientStop { id: string; colorHex: string; location: number; opacity?: number; }
+interface ColorGradient { stops: ColorGradientStop[]; startPoint?: string; endPoint?: string; }
 
 interface LandingData {
   id?: string;
@@ -44,10 +46,12 @@ interface LandingData {
   preview_card: {
     title: string; subtitle?: string; badges: string[];
     imageUrl?: string; backgroundHex?: string; overlayHex?: string; accentHex?: string;
+    backgroundGradient?: ColorGradient | null;
   };
   hero: {
     title: string; subtitle?: string; badges: string[];
     imageUrl?: string; backgroundHex?: string; overlayHex?: string;
+    backgroundGradient?: ColorGradient | null;
   };
   inside_section?: BulletSection | null;
   recipe_showcase?: { title: string; subtitle?: string } | null;
@@ -59,6 +63,7 @@ interface LandingData {
   theme: {
     pageBackgroundHex?: string; heroBackgroundHex?: string; heroOverlayHex?: string;
     cardBackgroundHex?: string; accentHex?: string; secondaryAccentHex?: string; textOnDarkHex?: string;
+    heroBackgroundGradient?: ColorGradient | null;
   };
   recipe_preview_ids: string[];
   is_published: boolean;
@@ -94,6 +99,7 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
       backgroundHex: "C70A0A",
       overlayHex: "7F3A44",
       accentHex: "FF375F",
+      backgroundGradient: null,
     },
     hero: {
       title: name,
@@ -101,6 +107,7 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
       badges: ["20–30 минут", "Пошагово"],
       backgroundHex: "C70A0A",
       overlayHex: "7F3A44",
+      backgroundGradient: null,
     },
     inside_section: {
       title: "Что внутри",
@@ -137,6 +144,7 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
       accentHex: "FF375F",
       secondaryAccentHex: "F4D000",
       textOnDarkHex: "FFFFFF",
+      heroBackgroundGradient: null,
     },
     recipe_preview_ids: [],
     is_published: false,
@@ -198,6 +206,136 @@ function ColorField({ label, value, onChange }: { label: string; value?: string;
           style={{ fontFamily: "monospace", maxWidth: "110px" }}
         />
       </div>
+    </div>
+  );
+}
+
+const normalizeHex = (value?: string, fallback = "000000") => {
+  const raw = (value ?? "").replace("#", "").trim().toUpperCase();
+  return /^[0-9A-F]{6}$/.test(raw) ? raw : fallback;
+};
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
+function defaultGradient(startHex?: string, endHex?: string): ColorGradient {
+  return {
+    startPoint: "topLeading",
+    endPoint: "bottomTrailing",
+    stops: [
+      { id: uid(), colorHex: normalizeHex(startHex, "192343"), location: 0, opacity: 100 },
+      { id: uid(), colorHex: normalizeHex(endHex, "006DC8"), location: 100, opacity: 100 },
+    ],
+  };
+}
+
+function gradientCss(gradient?: ColorGradient | null, fallbackHex?: string) {
+  if (!gradient?.stops?.length) return `#${normalizeHex(fallbackHex, "C70A0A")}`;
+  const stops = [...gradient.stops].sort((a, b) => a.location - b.location);
+  return `linear-gradient(135deg, ${stops.map((stop) => {
+    const opacity = Math.max(0, Math.min(100, stop.opacity ?? 100)) / 100;
+    return `rgba(${parseInt(normalizeHex(stop.colorHex).slice(0, 2), 16)}, ${parseInt(normalizeHex(stop.colorHex).slice(2, 4), 16)}, ${parseInt(normalizeHex(stop.colorHex).slice(4, 6), 16)}, ${opacity}) ${clampPercent(stop.location)}%`;
+  }).join(", ")})`;
+}
+
+function GradientField({
+  label,
+  value,
+  fallbackStartHex,
+  fallbackEndHex,
+  onChange,
+}: {
+  label: string;
+  value?: ColorGradient | null;
+  fallbackStartHex?: string;
+  fallbackEndHex?: string;
+  onChange: (v: ColorGradient | null) => void;
+}) {
+  const enabled = !!value?.stops?.length;
+  const gradient = value ?? defaultGradient(fallbackStartHex, fallbackEndHex);
+
+  const updateStop = (index: number, patch: Partial<ColorGradientStop>) => {
+    const stops = [...gradient.stops];
+    stops[index] = { ...stops[index], ...patch };
+    onChange({ ...gradient, stops: stops.sort((a, b) => a.location - b.location) });
+  };
+
+  return (
+    <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <label className="form-label" style={{ marginBottom: 0 }}>{label}</label>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => onChange(enabled ? null : defaultGradient(fallbackStartHex, fallbackEndHex))}
+          style={{ borderRadius: 20, padding: "6px 12px", fontSize: 12 }}
+        >
+          {enabled ? "Убрать градиент" : "Добавить градиент"}
+        </button>
+      </div>
+
+      {enabled && (
+        <div style={{ marginTop: 10, border: "1px solid var(--border-light)", borderRadius: 12, overflow: "hidden", background: "var(--bg-surface)" }}>
+          <div style={{ height: 56, background: gradientCss(gradient, fallbackStartHex), borderBottom: "1px solid var(--border-light)" }} />
+          <div style={{ padding: 12, display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>Stops</span>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => onChange({ ...gradient, stops: [...gradient.stops, { id: uid(), colorHex: "FFFFFF", location: 50, opacity: 100 }].sort((a, b) => a.location - b.location) })}
+                style={{ borderRadius: 20, padding: "4px 10px", fontSize: 12 }}
+              >
+                +
+              </button>
+            </div>
+            {gradient.stops.map((stop, index) => (
+              <div key={stop.id} style={{ display: "grid", gridTemplateColumns: "70px 1fr 74px 32px", gap: 8, alignItems: "center" }}>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={clampPercent(stop.location)}
+                  onChange={(e) => updateStop(index, { location: clampPercent(Number(e.target.value)) })}
+                  style={{ fontSize: 12, fontWeight: 700 }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="color"
+                    value={`#${normalizeHex(stop.colorHex)}`}
+                    onChange={(e) => updateStop(index, { colorHex: normalizeHex(e.target.value) })}
+                    style={{ width: 38, height: 36, border: "1px solid var(--border-light)", borderRadius: 6, padding: 2, background: "none" }}
+                  />
+                  <input
+                    className="input"
+                    value={normalizeHex(stop.colorHex)}
+                    onChange={(e) => updateStop(index, { colorHex: normalizeHex(e.target.value, stop.colorHex) })}
+                    style={{ fontFamily: "monospace", fontSize: 12 }}
+                  />
+                </div>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={clampPercent(stop.opacity ?? 100)}
+                  onChange={(e) => updateStop(index, { opacity: clampPercent(Number(e.target.value)) })}
+                  style={{ fontSize: 12 }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={gradient.stops.length <= 2}
+                  onClick={() => onChange({ ...gradient, stops: gradient.stops.filter((_, i) => i !== index) })}
+                  style={{ padding: 0, height: 34, color: "var(--accent-danger)", opacity: gradient.stops.length <= 2 ? 0.35 : 1 }}
+                >
+                  −
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -569,6 +707,7 @@ FAQ:
 - UUID v4 для всех "id"
 - HEX без # (например FF375F)
 - "imageUrl" всегда null, "recipe_preview_ids" [], "is_published" false, "sort_order" 0
+- Для градиента можно оставить null или заполнить: { "startPoint":"topLeading", "endPoint":"bottomTrailing", "stops":[{"id":"uuid","colorHex":"192343","location":0,"opacity":100},{"id":"uuid","colorHex":"006DC8","location":100,"opacity":100}] }
 - Добавь блок "_cuisine.recommendation" для онбординга
 - ${CATALOG_RECOMMENDATION_PROMPT}
 - Тексты живые, дружелюбные, без канцелярита
@@ -577,8 +716,8 @@ FAQ:
 {
   "_counts": { "inside": ТОЧНОЕ_ЧИСЛО, "audience": ТОЧНОЕ_ЧИСЛО, "pairs": ТОЧНОЕ_ЧИСЛО, "benefits": ТОЧНОЕ_ЧИСЛО, "faq": ТОЧНОЕ_ЧИСЛО },
   "_cuisine": { "recommendation": { "levels": ["beginner"], "times": ["from20to40"], "dietary": [], "tags": ["quick","simple"] } },
-  "preview_card": { "title": "до 40 символов", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX" },
-  "hero": { "title": "заголовок (\\n для переноса)", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX" },
+  "preview_card": { "title": "до 40 символов", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX", "backgroundGradient": null },
+  "hero": { "title": "заголовок (\\n для переноса)", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "backgroundGradient": null },
   "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [ /* РОВНО _counts.inside элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"каждый пункт из МОЙ КОНТЕНТ"} ] },
   "recipe_showcase": { "title": "...", "subtitle": "..." },
   "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [ /* РОВНО _counts.audience элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"каждый пункт из МОЙ КОНТЕНТ"} ] },
@@ -586,7 +725,7 @@ FAQ:
   "benefits_section": { "title": "Преимущества", "subtitle": "...", "cards": [ /* РОВНО _counts.benefits элементов */ {"id":"uuid","eyebrow":"метка","title":"заголовок","text":"из МОЙ КОНТЕНТ"} ] },
   "faq_items": [ /* РОВНО _counts.faq элементов */ {"id":"uuid","question":"из МОЙ КОНТЕНТ","answer":"из МОЙ КОНТЕНТ"} ],
   "purchase_cta": { "title": "Открыть каталог", "subtitle": "...", "priceBadge": "${priceHint}", "features": [{"id":"uuid","icon":"book.closed","title":"N рецептов","subtitle":"внутри каталога"},{"id":"uuid","icon":"list.bullet.rectangle","title":"Пошаговые инструкции","subtitle":"без лишней теории"},{"id":"uuid","icon":"arrow.clockwise","title":"Обновления","subtitle":"бесплатно навсегда"}], "buttonTitle": "Открыть каталог" },
-  "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
+  "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "heroBackgroundGradient": null, "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
   "recipe_preview_ids": [],
   "is_published": false,
   "sort_order": 0
@@ -971,6 +1110,35 @@ ${base}
   ].filter((count) => typeof count === "number" && count > 0).length;
   const isJsonReady = sectionScore >= 4 && (data?.faq_items?.length ?? 0) > 0;
 
+  const setPrimaryGradient = (gradient: ColorGradient | null) => {
+    if (!data) return;
+    const firstStop = gradient?.stops?.[0];
+    const lastStop = gradient?.stops?.[gradient.stops.length - 1];
+    const backgroundHex = firstStop ? normalizeHex(firstStop.colorHex, data.preview_card.backgroundHex) : data.preview_card.backgroundHex;
+    const overlayHex = lastStop ? normalizeHex(lastStop.colorHex, data.preview_card.overlayHex) : data.preview_card.overlayHex;
+
+    upd({
+      preview_card: {
+        ...data.preview_card,
+        backgroundHex,
+        overlayHex,
+        backgroundGradient: gradient,
+      },
+      hero: {
+        ...data.hero,
+        backgroundHex,
+        overlayHex,
+        backgroundGradient: gradient,
+      },
+      theme: {
+        ...data.theme,
+        heroBackgroundHex: backgroundHex,
+        heroOverlayHex: overlayHex,
+        heroBackgroundGradient: gradient,
+      },
+    });
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
@@ -1185,6 +1353,13 @@ ${base}
                 hero: { ...data.hero, backgroundHex: v },
                 theme: { ...data.theme, heroBackgroundHex: v },
               })}
+            />
+            <GradientField
+              label="Градиент основного фона"
+              value={data.preview_card.backgroundGradient ?? data.theme.heroBackgroundGradient}
+              fallbackStartHex={data.preview_card.backgroundHex ?? data.theme.heroBackgroundHex}
+              fallbackEndHex={data.preview_card.overlayHex ?? data.theme.heroOverlayHex}
+              onChange={setPrimaryGradient}
             />
             <ColorField
               label="Оверлей (поверх фона)"
