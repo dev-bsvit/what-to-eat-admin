@@ -650,12 +650,6 @@ export default function CatalogDetailPage() {
           </details>
         </div>
 
-        {/* Landing editor (for premium/gift catalogs) */}
-        {editForm.type !== 'premium' && editForm.type !== 'gift' && (
-          <div style={{ padding: '12px 16px', background: 'rgba(255,159,10,0.1)', borderRadius: '10px', color: '#ff9f0a', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
-            ⚠️ Лендинг для подарка/продажи нужен каталогам «premium» или «gift». Текущий тип: {editForm.type || 'не задан'}.
-          </div>
-        )}
         <LandingEditor
           cuisineId={cuisineId}
           cuisineName={editForm.name}
