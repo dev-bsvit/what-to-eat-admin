@@ -88,6 +88,7 @@ export async function POST(
       recipe_preview_ids: body.recipe_preview_ids ?? [],
       is_published: body.is_published ?? false,
       sort_order: body.sort_order ?? 0,
+      card_size: body.card_size ?? null,
       updated_at: new Date().toISOString(),
       ...(body.translations !== undefined && { translations: body.translations }),
     }) as Record<string, unknown>;
