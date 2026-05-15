@@ -63,6 +63,7 @@ interface LandingData {
   recipe_preview_ids: string[];
   is_published: boolean;
   sort_order: number;
+  card_size?: "large" | "small";
 }
 
 interface LocalLandingDraft {
@@ -1017,6 +1018,16 @@ ${base}
             <Languages size={13} />
             {translationCount}/7 переводов
           </span>
+          {/* Card size toggle */}
+          <button
+            type="button"
+            className={data.card_size === "large" ? "btn btn-primary" : "btn btn-secondary"}
+            onClick={() => upd({ card_size: data.card_size === "large" ? "small" : "large" })}
+            style={{ fontSize: "13px" }}
+            title="Размер карточки в разделе Исследовать"
+          >
+            {data.card_size === "large" ? "⬛ Большая" : "▪️ Маленькая"}
+          </button>
           <button
             type="button"
             className={data.is_published ? "btn btn-success" : "btn btn-secondary"}
