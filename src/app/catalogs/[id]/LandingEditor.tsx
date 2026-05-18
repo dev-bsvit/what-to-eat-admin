@@ -512,11 +512,11 @@ export default function LandingEditor({
     if (!cuisineName) return;
     setData(prev => {
       if (!prev) return prev;
-      const desc = cuisineDescription || prev.hero.subtitle || prev.preview_card.subtitle;
+      const heroSub = cuisineDescription || prev.hero.subtitle || "";
       const updated: LandingData = {
         ...prev,
-        preview_card: { ...prev.preview_card, title: cuisineName, subtitle: desc },
-        hero: { ...prev.hero, title: cuisineName, subtitle: desc },
+        preview_card: { ...prev.preview_card, title: cuisineName, subtitle: heroSub },
+        hero: { ...prev.hero, title: cuisineName, subtitle: heroSub },
       };
       setJsonText(JSON.stringify(updated, null, 2));
       return updated;
@@ -730,8 +730,8 @@ FAQ:
 {
   "_counts": { "inside": ТОЧНОЕ_ЧИСЛО, "audience": ТОЧНОЕ_ЧИСЛО, "pairs": ТОЧНОЕ_ЧИСЛО, "benefits": ТОЧНОЕ_ЧИСЛО, "faq": ТОЧНОЕ_ЧИСЛО },
   "_cuisine": { "recommendation": { "levels": ["beginner"], "times": ["from20to40"], "dietary": [], "tags": ["quick","simple"] } },
-  "preview_card": { "title": "${cuisineName}", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX", "backgroundGradient": null },
-  "hero": { "title": "${cuisineName}", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "backgroundGradient": null },
+  "preview_card": { "title": "${cuisineName}", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX", "backgroundGradient": null },
+  "hero": { "title": "${cuisineName}", "subtitle": "1-2 предложения — описание каталога", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "backgroundGradient": null },
   "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [ /* РОВНО _counts.inside элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"текст пункта (для акцентного цвета: **ключевые слова**)"} ] },
   "recipe_showcase": { "title": "..." },
   "audience_section": { "title": "Кому подойдёт?\nЭто точно про тебя, если…", "items": [ /* РОВНО _counts.audience элементов */ {"id":"uuid","emoji":null,"title":"ключевое слово (жирный)","text":"остальная часть фразы (серый)"} ] },
@@ -779,7 +779,7 @@ ${base}
 СТРУКТУРА ответа:
 {
   "en": {
-    "preview_card": { "title": "...", "subtitle": "...", "badges": ["..."] },
+    "preview_card": { "title": "...", "badges": ["..."] },
     "hero": { "title": "...", "subtitle": "...", "badges": ["..."] },
     "inside_section": { "title": "What's inside", "subtitle": "...", "items": [{ "id": "SAME", "emoji": "SAME", "title": null, "text": "..." }] },
     "recipe_showcase": { "title": "..." },
@@ -1195,8 +1195,8 @@ ${base}
     if (cuisineName) {
       payload = {
         ...payload,
-        preview_card: { ...payload.preview_card, title: cuisineName, subtitle: cuisineDescription || payload.preview_card.subtitle || payload.hero.subtitle },
-        hero: { ...payload.hero, title: cuisineName, subtitle: cuisineDescription || payload.preview_card.subtitle || payload.hero.subtitle },
+        preview_card: { ...payload.preview_card, title: cuisineName, subtitle: cuisineDescription || payload.hero.subtitle || payload.preview_card.subtitle },
+        hero: { ...payload.hero, title: cuisineName, subtitle: cuisineDescription || payload.hero.subtitle || payload.preview_card.subtitle },
       };
     }
 
