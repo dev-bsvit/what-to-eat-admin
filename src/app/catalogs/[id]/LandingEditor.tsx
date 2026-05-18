@@ -1224,6 +1224,17 @@ ${base}
             <Languages size={13} />
             {translationCount}/7 переводов
           </span>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={autoTranslate}
+            disabled={isTranslating}
+            style={{ fontSize: "13px" }}
+            title="Перевести на 7 языков через DeepL"
+          >
+            <Languages size={14} />
+            {isTranslating ? "Переводим..." : "Перевести"}
+          </button>
           {/* Card size toggle */}
           <button
             type="button"
