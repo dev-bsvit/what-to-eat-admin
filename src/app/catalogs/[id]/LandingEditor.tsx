@@ -512,10 +512,11 @@ export default function LandingEditor({
     if (!cuisineName) return;
     setData(prev => {
       if (!prev) return prev;
+      const desc = cuisineDescription || prev.preview_card.subtitle || prev.hero.subtitle;
       const updated: LandingData = {
         ...prev,
-        preview_card: { ...prev.preview_card, title: cuisineName, subtitle: cuisineDescription ||prev.preview_card.subtitle },
-        hero: { ...prev.hero, title: cuisineName, subtitle: cuisineDescription ||prev.hero.subtitle },
+        preview_card: { ...prev.preview_card, title: cuisineName, subtitle: desc },
+        hero: { ...prev.hero, title: cuisineName, subtitle: desc },
       };
       setJsonText(JSON.stringify(updated, null, 2));
       return updated;
@@ -533,10 +534,11 @@ export default function LandingEditor({
     // Sync from cuisine settings (single source of truth for these fields)
     const img = cuisineImageUrl ?? nextData.preview_card.imageUrl;
     const priceBadge = cuisinePrice ?? nextData.purchase_cta?.priceBadge ?? "$2";
+    const desc = cuisineDescription || nextData.preview_card.subtitle || nextData.hero.subtitle;
     const synced: LandingData = {
       ...nextData,
-      preview_card: { ...nextData.preview_card, title: cuisineName, subtitle: cuisineDescription ||nextData.preview_card.subtitle, imageUrl: img },
-      hero: { ...nextData.hero, title: cuisineName, subtitle: cuisineDescription ||nextData.hero.subtitle, imageUrl: img, badges: nextData.preview_card.badges },
+      preview_card: { ...nextData.preview_card, title: cuisineName, subtitle: desc, imageUrl: img },
+      hero: { ...nextData.hero, title: cuisineName, subtitle: desc, imageUrl: img, badges: nextData.preview_card.badges },
       purchase_cta: nextData.purchase_cta ? { ...nextData.purchase_cta, priceBadge } : nextData.purchase_cta,
     };
     setData(synced);
@@ -823,11 +825,12 @@ ${base}
     const img = cuisineImageUrl ?? (landingData.preview_card as Record<string, unknown>)?.imageUrl as string | undefined;
     const priceBadge = cuisinePrice ?? (landingData.purchase_cta as Record<string, unknown>)?.priceBadge as string ?? "$2";
     const raw2 = landingData as unknown as LandingData;
+    const desc2 = cuisineDescription || raw2.preview_card.subtitle || raw2.hero.subtitle;
     const applied: LandingData = {
       ...raw2,
       cuisine_id: cuisineId,
-      preview_card: { ...raw2.preview_card, title: cuisineName, subtitle: cuisineDescription ||raw2.preview_card.subtitle, imageUrl: img },
-      hero: { ...raw2.hero, title: cuisineName, subtitle: cuisineDescription ||raw2.hero.subtitle, imageUrl: img, badges: raw2.preview_card.badges },
+      preview_card: { ...raw2.preview_card, title: cuisineName, subtitle: desc2, imageUrl: img },
+      hero: { ...raw2.hero, title: cuisineName, subtitle: desc2, imageUrl: img, badges: raw2.preview_card.badges },
       purchase_cta: raw2.purchase_cta ? { ...raw2.purchase_cta, priceBadge } : raw2.purchase_cta,
     };
     const effectiveTranslations = Object.keys(extractedTranslations).length > 0
@@ -1192,8 +1195,8 @@ ${base}
     if (cuisineName) {
       payload = {
         ...payload,
-        preview_card: { ...payload.preview_card, title: cuisineName, subtitle: cuisineDescription ||payload.preview_card.subtitle },
-        hero: { ...payload.hero, title: cuisineName, subtitle: cuisineDescription ||payload.hero.subtitle },
+        preview_card: { ...payload.preview_card, title: cuisineName, subtitle: cuisineDescription || payload.preview_card.subtitle || payload.hero.subtitle },
+        hero: { ...payload.hero, title: cuisineName, subtitle: cuisineDescription || payload.preview_card.subtitle || payload.hero.subtitle },
       };
     }
 
@@ -1637,7 +1640,7 @@ ${base}
                 rows={4}
                 style={{ resize: "vertical", ...(roStyle ?? {}) }}
                 readOnly={isRO}
-                value={viewData.hero?.subtitle ?? ""}
+                value={viewData.preview_card?.subtitle ?? viewData.hero?.subtitle ?? ""}
                 onChange={(e) => upd({
                   hero: { ...data!.hero, subtitle: e.target.value },
                   preview_card: { ...data!.preview_card, subtitle: e.target.value },
