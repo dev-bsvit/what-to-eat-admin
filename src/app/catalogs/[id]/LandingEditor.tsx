@@ -512,7 +512,7 @@ export default function LandingEditor({
     if (!cuisineName) return;
     setData(prev => {
       if (!prev) return prev;
-      const desc = cuisineDescription || prev.preview_card.subtitle || prev.hero.subtitle;
+      const desc = cuisineDescription || prev.hero.subtitle || prev.preview_card.subtitle;
       const updated: LandingData = {
         ...prev,
         preview_card: { ...prev.preview_card, title: cuisineName, subtitle: desc },
@@ -534,7 +534,7 @@ export default function LandingEditor({
     // Sync from cuisine settings (single source of truth for these fields)
     const img = cuisineImageUrl ?? nextData.preview_card.imageUrl;
     const priceBadge = cuisinePrice ?? nextData.purchase_cta?.priceBadge ?? "$2";
-    const desc = cuisineDescription || nextData.preview_card.subtitle || nextData.hero.subtitle;
+    const desc = cuisineDescription || nextData.hero.subtitle || nextData.preview_card.subtitle;
     const synced: LandingData = {
       ...nextData,
       preview_card: { ...nextData.preview_card, title: cuisineName, subtitle: desc, imageUrl: img },
@@ -825,7 +825,7 @@ ${base}
     const img = cuisineImageUrl ?? (landingData.preview_card as Record<string, unknown>)?.imageUrl as string | undefined;
     const priceBadge = cuisinePrice ?? (landingData.purchase_cta as Record<string, unknown>)?.priceBadge as string ?? "$2";
     const raw2 = landingData as unknown as LandingData;
-    const desc2 = cuisineDescription || raw2.preview_card.subtitle || raw2.hero.subtitle;
+    const desc2 = cuisineDescription || raw2.hero.subtitle || raw2.preview_card.subtitle;
     const applied: LandingData = {
       ...raw2,
       cuisine_id: cuisineId,
@@ -1640,7 +1640,7 @@ ${base}
                 rows={4}
                 style={{ resize: "vertical", ...(roStyle ?? {}) }}
                 readOnly={isRO}
-                value={viewData.preview_card?.subtitle ?? viewData.hero?.subtitle ?? ""}
+                value={viewData.hero?.subtitle ?? viewData.preview_card?.subtitle ?? ""}
                 onChange={(e) => upd({
                   hero: { ...data!.hero, subtitle: e.target.value },
                   preview_card: { ...data!.preview_card, subtitle: e.target.value },
