@@ -155,11 +155,16 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
 // ─────────────────────────────────────────────────────────────────────────────
 // Small UI helpers
 // ─────────────────────────────────────────────────────────────────────────────
-function SectionBlock({ title, children, open = true }: { title: string; children: React.ReactNode; open?: boolean }) {
+function SectionBlock({ title, children, open = true, headerRight }: { title: string; children: React.ReactNode; open?: boolean; headerRight?: React.ReactNode }) {
   return (
     <details open={open} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-light)", borderRadius: "var(--radius-md)", marginBottom: "10px", overflow: "hidden" }}>
       <summary style={{ padding: "12px 16px", cursor: "pointer", fontWeight: 600, fontSize: "14px", color: "var(--text-primary)", userSelect: "none", listStyle: "none" }}>
-        {title}
+        {headerRight ? (
+          <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>{title}</span>
+            <span onClick={(e) => e.stopPropagation()}>{headerRight}</span>
+          </span>
+        ) : title}
       </summary>
       <div style={{ padding: "0 16px 16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "var(--spacing-md)" }}>
         {children}
@@ -493,6 +498,7 @@ export default function LandingEditor({
   const [translationPasteText, setTranslationPasteText] = useState("");
   const [basePasteText, setBasePasteText] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
+  const [translatingSection, setTranslatingSection] = useState<string | null>(null);
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
 
@@ -926,6 +932,158 @@ ${base}
     }
   }
 
+  async function doSectionTranslate(
+    sectionKey: string,
+    pairs: Array<{ key: string; text: string }>,
+    buildPatch: (t: Record<string, string>) => Record<string, unknown>
+  ) {
+    if (!pairs.length) { setSaveStatus("Нет текста для перевода"); return; }
+    setTranslatingSection(sectionKey);
+    setSaveStatus("Переводим...");
+    try {
+      const res = await fetch("/api/admin/ai/translate-section", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texts: pairs.map((p) => p.text), sourceLang: "ru" }),
+      });
+      const raw = await res.json();
+      if (!res.ok) throw new Error(raw.error || "Ошибка перевода");
+      const result = raw as Record<string, string[]>;
+      const newTx = { ...translations } as Record<string, Record<string, unknown>>;
+      for (const [lang, translated] of Object.entries(result)) {
+        const t: Record<string, string> = {};
+        pairs.forEach(({ key }, i) => { t[key] = translated[i]; });
+        newTx[lang] = { ...(newTx[lang] ?? {}), ...buildPatch(t) };
+      }
+      setTranslations(newTx);
+      if (data) {
+        const saveRes = await fetch(`/api/admin/landings/${cuisineId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...data, translations: newTx }),
+        });
+        setSaveStatus(saveRes.ok ? `Переведено ✅ (${new Date().toLocaleTimeString()})` : "Переведено, ошибка сохранения");
+      }
+    } catch (e) {
+      setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setTranslatingSection(null);
+    }
+  }
+
+  function txHero() {
+    if (!data) return;
+    const h = data.hero;
+    const pairs: Array<{ key: string; text: string }> = [
+      { key: "title", text: h.title },
+      ...(h.subtitle ? [{ key: "subtitle", text: h.subtitle }] : []),
+      ...(h.badges ?? []).map((b, i) => ({ key: `badge_${i}`, text: b })),
+    ];
+    doSectionTranslate("hero", pairs, (t) => ({
+      preview_card: { title: t.title, subtitle: t.subtitle, badges: (h.badges ?? []).map((b, i) => t[`badge_${i}`] ?? b) },
+      hero: { title: t.title, subtitle: t.subtitle, badges: (h.badges ?? []).map((b, i) => t[`badge_${i}`] ?? b) },
+    }));
+  }
+
+  function txInsideSection() {
+    if (!data?.inside_section?.items?.length) return;
+    const items = data.inside_section.items;
+    doSectionTranslate("inside_section", items.map((it, i) => ({ key: `i${i}`, text: it.text })), (t) => ({
+      inside_section: { title: data!.inside_section!.title, items: items.map((it, i) => ({ id: it.id, emoji: it.emoji, title: null, text: t[`i${i}`] ?? it.text })) },
+    }));
+  }
+
+  function txRecipeShowcase() {
+    if (!data?.recipe_showcase) return;
+    const sec = data.recipe_showcase;
+    const pairs: Array<{ key: string; text: string }> = [
+      { key: "title", text: sec.title },
+      ...(sec.subtitle ? [{ key: "subtitle", text: sec.subtitle }] : []),
+    ];
+    doSectionTranslate("recipe_showcase", pairs, (t) => ({
+      recipe_showcase: { title: t.title ?? sec.title, subtitle: t.subtitle },
+    }));
+  }
+
+  function txAudienceSection() {
+    if (!data?.audience_section) return;
+    const sec = data.audience_section;
+    const pairs: Array<{ key: string; text: string }> = [
+      { key: "title", text: sec.title },
+      ...(sec.subtitle ? [{ key: "subtitle", text: sec.subtitle }] : []),
+      ...sec.items.map((it, i) => ({ key: `i${i}`, text: it.text })),
+    ];
+    doSectionTranslate("audience_section", pairs, (t) => ({
+      audience_section: { title: t.title ?? sec.title, subtitle: t.subtitle, items: sec.items.map((it, i) => ({ id: it.id, emoji: it.emoji, title: it.title, text: t[`i${i}`] ?? it.text })) },
+    }));
+  }
+
+  function txTransformationSection() {
+    if (!data?.transformation_section?.pairs?.length) return;
+    const sec = data.transformation_section;
+    const pairs: Array<{ key: string; text: string }> = [
+      { key: "title", text: sec.title },
+      ...(sec.beforeLabel ? [{ key: "beforeLabel", text: sec.beforeLabel }] : []),
+      ...(sec.afterLabel ? [{ key: "afterLabel", text: sec.afterLabel }] : []),
+      ...sec.pairs.flatMap((p, i) => [{ key: `b${i}`, text: p.beforeText }, { key: `a${i}`, text: p.afterText }]),
+    ];
+    doSectionTranslate("transformation_section", pairs, (t) => ({
+      transformation_section: {
+        title: t.title ?? sec.title, beforeLabel: t.beforeLabel ?? sec.beforeLabel, afterLabel: t.afterLabel ?? sec.afterLabel,
+        pairs: sec.pairs.map((p, i) => ({ id: p.id, beforeText: t[`b${i}`] ?? p.beforeText, afterText: t[`a${i}`] ?? p.afterText })),
+      },
+    }));
+  }
+
+  function txBenefitsSection() {
+    if (!data?.benefits_section?.cards?.length) return;
+    const sec = data.benefits_section;
+    const pairs: Array<{ key: string; text: string }> = [
+      { key: "title", text: sec.title },
+      ...(sec.subtitle ? [{ key: "subtitle", text: sec.subtitle }] : []),
+      ...sec.cards.flatMap((c, i) => [
+        ...(c.eyebrow ? [{ key: `e${i}`, text: c.eyebrow }] : []),
+        { key: `t${i}`, text: c.title },
+        { key: `x${i}`, text: c.text },
+      ]),
+    ];
+    doSectionTranslate("benefits_section", pairs, (t) => ({
+      benefits_section: {
+        title: t.title ?? sec.title, subtitle: t.subtitle,
+        cards: sec.cards.map((c, i) => ({ id: c.id, eyebrow: t[`e${i}`] ?? c.eyebrow, title: t[`t${i}`] ?? c.title, text: t[`x${i}`] ?? c.text })),
+      },
+    }));
+  }
+
+  function txFaqItems() {
+    if (!data?.faq_items?.length) return;
+    const faqs = data.faq_items;
+    const pairs = faqs.flatMap((f, i) => [{ key: `q${i}`, text: f.question }, { key: `a${i}`, text: f.answer }]);
+    doSectionTranslate("faq_items", pairs, (t) => ({
+      faq_items: faqs.map((f, i) => ({ id: f.id, question: t[`q${i}`] ?? f.question, answer: t[`a${i}`] ?? f.answer })),
+    }));
+  }
+
+  function txPurchaseCta() {
+    if (!data?.purchase_cta) return;
+    const cta = data.purchase_cta;
+    const pairs: Array<{ key: string; text: string }> = [
+      ...(cta.title ? [{ key: "title", text: cta.title }] : []),
+      ...(cta.subtitle ? [{ key: "subtitle", text: cta.subtitle }] : []),
+      ...(cta.buttonTitle ? [{ key: "btnTitle", text: cta.buttonTitle }] : []),
+      ...cta.features.flatMap((f, i) => [
+        { key: `ft${i}`, text: f.title },
+        ...(f.subtitle ? [{ key: `fs${i}`, text: f.subtitle }] : []),
+      ]),
+    ];
+    doSectionTranslate("purchase_cta", pairs, (t) => ({
+      purchase_cta: {
+        title: t.title, subtitle: t.subtitle, buttonTitle: t.btnTitle,
+        features: cta.features.map((f, i) => ({ id: f.id, icon: f.icon, title: t[`ft${i}`] ?? f.title, subtitle: t[`fs${i}`] ?? f.subtitle })),
+      },
+    }));
+  }
+
   function switchToJson() {
     if (data) {
       const cuisineMeta = {
@@ -1177,6 +1335,12 @@ ${base}
     });
   };
 
+  const txBtn = (section: string, fn: () => void) => (
+    <button type="button" className="btn btn-secondary" onClick={fn} disabled={!!translatingSection} style={{ fontSize: "12px", padding: "3px 10px", borderRadius: "12px" }}>
+      <Languages size={12} />{translatingSection === section ? "..." : "Перевести"}
+    </button>
+  );
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
@@ -1224,17 +1388,6 @@ ${base}
             <Languages size={13} />
             {translationCount}/7 переводов
           </span>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={autoTranslate}
-            disabled={isTranslating}
-            style={{ fontSize: "13px" }}
-            title="Перевести на 7 языков через DeepL"
-          >
-            <Languages size={14} />
-            {isTranslating ? "Переводим..." : "Перевести"}
-          </button>
           {/* Card size toggle */}
           <button
             type="button"
@@ -1454,7 +1607,7 @@ ${base}
           </SectionBlock>
 
           {/* ── Значки (синхронизированы в карточке и hero) ── */}
-          <SectionBlock title="🏷️ Значки (карточка и лендинг)" open={false}>
+          <SectionBlock title="🏷️ Значки (карточка и лендинг)" open={false} headerRight={txBtn("hero", txHero)}>
             <BadgesField
               label="Значки — показываются и в карточке каталога, и в шапке лендинга"
               value={viewData.preview_card?.badges ?? []}
@@ -1473,7 +1626,7 @@ ${base}
           </SectionBlock>
 
           {/* ── Секция «Что внутри» ── */}
-          <SectionBlock title="📦 Секция «Что внутри»" open={!!data.inside_section}>
+          <SectionBlock title="📦 Секция «Что внутри»" open={!!data.inside_section} headerRight={txBtn("inside_section", txInsideSection)}>
             <OptionalSection label="Секция" enabled={!!data.inside_section} onToggle={isRO ? () => {} : (v) => upd({ inside_section: v ? { title: "Что внутри", subtitle: "", items: [] } : null })}>
               {data.inside_section && (
                 <BulletItemsList items={viewData.inside_section?.items ?? []} onChange={isRO ? () => {} : (items) => upd({ inside_section: { ...data.inside_section!, items } })} hideTitle textPlaceholder="Текст пункта (используй **слово** для акцентного цвета)" />
@@ -1482,7 +1635,7 @@ ${base}
           </SectionBlock>
 
           {/* ── Витрина рецептов ── */}
-          <SectionBlock title="🍽️ Витрина рецептов" open={!!data.recipe_showcase}>
+          <SectionBlock title="🍽️ Витрина рецептов" open={!!data.recipe_showcase} headerRight={txBtn("recipe_showcase", txRecipeShowcase)}>
             <OptionalSection label="Секция" enabled={!!data.recipe_showcase} onToggle={isRO ? () => {} : (v) => upd({ recipe_showcase: v ? { title: "Примеры рецептов", subtitle: "" } : null })}>
               {data.recipe_showcase && <>
                 <Field label="Заголовок">
@@ -1496,7 +1649,7 @@ ${base}
           </SectionBlock>
 
           {/* ── Аудитория ── */}
-          <SectionBlock title="👥 Секция «Кому подойдёт»" open={!!data.audience_section}>
+          <SectionBlock title="👥 Секция «Кому подойдёт»" open={!!data.audience_section} headerRight={txBtn("audience_section", txAudienceSection)}>
             <OptionalSection label="Секция" enabled={!!data.audience_section} onToggle={isRO ? () => {} : (v) => upd({ audience_section: v ? { title: "Кому подойдёт", subtitle: "", items: [] } : null })}>
               {data.audience_section && <>
                 <Field label="Заголовок">
@@ -1511,7 +1664,7 @@ ${base}
           </SectionBlock>
 
           {/* ── Трансформация ── */}
-          <SectionBlock title="🔄 Секция «Узнаёшь себя?»" open={!!data.transformation_section}>
+          <SectionBlock title="🔄 Секция «Узнаёшь себя?»" open={!!data.transformation_section} headerRight={txBtn("transformation_section", txTransformationSection)}>
             <OptionalSection label="Секция" enabled={!!data.transformation_section} onToggle={isRO ? () => {} : (v) => upd({ transformation_section: v ? { title: "Узнаёшь себя?", beforeLabel: "До", afterLabel: "После", pairs: [] } : null })}>
               {data.transformation_section && <>
                 <Field label="Заголовок">
@@ -1539,7 +1692,7 @@ ${base}
           </SectionBlock>
 
           {/* ── Преимущества ── */}
-          <SectionBlock title="✨ Преимущества" open={!!data.benefits_section}>
+          <SectionBlock title="✨ Преимущества" open={!!data.benefits_section} headerRight={txBtn("benefits_section", txBenefitsSection)}>
             <OptionalSection label="Секция" enabled={!!data.benefits_section} onToggle={isRO ? () => {} : (v) => upd({ benefits_section: v ? { title: "Преимущества", subtitle: "", cards: [] } : null })}>
               {data.benefits_section && <>
                 <Field label="Заголовок">
@@ -1565,7 +1718,7 @@ ${base}
           </SectionBlock>
 
           {/* ── FAQ ── */}
-          <SectionBlock title="❓ FAQ">
+          <SectionBlock title="❓ FAQ" headerRight={txBtn("faq_items", txFaqItems)}>
             <div style={{ gridColumn: "1 / -1" }}>
               {(viewData.faq_items ?? []).map((item, i) => (
                 <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "6px", marginBottom: "8px", alignItems: "start" }}>
@@ -1579,7 +1732,7 @@ ${base}
           </SectionBlock>
 
           {/* ── CTA покупки ── */}
-          <SectionBlock title="💰 Кнопка покупки (CTA)" open={!!data.purchase_cta}>
+          <SectionBlock title="💰 Кнопка покупки (CTA)" open={!!data.purchase_cta} headerRight={txBtn("purchase_cta", txPurchaseCta)}>
             <OptionalSection label="Секция" enabled={!!data.purchase_cta} onToggle={isRO ? () => {} : (v) => upd({ purchase_cta: v ? { title: "Открыть каталог", subtitle: "", priceBadge: "$2", features: [], buttonTitle: "Открыть каталог" } : null })}>
               {data.purchase_cta && <>
                 <Field label="Заголовок">
