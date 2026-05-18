@@ -974,6 +974,15 @@ ${base}
     }
   }
 
+  function txDescription() {
+    if (!data?.hero?.subtitle) return;
+    const subtitle = data.hero.subtitle;
+    doSectionTranslate("description", [{ key: "subtitle", text: subtitle }], (t) => ({
+      preview_card: { ...data!.preview_card, subtitle: t.subtitle ?? subtitle },
+      hero: { ...data!.hero, subtitle: t.subtitle ?? subtitle },
+    }));
+  }
+
   function txHero() {
     if (!data) return;
     const h = data.hero;
@@ -1621,6 +1630,23 @@ ${base}
           <SectionBlock title="⚙️ Порядок отображения" open={false}>
             <Field label="Порядок (меньше = выше в списке)">
               <input className="input" type="number" value={data.sort_order} onChange={(e) => upd({ sort_order: parseInt(e.target.value) || 0 })} style={{ maxWidth: "120px" }} />
+            </Field>
+          </SectionBlock>
+
+          {/* ── Описание каталога ── */}
+          <SectionBlock title="📝 Описание каталога" open headerRight={txBtn("description", txDescription)}>
+            <Field label="Описание" span hint="Показывается в белом блоке под hero. Одно поле — редактирует оба: preview_card.subtitle и hero.subtitle.">
+              <textarea
+                className="input"
+                rows={4}
+                style={{ resize: "vertical", ...(roStyle ?? {}) }}
+                readOnly={isRO}
+                value={viewData.hero?.subtitle ?? ""}
+                onChange={(e) => upd({
+                  hero: { ...data!.hero, subtitle: e.target.value },
+                  preview_card: { ...data!.preview_card, subtitle: e.target.value },
+                })}
+              />
             </Field>
           </SectionBlock>
 
