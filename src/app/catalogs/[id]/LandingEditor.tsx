@@ -394,14 +394,17 @@ function OptionalSection({ label, enabled, onToggle, children }: { label: string
   );
 }
 
-function BulletItemsList({ items, onChange, hideTitle, textPlaceholder }: { items: BulletItem[]; onChange: (v: BulletItem[]) => void; hideTitle?: boolean; textPlaceholder?: string }) {
+function BulletItemsList({ items, onChange, hideTitle, hideEmoji, titlePlaceholder, textPlaceholder }: { items: BulletItem[]; onChange: (v: BulletItem[]) => void; hideTitle?: boolean; hideEmoji?: boolean; titlePlaceholder?: string; textPlaceholder?: string }) {
+  const cols = hideTitle
+    ? (hideEmoji ? "1fr auto" : "52px 1fr auto")
+    : (hideEmoji ? "1fr 2fr auto" : "52px 1fr 2fr auto");
   return (
     <div style={{ gridColumn: "1 / -1" }}>
       <label className="form-label">Пункты</label>
       {items.map((item, i) => (
-        <div key={item.id} style={{ display: "grid", gridTemplateColumns: hideTitle ? "52px 1fr auto" : "52px 1fr 2fr auto", gap: "6px", marginBottom: "6px", alignItems: "start" }}>
-          <input className="input" placeholder="😊" value={item.emoji ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, emoji: e.target.value }; onChange(next); }} style={{ fontSize: "18px", textAlign: "center" }} />
-          {!hideTitle && <input className="input" placeholder="Заголовок" value={item.title ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, title: e.target.value }; onChange(next); }} />}
+        <div key={item.id} style={{ display: "grid", gridTemplateColumns: cols, gap: "6px", marginBottom: "6px", alignItems: "start" }}>
+          {!hideEmoji && <input className="input" placeholder="😊" value={item.emoji ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, emoji: e.target.value }; onChange(next); }} style={{ fontSize: "18px", textAlign: "center" }} />}
+          {!hideTitle && <input className="input" placeholder={titlePlaceholder ?? "Заголовок"} value={item.title ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, title: e.target.value }; onChange(next); }} />}
           <input className="input" placeholder={textPlaceholder ?? "Текст *"} value={item.text} onChange={(e) => { const next = [...items]; next[i] = { ...item, text: e.target.value }; onChange(next); }} />
           <button className="btn btn-secondary" onClick={() => onChange(items.filter((_, j) => j !== i))} style={{ color: "var(--accent-danger)", minWidth: "36px" }}>×</button>
         </div>
@@ -729,7 +732,7 @@ FAQ:
   "hero": { "title": "${cuisineName}", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "backgroundGradient": null },
   "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [ /* РОВНО _counts.inside элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"текст пункта (для акцентного цвета: **ключевые слова**)"} ] },
   "recipe_showcase": { "title": "..." },
-  "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [ /* РОВНО _counts.audience элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"каждый пункт из МОЙ КОНТЕНТ"} ] },
+  "audience_section": { "title": "Кому подойдёт?\nЭто точно про тебя, если…", "items": [ /* РОВНО _counts.audience элементов */ {"id":"uuid","emoji":null,"title":"ключевое слово (жирный)","text":"остальная часть фразы (серый)"} ] },
   "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [ /* РОВНО _counts.pairs элементов */ {"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"} ] },
   "benefits_section": { "title": "Преимущества", "subtitle": "...", "cards": [ /* РОВНО _counts.benefits элементов */ {"id":"uuid","eyebrow":"метка","title":"заголовок","text":"из МОЙ КОНТЕНТ"} ] },
   "faq_items": [ /* РОВНО _counts.faq элементов */ {"id":"uuid","question":"из МОЙ КОНТЕНТ","answer":"из МОЙ КОНТЕНТ"} ],
@@ -778,7 +781,7 @@ ${base}
     "hero": { "title": "...", "subtitle": "...", "badges": ["..."] },
     "inside_section": { "title": "What's inside", "subtitle": "...", "items": [{ "id": "SAME", "emoji": "SAME", "title": null, "text": "..." }] },
     "recipe_showcase": { "title": "..." },
-    "audience_section": { "title": "Who it's for", "subtitle": "...", "items": [{ "id": "SAME", "emoji": "SAME", "title": null, "text": "..." }] },
+    "audience_section": { "title": "Who it's for\nThis is exactly you, if…", "items": [{ "id": "SAME", "emoji": null, "title": "key word (bold)", "text": "rest of phrase (gray)" }] },
     "transformation_section": { "title": "Sound familiar?", "subtitle": null, "beforeLabel": "Before", "afterLabel": "After", "pairs": [{ "id": "SAME", "beforeText": "...", "afterText": "..." }] },
     "benefits_section": { "title": "Benefits", "subtitle": "...", "cards": [{ "id": "SAME", "eyebrow": "...", "title": "...", "text": "..." }] },
     "faq_items": [{ "id": "SAME", "question": "...", "answer": "..." }],
@@ -1006,11 +1009,11 @@ ${base}
     const sec = data.audience_section;
     const pairs: Array<{ key: string; text: string }> = [
       { key: "title", text: sec.title },
-      ...(sec.subtitle ? [{ key: "subtitle", text: sec.subtitle }] : []),
       ...sec.items.map((it, i) => ({ key: `i${i}`, text: it.text })),
+      ...sec.items.filter(it => it.title).map((it, i) => ({ key: `it${i}`, text: it.title! })),
     ];
     doSectionTranslate("audience_section", pairs, (t) => ({
-      audience_section: { title: t.title ?? sec.title, subtitle: t.subtitle, items: sec.items.map((it, i) => ({ id: it.id, emoji: it.emoji, title: it.title, text: t[`i${i}`] ?? it.text })) },
+      audience_section: { title: t.title ?? sec.title, items: sec.items.map((it, i) => ({ id: it.id, emoji: it.emoji, title: t[`it${i}`] ?? it.title, text: t[`i${i}`] ?? it.text })) },
     }));
   }
 
@@ -1643,15 +1646,18 @@ ${base}
 
           {/* ── Аудитория ── */}
           <SectionBlock title="👥 Секция «Кому подойдёт»" open={!!data.audience_section} headerRight={txBtn("audience_section", txAudienceSection)}>
-            <OptionalSection label="Секция" enabled={!!data.audience_section} onToggle={isRO ? () => {} : (v) => upd({ audience_section: v ? { title: "Кому подойдёт", subtitle: "", items: [] } : null })}>
+            <OptionalSection label="Секция" enabled={!!data.audience_section} onToggle={isRO ? () => {} : (v) => upd({ audience_section: v ? { title: "Кому подойдёт?\nЭто точно про тебя, если…", items: [] } : null })}>
               {data.audience_section && <>
-                <Field label="Заголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.audience_section?.title ?? ""} onChange={(e) => upd({ audience_section: { ...data.audience_section!, title: e.target.value } })} />
+                <Field label="Заголовок блока" span hint="Можно перенос строки через ↵. Например: «Кому подойдёт?↵Это точно про тебя, если…»">
+                  <textarea className="input" rows={2} style={{ resize: "vertical", ...(roStyle ?? {}) }} readOnly={isRO} value={viewData.audience_section?.title ?? ""} onChange={(e) => upd({ audience_section: { ...data.audience_section!, title: e.target.value } })} />
                 </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.audience_section?.subtitle ?? ""} onChange={(e) => upd({ audience_section: { ...data.audience_section!, subtitle: e.target.value } })} />
-                </Field>
-                <BulletItemsList items={viewData.audience_section?.items ?? []} onChange={isRO ? () => {} : (items) => upd({ audience_section: { ...data.audience_section!, items } })} />
+                <BulletItemsList
+                  items={viewData.audience_section?.items ?? []}
+                  onChange={isRO ? () => {} : (items) => upd({ audience_section: { ...data.audience_section!, items } })}
+                  hideEmoji
+                  titlePlaceholder="Ключевое слово (жирный тёмный)"
+                  textPlaceholder="Продолжение фразы (серый) *"
+                />
               </>}
             </OptionalSection>
           </SectionBlock>

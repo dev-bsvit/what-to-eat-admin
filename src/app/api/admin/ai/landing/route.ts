@@ -52,11 +52,10 @@ const SCHEMA_DESCRIPTION = `
     "title": string
   },
   "audience_section": {
-    "title": "Кому подойдёт",
-    "subtitle": string,
+    "title": "Кому подойдёт?\nЭто точно про тебя, если…",  // одно поле, перенос строки через \n
     "items": [                  // столько аудиторий, сколько реально подходит — не обрезай
-      {"id": "<uuid>", "emoji": string, "title": null, "text": string}
-      // ... повтори для каждой группы
+      {"id": "<uuid>", "emoji": null, "title": "ключевое слово (жирный тёмный)", "text": "остальная часть фразы (серый)"}
+      // title = первое слово/глагол, text = продолжение фразы
     ]
   },
   "transformation_section": {
