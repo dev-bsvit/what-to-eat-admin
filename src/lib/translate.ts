@@ -460,14 +460,9 @@ export async function translateLanding(
   });
   push("cta_button_title", content.cta_button_title);
 
-  // Protect **highlight** markers: replace ** with a token DeepL won't alter, restore after
-  const MARKER = "\u{E001}";
-  const encode = (s: string) => s.replace(/\*\*/g, MARKER);
-  const decode = (s: string) => s.replace(new RegExp(MARKER, "gu"), "**");
-
-  const translated = await translateBatch(pairs.map((p) => encode(p.text)), targetLang, sourceLang);
+  const translated = await translateBatch(pairs.map((p) => p.text), targetLang, sourceLang);
   const t: Record<string, string> = {};
-  pairs.forEach(({ key }, i) => { t[key] = decode(translated[i]); });
+  pairs.forEach(({ key }, i) => { t[key] = translated[i]; });
   const get = (key: string) => t[key] ?? undefined;
 
   return flatToNested(content, get);
