@@ -514,8 +514,8 @@ export default function LandingEditor({
       if (!prev) return prev;
       const updated: LandingData = {
         ...prev,
-        preview_card: { ...prev.preview_card, title: cuisineName, subtitle: cuisineDescription ?? prev.preview_card.subtitle },
-        hero: { ...prev.hero, title: cuisineName, subtitle: cuisineDescription ?? prev.hero.subtitle },
+        preview_card: { ...prev.preview_card, title: cuisineName, subtitle: cuisineDescription ||prev.preview_card.subtitle },
+        hero: { ...prev.hero, title: cuisineName, subtitle: cuisineDescription ||prev.hero.subtitle },
       };
       setJsonText(JSON.stringify(updated, null, 2));
       return updated;
@@ -535,8 +535,8 @@ export default function LandingEditor({
     const priceBadge = cuisinePrice ?? nextData.purchase_cta?.priceBadge ?? "$2";
     const synced: LandingData = {
       ...nextData,
-      preview_card: { ...nextData.preview_card, title: cuisineName, subtitle: cuisineDescription ?? nextData.preview_card.subtitle, imageUrl: img },
-      hero: { ...nextData.hero, title: cuisineName, subtitle: cuisineDescription ?? nextData.hero.subtitle, imageUrl: img, badges: nextData.preview_card.badges },
+      preview_card: { ...nextData.preview_card, title: cuisineName, subtitle: cuisineDescription ||nextData.preview_card.subtitle, imageUrl: img },
+      hero: { ...nextData.hero, title: cuisineName, subtitle: cuisineDescription ||nextData.hero.subtitle, imageUrl: img, badges: nextData.preview_card.badges },
       purchase_cta: nextData.purchase_cta ? { ...nextData.purchase_cta, priceBadge } : nextData.purchase_cta,
     };
     setData(synced);
@@ -826,8 +826,8 @@ ${base}
     const applied: LandingData = {
       ...raw2,
       cuisine_id: cuisineId,
-      preview_card: { ...raw2.preview_card, title: cuisineName, subtitle: cuisineDescription ?? raw2.preview_card.subtitle, imageUrl: img },
-      hero: { ...raw2.hero, title: cuisineName, subtitle: cuisineDescription ?? raw2.hero.subtitle, imageUrl: img, badges: raw2.preview_card.badges },
+      preview_card: { ...raw2.preview_card, title: cuisineName, subtitle: cuisineDescription ||raw2.preview_card.subtitle, imageUrl: img },
+      hero: { ...raw2.hero, title: cuisineName, subtitle: cuisineDescription ||raw2.hero.subtitle, imageUrl: img, badges: raw2.preview_card.badges },
       purchase_cta: raw2.purchase_cta ? { ...raw2.purchase_cta, priceBadge } : raw2.purchase_cta,
     };
     const effectiveTranslations = Object.keys(extractedTranslations).length > 0
@@ -1093,7 +1093,7 @@ ${base}
       const cuisineMeta = {
         _cuisine: {
           name: cuisineName,
-          description: cuisineDescription ?? undefined,
+          description: cuisineDescription ||undefined,
           price: cuisinePrice ?? undefined,
           recommendation: {
             levels: recommendationLevels,
@@ -1192,8 +1192,8 @@ ${base}
     if (cuisineName) {
       payload = {
         ...payload,
-        preview_card: { ...payload.preview_card, title: cuisineName, subtitle: cuisineDescription ?? payload.preview_card.subtitle },
-        hero: { ...payload.hero, title: cuisineName, subtitle: cuisineDescription ?? payload.hero.subtitle },
+        preview_card: { ...payload.preview_card, title: cuisineName, subtitle: cuisineDescription ||payload.preview_card.subtitle },
+        hero: { ...payload.hero, title: cuisineName, subtitle: cuisineDescription ||payload.hero.subtitle },
       };
     }
 
