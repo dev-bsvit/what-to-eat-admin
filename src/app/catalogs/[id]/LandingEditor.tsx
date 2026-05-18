@@ -492,6 +492,7 @@ export default function LandingEditor({
   const [translations, setTranslations] = useState<Record<string, unknown>>({});
   const [translationPasteText, setTranslationPasteText] = useState("");
   const [basePasteText, setBasePasteText] = useState("");
+  const [isTranslating, setIsTranslating] = useState(false);
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
 
@@ -892,6 +893,39 @@ ${base}
     }
   }
 
+  async function autoTranslate() {
+    if (!data) return;
+    setIsTranslating(true);
+    setSaveStatus("Переводим на 7 языков...");
+    try {
+      const res = await fetch("/api/admin/ai/translate-landing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ landingData: data, sourceLang: "ru" }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Ошибка перевода");
+      const tx = result.translations as Record<string, unknown>;
+      const merged = { ...translations, ...tx };
+      setTranslations(merged);
+      const saveRes = await fetch(`/api/admin/landings/${cuisineId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...data, translations: merged }),
+      });
+      const saveResult = await saveRes.json().catch(() => ({}));
+      if (saveRes.ok) {
+        setSaveStatus(`Переводы на 7 языков готовы ✅ (${new Date().toLocaleTimeString()})`);
+      } else {
+        setSaveStatus(`Переведено, ошибка сохранения: ${saveResult.error}`);
+      }
+    } catch (e) {
+      setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsTranslating(false);
+    }
+  }
+
   function switchToJson() {
     if (data) {
       const cuisineMeta = {
@@ -1278,15 +1312,24 @@ ${base}
           {/* Card 2: Translations */}
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-light)", borderRadius: "14px", padding: "20px", display: "flex", flexDirection: "column", gap: "12px" }}>
             <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--text-primary)" }}>Переводы</div>
+            <button
+              className="btn btn-primary"
+              onClick={autoTranslate}
+              disabled={!data || isTranslating}
+              style={{ borderRadius: "20px", fontSize: "14px", fontWeight: 700 }}
+            >
+              <Languages size={15} />
+              {isTranslating ? "Переводим..." : "Перевести автоматически (DeepL)"}
+            </button>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Скопируй промпт</span>
+              <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Или скопируй промпт для AI</span>
               <button
-                className="btn btn-primary"
+                className="btn btn-secondary"
                 onClick={copyTranslationPrompt}
                 disabled={!data}
                 style={{ borderRadius: "20px", fontSize: "13px", padding: "6px 16px" }}
               >
-                <Languages size={14} />
+                <Clipboard size={14} />
                 Скопировать
               </button>
             </div>
