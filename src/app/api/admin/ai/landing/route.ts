@@ -49,8 +49,7 @@ const SCHEMA_DESCRIPTION = `
     ]
   },
   "recipe_showcase": {
-    "title": string,
-    "subtitle": string
+    "title": string
   },
   "audience_section": {
     "title": "Кому подойдёт",

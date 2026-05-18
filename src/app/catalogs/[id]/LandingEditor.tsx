@@ -118,7 +118,7 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
         { id: uid(), emoji: "🛒", text: "Обычные ингредиенты без экзотики" },
       ],
     },
-    recipe_showcase: { title: "Примеры рецептов", subtitle: "Фото, сложность, время" },
+    recipe_showcase: { title: "Примеры рецептов" },
     audience_section: null,
     transformation_section: null,
     benefits_section: null,
@@ -728,7 +728,7 @@ FAQ:
   "preview_card": { "title": "${cuisineName}", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX", "backgroundGradient": null },
   "hero": { "title": "${cuisineName}", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "backgroundGradient": null },
   "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [ /* РОВНО _counts.inside элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"текст пункта (для акцентного цвета: **ключевые слова**)"} ] },
-  "recipe_showcase": { "title": "...", "subtitle": "..." },
+  "recipe_showcase": { "title": "..." },
   "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [ /* РОВНО _counts.audience элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"каждый пункт из МОЙ КОНТЕНТ"} ] },
   "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [ /* РОВНО _counts.pairs элементов */ {"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"} ] },
   "benefits_section": { "title": "Преимущества", "subtitle": "...", "cards": [ /* РОВНО _counts.benefits элементов */ {"id":"uuid","eyebrow":"метка","title":"заголовок","text":"из МОЙ КОНТЕНТ"} ] },
@@ -777,7 +777,7 @@ ${base}
     "preview_card": { "title": "...", "subtitle": "...", "badges": ["..."] },
     "hero": { "title": "...", "subtitle": "...", "badges": ["..."] },
     "inside_section": { "title": "What's inside", "subtitle": "...", "items": [{ "id": "SAME", "emoji": "SAME", "title": null, "text": "..." }] },
-    "recipe_showcase": { "title": "...", "subtitle": "..." },
+    "recipe_showcase": { "title": "..." },
     "audience_section": { "title": "Who it's for", "subtitle": "...", "items": [{ "id": "SAME", "emoji": "SAME", "title": null, "text": "..." }] },
     "transformation_section": { "title": "Sound familiar?", "subtitle": null, "beforeLabel": "Before", "afterLabel": "After", "pairs": [{ "id": "SAME", "beforeText": "...", "afterText": "..." }] },
     "benefits_section": { "title": "Benefits", "subtitle": "...", "cards": [{ "id": "SAME", "eyebrow": "...", "title": "...", "text": "..." }] },
@@ -996,12 +996,8 @@ ${base}
   function txRecipeShowcase() {
     if (!data?.recipe_showcase) return;
     const sec = data.recipe_showcase;
-    const pairs: Array<{ key: string; text: string }> = [
-      { key: "title", text: sec.title },
-      ...(sec.subtitle ? [{ key: "subtitle", text: sec.subtitle }] : []),
-    ];
-    doSectionTranslate("recipe_showcase", pairs, (t) => ({
-      recipe_showcase: { title: t.title ?? sec.title, subtitle: t.subtitle },
+    doSectionTranslate("recipe_showcase", [{ key: "title", text: sec.title }], (t) => ({
+      recipe_showcase: { title: t.title ?? sec.title },
     }));
   }
 
@@ -1636,15 +1632,12 @@ ${base}
 
           {/* ── Витрина рецептов ── */}
           <SectionBlock title="🍽️ Витрина рецептов" open={!!data.recipe_showcase} headerRight={txBtn("recipe_showcase", txRecipeShowcase)}>
-            <OptionalSection label="Секция" enabled={!!data.recipe_showcase} onToggle={isRO ? () => {} : (v) => upd({ recipe_showcase: v ? { title: "Примеры рецептов", subtitle: "" } : null })}>
-              {data.recipe_showcase && <>
-                <Field label="Заголовок">
+            <OptionalSection label="Секция" enabled={!!data.recipe_showcase} onToggle={isRO ? () => {} : (v) => upd({ recipe_showcase: v ? { title: "Примеры рецептов" } : null })}>
+              {data.recipe_showcase && (
+                <Field label="Заголовок" span hint="Одна строка — заголовок блока с рецептами">
                   <input className="input" style={roStyle} readOnly={isRO} value={viewData.recipe_showcase?.title ?? ""} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, title: e.target.value } })} />
                 </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.recipe_showcase?.subtitle ?? ""} onChange={(e) => upd({ recipe_showcase: { ...data.recipe_showcase!, subtitle: e.target.value } })} />
-                </Field>
-              </>}
+              )}
             </OptionalSection>
           </SectionBlock>
 
