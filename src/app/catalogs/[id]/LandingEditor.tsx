@@ -389,15 +389,15 @@ function OptionalSection({ label, enabled, onToggle, children }: { label: string
   );
 }
 
-function BulletItemsList({ items, onChange }: { items: BulletItem[]; onChange: (v: BulletItem[]) => void }) {
+function BulletItemsList({ items, onChange, hideTitle, textPlaceholder }: { items: BulletItem[]; onChange: (v: BulletItem[]) => void; hideTitle?: boolean; textPlaceholder?: string }) {
   return (
     <div style={{ gridColumn: "1 / -1" }}>
       <label className="form-label">Пункты</label>
       {items.map((item, i) => (
-        <div key={item.id} style={{ display: "grid", gridTemplateColumns: "52px 1fr 2fr auto", gap: "6px", marginBottom: "6px", alignItems: "start" }}>
+        <div key={item.id} style={{ display: "grid", gridTemplateColumns: hideTitle ? "52px 1fr auto" : "52px 1fr 2fr auto", gap: "6px", marginBottom: "6px", alignItems: "start" }}>
           <input className="input" placeholder="😊" value={item.emoji ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, emoji: e.target.value }; onChange(next); }} style={{ fontSize: "18px", textAlign: "center" }} />
-          <input className="input" placeholder="Заголовок" value={item.title ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, title: e.target.value }; onChange(next); }} />
-          <input className="input" placeholder="Текст *" value={item.text} onChange={(e) => { const next = [...items]; next[i] = { ...item, text: e.target.value }; onChange(next); }} />
+          {!hideTitle && <input className="input" placeholder="Заголовок" value={item.title ?? ""} onChange={(e) => { const next = [...items]; next[i] = { ...item, title: e.target.value }; onChange(next); }} />}
+          <input className="input" placeholder={textPlaceholder ?? "Текст *"} value={item.text} onChange={(e) => { const next = [...items]; next[i] = { ...item, text: e.target.value }; onChange(next); }} />
           <button className="btn btn-secondary" onClick={() => onChange(items.filter((_, j) => j !== i))} style={{ color: "var(--accent-danger)", minWidth: "36px" }}>×</button>
         </div>
       ))}
@@ -708,17 +708,19 @@ FAQ:
 - HEX без # (например FF375F)
 - "imageUrl" всегда null, "recipe_preview_ids" [], "is_published" false, "sort_order" 0
 - Для градиента можно оставить null или заполнить: { "startPoint":"topLeading", "endPoint":"bottomTrailing", "stops":[{"id":"uuid","colorHex":"192343","location":0,"opacity":100},{"id":"uuid","colorHex":"006DC8","location":100,"opacity":100}] }
+- Название каталога НЕ придумывай заново: preview_card.title и hero.title должны быть технически равны названию каталога "${cuisineName}". Маркетинговые формулировки пиши в subtitle и секциях.
 - Добавь блок "_cuisine.recommendation" для онбординга
 - ${CATALOG_RECOMMENDATION_PROMPT}
 - Тексты живые, дружелюбные, без канцелярита
+- В пунктах «Что внутри» выделяй ключевые слова акцентным цветом через **слово**: например "Экономишь **2 часа** каждый день"
 
 СТРУКТУРА JSON (items/pairs/cards/faq — по ТОЧНОМУ числу из "_counts"):
 {
   "_counts": { "inside": ТОЧНОЕ_ЧИСЛО, "audience": ТОЧНОЕ_ЧИСЛО, "pairs": ТОЧНОЕ_ЧИСЛО, "benefits": ТОЧНОЕ_ЧИСЛО, "faq": ТОЧНОЕ_ЧИСЛО },
   "_cuisine": { "recommendation": { "levels": ["beginner"], "times": ["from20to40"], "dietary": [], "tags": ["quick","simple"] } },
-  "preview_card": { "title": "до 40 символов", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX", "backgroundGradient": null },
-  "hero": { "title": "заголовок (\\n для переноса)", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "backgroundGradient": null },
-  "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [ /* РОВНО _counts.inside элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"каждый пункт из МОЙ КОНТЕНТ"} ] },
+  "preview_card": { "title": "${cuisineName}", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "accentHex": "HEX", "backgroundGradient": null },
+  "hero": { "title": "${cuisineName}", "subtitle": "1-2 предложения", "badges": ["значок1","значок2","значок3"], "imageUrl": null, "backgroundHex": "HEX", "overlayHex": "HEX", "backgroundGradient": null },
+  "inside_section": { "title": "Что внутри", "subtitle": "...", "items": [ /* РОВНО _counts.inside элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"текст пункта (для акцентного цвета: **ключевые слова**)"} ] },
   "recipe_showcase": { "title": "...", "subtitle": "..." },
   "audience_section": { "title": "Кому подойдёт", "subtitle": "...", "items": [ /* РОВНО _counts.audience элементов */ {"id":"uuid","emoji":"emoji","title":null,"text":"каждый пункт из МОЙ КОНТЕНТ"} ] },
   "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [ /* РОВНО _counts.pairs элементов */ {"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"} ] },
@@ -759,6 +761,8 @@ ${base}
 - id и emoji — НЕ меняй
 - Количество элементов в каждом массиве = точно такое же как в исходном JSON
 - Верни ТОЛЬКО валидный JSON без markdown-обёртки
+- Названия preview_card.title и hero.title не являются маркетинговыми заголовками лендинга. Они должны оставаться переводом названия каталога, без добавочных слоганов.
+- Маркеры **текст** сохраняй: переводи слова внутри, но оставляй звёздочки на месте — например "**2 часа**" → "**2 hours**"
 
 СТРУКТУРА ответа:
 {
@@ -1417,15 +1421,9 @@ ${base}
           {/* ── Секция «Что внутри» ── */}
           <SectionBlock title="📦 Секция «Что внутри»" open={!!data.inside_section}>
             <OptionalSection label="Секция" enabled={!!data.inside_section} onToggle={isRO ? () => {} : (v) => upd({ inside_section: v ? { title: "Что внутри", subtitle: "", items: [] } : null })}>
-              {data.inside_section && <>
-                <Field label="Заголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.inside_section?.title ?? ""} onChange={(e) => upd({ inside_section: { ...data.inside_section!, title: e.target.value } })} />
-                </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.inside_section?.subtitle ?? ""} onChange={(e) => upd({ inside_section: { ...data.inside_section!, subtitle: e.target.value } })} />
-                </Field>
-                <BulletItemsList items={viewData.inside_section?.items ?? []} onChange={isRO ? () => {} : (items) => upd({ inside_section: { ...data.inside_section!, items } })} />
-              </>}
+              {data.inside_section && (
+                <BulletItemsList items={viewData.inside_section?.items ?? []} onChange={isRO ? () => {} : (items) => upd({ inside_section: { ...data.inside_section!, items } })} hideTitle textPlaceholder="Текст пункта (используй **слово** для акцентного цвета)" />
+              )}
             </OptionalSection>
           </SectionBlock>
 

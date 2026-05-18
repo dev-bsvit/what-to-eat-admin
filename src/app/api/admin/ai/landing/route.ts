@@ -43,7 +43,8 @@ const SCHEMA_DESCRIPTION = `
     "title": "Что внутри",
     "subtitle": string,
     "items": [                  // столько пунктов, сколько реально есть в каталоге — не обрезай
-      {"id": "<uuid>", "emoji": string, "title": string|null, "text": string}
+      {"id": "<uuid>", "emoji": string, "title": null, "text": string}
+      // title всегда null; для акцентного цвета используй **слово** в тексте: "Экономишь **2 часа** в день"
       // ... повтори для каждого реального пункта
     ]
   },
@@ -160,6 +161,7 @@ ${contextBlock}
 - Добавь служебный блок _cuisine.recommendation для выбора подарка в онбординге
 - ${CATALOG_RECOMMENDATION_PROMPT}
 - Текст живой, дружелюбный, без канцелярита
+- В inside_section.items.text выделяй ключевые слова акцентным цветом через **слово**: "Экономишь **2 часа** каждый день"
 - Заголовки короткие и ёмкие
 - Секции transformation_section и benefits_section — обязательны, они продают
 - FAQ — 3-5 реальных вопросов покупателя
