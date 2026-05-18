@@ -69,11 +69,10 @@ const SCHEMA_DESCRIPTION = `
     ]
   },
   "benefits_section": {
-    "title": "Преимущества",
-    "subtitle": string,
+    "title": "",                  // не используется в UI — оставь пустым
     "cards": [                  // столько карточек, сколько реальных преимуществ — не обрезай
-      {"id": "<uuid>", "eyebrow": string, "title": string, "text": string}
-      // ... повтори
+      {"id": "<uuid>", "eyebrow": "короткая метка (Гибкость/Здоровье/…)", "title": string, "text": string}
+      // eyebrow = 1-2 слова, title = заголовок карточки, text = пояснение
     ]
   },
   "faq_items": [                // 3-5 реальных вопросов покупателя

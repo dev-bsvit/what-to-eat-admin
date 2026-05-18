@@ -734,7 +734,7 @@ FAQ:
   "recipe_showcase": { "title": "..." },
   "audience_section": { "title": "Кому подойдёт?\nЭто точно про тебя, если…", "items": [ /* РОВНО _counts.audience элементов */ {"id":"uuid","emoji":null,"title":"ключевое слово (жирный)","text":"остальная часть фразы (серый)"} ] },
   "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [ /* РОВНО _counts.pairs элементов */ {"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"} ] },
-  "benefits_section": { "title": "Преимущества", "subtitle": "...", "cards": [ /* РОВНО _counts.benefits элементов */ {"id":"uuid","eyebrow":"метка","title":"заголовок","text":"из МОЙ КОНТЕНТ"} ] },
+  "benefits_section": { "title": "", "cards": [ /* РОВНО _counts.benefits элементов */ {"id":"uuid","eyebrow":"короткая метка (Гибкость/Здоровье/…)","title":"заголовок карточки","text":"из МОЙ КОНТЕНТ"} ] },
   "faq_items": [ /* РОВНО _counts.faq элементов */ {"id":"uuid","question":"из МОЙ КОНТЕНТ","answer":"из МОЙ КОНТЕНТ"} ],
   "purchase_cta": { "title": "Открыть каталог", "subtitle": "...", "priceBadge": "${priceHint}", "features": [{"id":"uuid","icon":"book.closed","title":"N рецептов","subtitle":"внутри каталога"},{"id":"uuid","icon":"list.bullet.rectangle","title":"Пошаговые инструкции","subtitle":"без лишней теории"},{"id":"uuid","icon":"arrow.clockwise","title":"Обновления","subtitle":"бесплатно навсегда"}], "buttonTitle": "Открыть каталог" },
   "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "heroBackgroundGradient": null, "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
@@ -783,7 +783,7 @@ ${base}
     "recipe_showcase": { "title": "..." },
     "audience_section": { "title": "Who it's for\nThis is exactly you, if…", "items": [{ "id": "SAME", "emoji": null, "title": "key word (bold)", "text": "rest of phrase (gray)" }] },
     "transformation_section": { "title": "Sound familiar?", "subtitle": null, "beforeLabel": "Before", "afterLabel": "After", "pairs": [{ "id": "SAME", "beforeText": "...", "afterText": "..." }] },
-    "benefits_section": { "title": "Benefits", "subtitle": "...", "cards": [{ "id": "SAME", "eyebrow": "...", "title": "...", "text": "..." }] },
+    "benefits_section": { "title": "", "cards": [{ "id": "SAME", "eyebrow": "...", "title": "...", "text": "..." }] },
     "faq_items": [{ "id": "SAME", "question": "...", "answer": "..." }],
     "purchase_cta": { "title": "Open catalog", "subtitle": "...", "features": [{ "id": "SAME", "title": "...", "subtitle": "..." }], "buttonTitle": "Open catalog" }
   },
@@ -1046,18 +1046,14 @@ ${base}
   function txBenefitsSection() {
     if (!data?.benefits_section?.cards?.length) return;
     const sec = data.benefits_section;
-    const pairs: Array<{ key: string; text: string }> = [
-      { key: "title", text: sec.title },
-      ...(sec.subtitle ? [{ key: "subtitle", text: sec.subtitle }] : []),
-      ...sec.cards.flatMap((c, i) => [
-        ...(c.eyebrow ? [{ key: `e${i}`, text: c.eyebrow }] : []),
-        { key: `t${i}`, text: c.title },
-        { key: `x${i}`, text: c.text },
-      ]),
-    ];
+    const pairs: Array<{ key: string; text: string }> = sec.cards.flatMap((c, i) => [
+      ...(c.eyebrow ? [{ key: `e${i}`, text: c.eyebrow }] : []),
+      { key: `t${i}`, text: c.title },
+      { key: `x${i}`, text: c.text },
+    ]);
     doSectionTranslate("benefits_section", pairs, (t) => ({
       benefits_section: {
-        title: t.title ?? sec.title, subtitle: t.subtitle,
+        title: sec.title,
         cards: sec.cards.map((c, i) => ({ id: c.id, eyebrow: t[`e${i}`] ?? c.eyebrow, title: t[`t${i}`] ?? c.title, text: t[`x${i}`] ?? c.text })),
       },
     }));
@@ -1718,14 +1714,8 @@ ${base}
 
           {/* ── Преимущества ── */}
           <SectionBlock title="✨ Преимущества" open={!!data.benefits_section} headerRight={txBtn("benefits_section", txBenefitsSection)}>
-            <OptionalSection label="Секция" enabled={!!data.benefits_section} onToggle={isRO ? () => {} : (v) => upd({ benefits_section: v ? { title: "Преимущества", subtitle: "", cards: [] } : null })}>
+            <OptionalSection label="Секция" enabled={!!data.benefits_section} onToggle={isRO ? () => {} : (v) => upd({ benefits_section: v ? { title: "", cards: [] } : null })}>
               {data.benefits_section && <>
-                <Field label="Заголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.benefits_section?.title ?? ""} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, title: e.target.value } })} />
-                </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.benefits_section?.subtitle ?? ""} onChange={(e) => upd({ benefits_section: { ...data.benefits_section!, subtitle: e.target.value } })} />
-                </Field>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label className="form-label">Карточки</label>
                   {(viewData.benefits_section?.cards ?? []).map((card, i) => (
