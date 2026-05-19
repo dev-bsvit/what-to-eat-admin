@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import styles from "./notifications.module.css";
 
 type BroadcastType = "promo" | "system";
 type CtaAction = "none" | "subscription" | "catalog";
@@ -13,10 +14,36 @@ interface LogEntry {
   created_at: string;
 }
 
+const broadcastTypes: Array<{ value: BroadcastType; label: string; caption: string }> = [
+  { value: "promo", label: "Promo", caption: "Акции и обновления" },
+  { value: "system", label: "System", caption: "Сервисные сообщения" },
+];
+
+const ctaOptions: Array<{ value: CtaAction; label: string }> = [
+  { value: "none", label: "Без кнопки" },
+  { value: "subscription", label: "Подписка" },
+  { value: "catalog", label: "Каталог" },
+];
+
+const logTypeLabels: Record<string, string> = {
+  catalog: "Catalog",
+  promo: "Promo",
+  system: "System",
+};
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function NotificationsPage() {
   const [tab, setTab] = useState<"send" | "history">("send");
 
-  // Send form
   const [type, setType] = useState<BroadcastType>("promo");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -34,7 +61,6 @@ export default function NotificationsPage() {
     failures?: Array<{ tokenSuffix: string; reason: string; status?: number; error?: string }>;
   } | null>(null);
 
-  // History
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
@@ -116,358 +142,293 @@ export default function NotificationsPage() {
     }
   })();
 
-  return (
-    <div style={{ padding: "32px", maxWidth: "720px" }}>
-      <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "24px" }}>
-        🔔 Уведомления
-      </h1>
+  const resultText = sendResult?.ok
+    ? `Отправлено: ${sendResult.sent ?? 0} из ${sendResult.total ?? sendResult.sent ?? 0} устройств${
+        sendResult.failed
+          ? `, ошибок: ${sendResult.failed}: ${sendResult.failures?.[0]?.reason ?? "Unknown"}`
+          : ""
+      }${sendResult.reason ? `: ${sendResult.reason}` : ""}`
+    : `Ошибка: ${sendResult?.error ?? "Unknown"}`;
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
-        {(["send", "history"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            style={{
-              padding: "8px 18px",
-              borderRadius: "8px",
-              border: "none",
-              background: tab === t ? "#fff" : "transparent",
-              color: tab === t ? "#111" : "#666",
-              fontWeight: tab === t ? 600 : 400,
-              fontSize: "15px",
-              cursor: "pointer",
-              boxShadow: tab === t ? "0 1px 4px rgba(0,0,0,0.12)" : "none",
-            }}
-          >
-            {t === "send" ? "Отправить" : "История"}
-          </button>
-        ))}
+  return (
+    <div className={styles.page}>
+      <header className={styles.hero}>
+        <div className={styles.kicker}>Admin / Notifications</div>
+        <div className={styles.heroTop}>
+          <div>
+            <h1 className={styles.title}>Уведомления</h1>
+            <p className={styles.subtitle}>
+              Управление массовыми push-рассылками, сервисными сообщениями и ежедневной отправкой
+              новых каталогов.
+            </p>
+          </div>
+          <div className={styles.heroMeta} aria-label="Статус канала">
+            <span className={styles.inverseBadge}>APNs</span>
+            <span className={styles.outlineBadge}>Production</span>
+          </div>
+        </div>
+      </header>
+
+      <div className={styles.tabBar} role="tablist" aria-label="Разделы уведомлений">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "send"}
+          className={`${styles.tabButton} ${tab === "send" ? styles.tabButtonActive : ""}`}
+          onClick={() => setTab("send")}
+        >
+          Отправить
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "history"}
+          className={`${styles.tabButton} ${tab === "history" ? styles.tabButtonActive : ""}`}
+          onClick={() => setTab("history")}
+        >
+          История
+        </button>
       </div>
 
-      {/* ── Send Tab ── */}
       {tab === "send" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <div className={styles.sendGrid}>
+          <form className={`${styles.card} ${styles.formCard}`} onSubmit={handleSend}>
+            <div className={styles.cardHeader}>
+              <div>
+                <p className={styles.eyebrow}>Broadcast</p>
+                <h2 className={styles.cardTitle}>Рассылка пользователям</h2>
+              </div>
+              <span className={styles.neutralBadge}>{type}</span>
+            </div>
 
-          {/* Manual catalog ping */}
-          <div style={{
-            background: "#f8f8f8",
-            borderRadius: "12px",
-            padding: "20px",
-            border: "1px solid #e8e8e8",
-          }}>
-            <p style={{ fontWeight: 600, marginBottom: "8px" }}>🍽️ Каталог</p>
-            <p style={{ fontSize: "14px", color: "#666", marginBottom: "14px" }}>
-              Найти новые каталоги добавленные за последние 25ч и отправить пуш.
-              Запускается автоматически pg_cron в 21:00 UTC.
-            </p>
-            <button
-              type="button"
-              onClick={handleCatalogPing}
-              disabled={sending}
-              style={{
-                padding: "10px 20px",
-                borderRadius: "8px",
-                border: "none",
-                background: "#111",
-                color: "#fff",
-                fontSize: "14px",
-                fontWeight: 500,
-                cursor: sending ? "not-allowed" : "pointer",
-                opacity: sending ? 0.6 : 1,
-              }}
-            >
-              {sending ? "Отправка…" : "Запустить вручную"}
-            </button>
-          </div>
-
-          {/* Broadcast form */}
-          <form
-            onSubmit={handleSend}
-            style={{
-              background: "#f8f8f8",
-              borderRadius: "12px",
-              padding: "20px",
-              border: "1px solid #e8e8e8",
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px",
-            }}
-          >
-            <p style={{ fontWeight: 600, marginBottom: "4px" }}>📢 Рассылка</p>
-
-            {/* Type */}
-            <div>
-              <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
-                Тип
-              </label>
-              <div style={{ display: "flex", gap: "8px" }}>
-                {(["promo", "system"] as const).map((t) => (
+            <div className={styles.fieldGroup}>
+              <label className={styles.label}>Тип сообщения</label>
+              <div className={styles.segmentGroup}>
+                {broadcastTypes.map((option) => (
                   <button
-                    key={t}
+                    key={option.value}
                     type="button"
-                    onClick={() => setType(t)}
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: "6px",
-                      border: `2px solid ${type === t ? "#111" : "#ddd"}`,
-                      background: type === t ? "#111" : "#fff",
-                      color: type === t ? "#fff" : "#444",
-                      fontSize: "13px",
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
+                    className={`${styles.segmentButton} ${
+                      type === option.value ? styles.segmentButtonActive : ""
+                    }`}
+                    onClick={() => setType(option.value)}
+                    aria-pressed={type === option.value}
                   >
-                    {t === "promo" ? "🎁 Promo" : "⚙️ System"}
+                    <span>{option.label}</span>
+                    <small>{option.caption}</small>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Title */}
-            <div>
-              <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
+            <div className={styles.fieldGroup}>
+              <label className={styles.label} htmlFor="notification-title">
                 Заголовок
               </label>
               <input
+                id="notification-title"
+                className={styles.input}
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Заголовок уведомления"
                 required
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #ddd",
-                  fontSize: "15px",
-                  boxSizing: "border-box",
-                }}
               />
             </div>
 
-            {/* Body */}
-            <div>
-              <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
+            <div className={styles.fieldGroup}>
+              <label className={styles.label} htmlFor="notification-body">
                 Текст
               </label>
               <textarea
+                id="notification-body"
+                className={`${styles.input} ${styles.textarea}`}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Текст уведомления"
                 required
-                rows={3}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #ddd",
-                  fontSize: "15px",
-                  resize: "vertical",
-                  boxSizing: "border-box",
-                }}
+                rows={4}
               />
             </div>
 
-            <div>
-              <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
+            <div className={styles.fieldGroup}>
+              <label className={styles.label} htmlFor="notification-image">
                 URL изображения
               </label>
               <input
+                id="notification-image"
+                className={styles.input}
                 type="url"
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="https://..."
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #ddd",
-                  fontSize: "15px",
-                  boxSizing: "border-box",
-                }}
               />
-              <p style={{ marginTop: "6px", fontSize: "12px", color: "#777" }}>
+              <p className={styles.hint}>
                 Поле опционально. Если пусто, сообщение откроется без hero-изображения.
               </p>
-              {hasValidImageUrl && (
-                <div
-                  style={{
-                    marginTop: "10px",
-                    borderRadius: "14px",
-                    overflow: "hidden",
-                    border: "1px solid #e8e8e8",
-                    background: "#fff",
-                  }}
-                >
-                  <img
-                    src={imageUrl.trim()}
-                    alt="Preview"
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      maxHeight: "180px",
-                      objectFit: "cover",
-                    }}
-                  />
-                </div>
-              )}
             </div>
 
-            <div>
-              <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
-                Целевое действие кнопки
-              </label>
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                {([
-                  { value: "none", label: "Без кнопки" },
-                  { value: "subscription", label: "Подписка" },
-                  { value: "catalog", label: "Каталог" },
-                ] as const).map((option) => (
+            <div className={styles.fieldGroup}>
+              <label className={styles.label}>Целевое действие кнопки</label>
+              <div className={styles.pillGroup}>
+                {ctaOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
+                    className={`${styles.pillButton} ${
+                      ctaAction === option.value ? styles.pillButtonActive : ""
+                    }`}
                     onClick={() => setCtaAction(option.value)}
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: "6px",
-                      border: `2px solid ${ctaAction === option.value ? "#111" : "#ddd"}`,
-                      background: ctaAction === option.value ? "#111" : "#fff",
-                      color: ctaAction === option.value ? "#fff" : "#444",
-                      fontSize: "13px",
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
+                    aria-pressed={ctaAction === option.value}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              <p style={{ marginTop: "6px", fontSize: "12px", color: "#777" }}>
+              <p className={styles.hint}>
                 Кнопка внизу открытого сообщения появится только если здесь выбран переход.
               </p>
             </div>
 
             {ctaAction !== "none" && (
-              <div>
-                <label style={{ fontSize: "13px", color: "#555", display: "block", marginBottom: "6px" }}>
+              <div className={styles.fieldGroup}>
+                <label className={styles.label} htmlFor="notification-cta">
                   Текст кнопки
                 </label>
                 <input
+                  id="notification-cta"
+                  className={styles.input}
                   type="text"
                   value={ctaTitle}
                   onChange={(e) => setCtaTitle(e.target.value)}
                   placeholder={ctaAction === "subscription" ? "Открыть подписку" : "Открыть каталог"}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #ddd",
-                    fontSize: "15px",
-                    boxSizing: "border-box",
-                  }}
                 />
-                <p style={{ marginTop: "6px", fontSize: "12px", color: "#777" }}>
+                <p className={styles.hint}>
                   Поле опционально. Если пусто, приложение подставит дефолтный текст.
                 </p>
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={sending || !title.trim() || !body.trim()}
-              style={{
-                padding: "12px 24px",
-                borderRadius: "8px",
-                border: "none",
-                background: "#111",
-                color: "#fff",
-                fontSize: "15px",
-                fontWeight: 600,
-                cursor: sending ? "not-allowed" : "pointer",
-                opacity: sending || !title.trim() || !body.trim() ? 0.5 : 1,
-                alignSelf: "flex-start",
-              }}
-            >
-              {sending ? "Отправка…" : "Отправить всем"}
-            </button>
+            <div className={styles.formFooter}>
+              <button
+                type="submit"
+                className={styles.primaryButton}
+                disabled={sending || !title.trim() || !body.trim()}
+              >
+                {sending ? "Отправка..." : "Отправить всем"}
+              </button>
+              <span className={styles.footerHint}>Отправка идет по пользователям с активными токенами.</span>
+            </div>
+
+            {sendResult && (
+              <div className={`${styles.resultBox} ${sendResult.ok ? styles.resultSuccess : styles.resultError}`}>
+                {resultText}
+              </div>
+            )}
           </form>
 
-          {/* Result */}
-          {sendResult && (
-            <div style={{
-              padding: "14px 18px",
-              borderRadius: "10px",
-              background: sendResult.ok ? "#f0fdf4" : "#fff0f0",
-              border: `1px solid ${sendResult.ok ? "#bbf7d0" : "#fecaca"}`,
-              color: sendResult.ok ? "#166534" : "#991b1b",
-              fontSize: "14px",
-            }}>
-              {sendResult.ok
-                ? `✅ Отправлено: ${sendResult.sent ?? 0} из ${sendResult.total ?? sendResult.sent ?? 0} устройств${sendResult.failed ? `, ошибок: ${sendResult.failed}: ${sendResult.failures?.[0]?.reason ?? "Unknown"}` : ""}${sendResult.reason ? `: ${sendResult.reason}` : ""}`
-                : `❌ Ошибка: ${sendResult.error}`}
-            </div>
-          )}
+          <aside className={styles.sideStack}>
+            <section className={styles.card}>
+              <div className={styles.cardHeader}>
+                <div>
+                  <p className={styles.eyebrow}>Catalog Automation</p>
+                  <h2 className={styles.cardTitle}>Новые каталоги</h2>
+                </div>
+                <span className={styles.outlineBadge}>Cron</span>
+              </div>
+              <p className={styles.cardText}>
+                Найти новые каталоги добавленные за последние 25ч и отправить пуш. Запускается
+                автоматически Vercel Cron в 10:00 UTC.
+              </p>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={handleCatalogPing}
+                disabled={sending}
+              >
+                {sending ? "Отправка..." : "Запустить вручную"}
+              </button>
+            </section>
+
+            <section className={styles.card}>
+              <div className={styles.cardHeader}>
+                <div>
+                  <p className={styles.eyebrow}>Preview</p>
+                  <h2 className={styles.cardTitle}>Карточка сообщения</h2>
+                </div>
+              </div>
+
+              <div className={styles.preview}>
+                {hasValidImageUrl && (
+                  <img className={styles.previewImage} src={imageUrl.trim()} alt="Preview" />
+                )}
+                <div className={styles.previewContent}>
+                  <div className={styles.previewTopline}>
+                    <span className={styles.inverseBadge}>{type}</span>
+                    {ctaAction !== "none" && <span className={styles.neutralBadge}>{ctaAction}</span>}
+                  </div>
+                  <h3>{title.trim() || "Заголовок уведомления"}</h3>
+                  <p>{body.trim() || "Текст сообщения будет показан здесь перед отправкой."}</p>
+                  {ctaAction !== "none" && (
+                    <div className={styles.previewCta}>
+                      {ctaTitle.trim() || (ctaAction === "subscription" ? "Открыть подписку" : "Открыть каталог")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          </aside>
         </div>
       )}
 
-      {/* ── History Tab ── */}
       {tab === "history" && (
-        <div>
+        <section className={styles.card}>
+          <div className={styles.cardHeader}>
+            <div>
+              <p className={styles.eyebrow}>Delivery Log</p>
+              <h2 className={styles.cardTitle}>История отправок</h2>
+            </div>
+            <button
+              type="button"
+              className={styles.ghostButton}
+              onClick={loadLogs}
+              disabled={logsLoading}
+            >
+              {logsLoading ? "Обновление..." : "Обновить"}
+            </button>
+          </div>
+
           {logsLoading ? (
-            <p style={{ color: "#666" }}>Загрузка…</p>
+            <div className={styles.emptyState}>Загрузка истории...</div>
           ) : logs.length === 0 ? (
-            <p style={{ color: "#666" }}>История пуста</p>
+            <div className={styles.emptyState}>История пуста</div>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #e8e8e8" }}>
-                  {["Тип", "Отправлено", "Дата"].map((h) => (
-                    <th
-                      key={h}
-                      style={{ textAlign: "left", padding: "8px 12px", color: "#555", fontWeight: 600 }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((log) => (
-                  <tr key={log.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <td style={{ padding: "10px 12px" }}>
-                      <span style={{
-                        padding: "2px 8px",
-                        borderRadius: "4px",
-                        fontSize: "12px",
-                        fontWeight: 500,
-                        background:
-                          log.type === "catalog" ? "#dbeafe" :
-                          log.type === "promo"   ? "#fef9c3" : "#f3f4f6",
-                        color:
-                          log.type === "catalog" ? "#1d4ed8" :
-                          log.type === "promo"   ? "#854d0e" : "#374151",
-                      }}>
-                        {log.type}
-                      </span>
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>{log.sent_count}</td>
-                    <td style={{ padding: "10px 12px", color: "#666" }}>
-                      {new Date(log.created_at).toLocaleString("ru-RU", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </td>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Тип</th>
+                    <th>Reference</th>
+                    <th>Отправлено</th>
+                    <th>Дата</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {logs.map((log) => (
+                    <tr key={log.id}>
+                      <td>
+                        <span className={styles.neutralBadge}>{logTypeLabels[log.type] ?? log.type}</span>
+                      </td>
+                      <td className={styles.monoCell}>{log.reference_id ?? "-"}</td>
+                      <td>{log.sent_count}</td>
+                      <td className={styles.mutedCell}>{formatDate(log.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </section>
       )}
     </div>
   );
