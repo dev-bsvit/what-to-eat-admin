@@ -327,6 +327,88 @@ function GradientField({
   );
 }
 
+function CardSizeSwitch({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value?: "large" | "small";
+  onChange: (value: "large" | "small") => void;
+  compact?: boolean;
+}) {
+  const isSmall = value !== "large";
+
+  return (
+    <label
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        minWidth: compact ? 184 : undefined,
+        padding: compact ? "5px 8px 5px 12px" : "10px 12px",
+        border: "1px solid var(--border-light)",
+        borderRadius: compact ? 9999 : 14,
+        background: "var(--bg-surface)",
+        cursor: "pointer",
+      }}
+    >
+      <span style={{ display: "grid", gap: 1 }}>
+        <span style={{ fontSize: compact ? 12 : 13, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.2 }}>
+          Маленькая карточка
+        </span>
+        {!compact && (
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.35 }}>
+            Выключено = большая карточка
+          </span>
+        )}
+      </span>
+      <span
+        style={{
+          position: "relative",
+          width: 38,
+          height: 22,
+          borderRadius: 9999,
+          background: isSmall ? "var(--color-deep-black, #000)" : "var(--color-ghost-gray, #f2f2f2)",
+          border: `1px solid ${isSmall ? "var(--color-deep-black, #000)" : "var(--border-light)"}`,
+          transition: "background 0.15s ease, border-color 0.15s ease",
+          flex: "0 0 auto",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={isSmall}
+          onChange={(e) => onChange(e.target.checked ? "small" : "large")}
+          aria-label="Маленькая карточка"
+          role="switch"
+          style={{
+            position: "absolute",
+            inset: 0,
+            margin: 0,
+            opacity: 0,
+            cursor: "pointer",
+          }}
+        />
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 2,
+            left: 2,
+            width: 16,
+            height: 16,
+            borderRadius: 9999,
+            background: isSmall ? "var(--color-canvas-white, #fff)" : "var(--color-midtone-gray, #737373)",
+            transform: isSmall ? "translateX(16px)" : "translateX(0)",
+            transition: "transform 0.15s ease, background 0.15s ease",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.18)",
+          }}
+        />
+      </span>
+    </label>
+  );
+}
+
 
 function OptionalSection({ label, enabled, onToggle, children }: { label: string; enabled: boolean; onToggle: (v: boolean) => void; children?: React.ReactNode }) {
   return (
@@ -883,7 +965,33 @@ ${base}
     }));
   }
 
-function txInsideSection() {
+  function updateCatalogName(name: string) {
+    onCuisineImport?.({ name });
+    setData(prev => {
+      if (!prev) return prev;
+      const next: LandingData = {
+        ...prev,
+        preview_card: { ...prev.preview_card, title: name },
+        hero: { ...prev.hero, title: name },
+      };
+      setJsonText(JSON.stringify(next, null, 2));
+      return next;
+    });
+  }
+
+  function txCatalogName() {
+    const name = (data?.preview_card?.title || data?.hero?.title || cuisineName).trim();
+    if (!name) {
+      setSaveStatus("Нет названия для перевода");
+      return;
+    }
+    doSectionTranslate("catalog_name", [{ key: "name", text: name }], (t) => ({
+      preview_card: { title: t.name ?? name },
+      hero: { title: t.name ?? name },
+    }));
+  }
+
+  function txInsideSection() {
     if (!data?.inside_section?.items?.length) return;
     const items = data.inside_section.items;
     doSectionTranslate("inside_section", items.map((it, i) => ({ key: `i${i}`, text: it.text })), (t) => ({
@@ -1194,9 +1302,9 @@ function txInsideSection() {
     });
   };
 
-  const txBtn = (section: string, fn: () => void) => (
+  const txBtn = (section: string, fn: () => void, label = "Перевести") => (
     <button type="button" className="btn btn-secondary" onClick={fn} disabled={!!translatingSection} style={{ fontSize: "12px", padding: "3px 10px", borderRadius: "12px" }}>
-      <Languages size={12} />{translatingSection === section ? "..." : "Перевести"}
+      <Languages size={12} />{translatingSection === section ? "..." : label}
     </button>
   );
 
@@ -1498,15 +1606,11 @@ function txInsideSection() {
               onChange={(e) => upd({ sort_order: parseInt(e.target.value) || 0 })}
             />
           </Field>
-          <Field label="Размер карточки">
-            <select
-              className="input"
-              value={data.card_size ?? "small"}
-              onChange={(e) => upd({ card_size: e.target.value as "large" | "small" })}
-            >
-              <option value="small">small</option>
-              <option value="large">large</option>
-            </select>
+          <Field label="Размер карточки" hint="Настраивает вид карточки каталога в общем списке.">
+            <CardSizeSwitch
+              value={data.card_size}
+              onChange={(card_size) => upd({ card_size })}
+            />
           </Field>
         </div>
       </div>
@@ -1564,15 +1668,11 @@ function txInsideSection() {
             <Languages size={13} />
             {translationCount}/7 переводов
           </span>
-          <button
-            type="button"
-            className={data.card_size === "large" ? "btn btn-primary" : "btn btn-secondary"}
-            onClick={() => upd({ card_size: data.card_size === "large" ? "small" : "large" })}
-            style={{ fontSize: "13px" }}
-            title="Размер карточки в разделе Исследовать"
-          >
-            {data.card_size === "large" ? "Большая карточка" : "Маленькая карточка"}
-          </button>
+          <CardSizeSwitch
+            value={data.card_size}
+            onChange={(card_size) => upd({ card_size })}
+            compact
+          />
         </div>
       </div>
 
@@ -1683,6 +1783,18 @@ function txInsideSection() {
       {mode === "form" && (
         <>
         <div>
+          <SectionBlock title="Название каталога" open headerRight={txBtn("catalog_name", txCatalogName, "Перевести название")}>
+            <Field label="Название" span hint="Это основное название каталога. Оно синхронно используется в hero и маленькой карточке лендинга.">
+              <input
+                className="input"
+                style={roStyle}
+                readOnly={isRO}
+                value={viewData.preview_card?.title ?? viewData.hero?.title ?? cuisineName}
+                onChange={(e) => updateCatalogName(e.target.value)}
+              />
+            </Field>
+          </SectionBlock>
+
           <div className={styles.panel} style={{ padding: 16, marginBottom: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap" }}>
               <div>
