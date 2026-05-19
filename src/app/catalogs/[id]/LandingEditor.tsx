@@ -489,6 +489,7 @@ export default function LandingEditor({
   const [basePasteText, setBasePasteText] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
   const [isSyncingNames, setIsSyncingNames] = useState(false);
+  const [isTranslatingName, setIsTranslatingName] = useState(false);
   const [translatingSection, setTranslatingSection] = useState<string | null>(null);
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
@@ -919,6 +920,21 @@ ${base}
       setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsTranslating(false);
+    }
+  }
+
+  async function translateCatalogName() {
+    setIsTranslatingName(true);
+    setSaveStatus("Переводим название каталога...");
+    try {
+      const res = await fetch(`/api/admin/landings/${cuisineId}/translate-name`, { method: "POST" });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Ошибка перевода");
+      setSaveStatus(`Название каталога переведено на ${result.synced} языков ✅`);
+    } catch (e) {
+      setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsTranslatingName(false);
     }
   }
 
@@ -1507,19 +1523,27 @@ ${base}
       {/* ── Form mode ── */}
       {mode === "form" && (
         <>
-          {/* Sync name button */}
-          <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* Name sync/translate buttons */}
+          <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              className="btn btn-secondary"
+              onClick={translateCatalogName}
+              disabled={!data || isTranslatingName}
+              style={{ borderRadius: "20px", fontSize: "13px", fontWeight: 600 }}
+            >
+              <Languages size={14} />
+              {isTranslatingName ? "Переводим..." : "Перевести название (DeepL)"}
+            </button>
             <button
               className="btn btn-secondary"
               onClick={syncCatalogNames}
               disabled={!data || isSyncingNames}
               style={{ borderRadius: "20px", fontSize: "13px", fontWeight: 600 }}
             >
-              <Languages size={14} />
               {isSyncingNames ? "Синхронизируем..." : "Синхронизировать название"}
             </button>
             <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-              Обновляет название каталога на всех языках в приложении (без повторного перевода)
+              Перевести — если название ещё не переведено. Синхронизировать — если переводы уже есть.
             </span>
           </div>
 
