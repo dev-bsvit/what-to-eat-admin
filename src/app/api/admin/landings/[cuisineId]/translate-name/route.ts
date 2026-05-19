@@ -82,7 +82,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       source_name: sourceName,
-      translations: nameByLang,
+      name_by_lang: nameByLang,
+      full_translations: updatedTranslations,
       synced: nameRows.length,
     });
   } catch (err) {

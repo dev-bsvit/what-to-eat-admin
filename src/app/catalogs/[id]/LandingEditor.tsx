@@ -930,7 +930,8 @@ ${base}
       const res = await fetch(`/api/admin/landings/${cuisineId}/translate-name`, { method: "POST" });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Ошибка перевода");
-      setSaveStatus(`Название каталога переведено на ${result.synced} языков ✅`);
+      if (result.full_translations) setTranslations(result.full_translations);
+      setSaveStatus(`Название переведено на ${result.synced} языков ✅ — нажми «Сохранить» для применения`);
     } catch (e) {
       setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -1161,7 +1162,7 @@ ${base}
     }
   }
 
-  async function saveLanding(): Promise<"saved" | "local" | "error"> {
+  async function saveLanding(publishOverride?: boolean): Promise<"saved" | "local" | "error"> {
     let payload = data;
     // effectiveTranslations: either freshly extracted from JSON or current state
     // Must be a local variable because setTranslations() is async and won't update
@@ -1185,6 +1186,8 @@ ${base}
       }
     }
     if (!payload) return "error";
+
+    if (publishOverride !== undefined) payload = { ...payload, is_published: publishOverride };
 
     // Always use cuisineName as the authoritative title (overrides any stale value in data)
     if (cuisineName) {
@@ -1387,7 +1390,6 @@ ${base}
             <Languages size={13} />
             {translationCount}/7 переводов
           </span>
-          {/* Card size toggle */}
           <button
             type="button"
             className={data.card_size === "large" ? "btn btn-primary" : "btn btn-secondary"}
@@ -1399,20 +1401,25 @@ ${base}
           </button>
           <button
             type="button"
-            className={data.is_published ? "btn btn-success" : "btn btn-secondary"}
-            onClick={() => upd({ is_published: !data.is_published })}
+            className="btn btn-secondary"
+            onClick={() => saveLanding(false)}
             style={{ fontSize: "13px" }}
+            title="Сохранить без публикации"
+          >
+            <Save size={14} />
+            Черновик
+          </button>
+          <button
+            type="button"
+            className="btn btn-success"
+            onClick={() => saveLanding(true)}
+            style={{ fontSize: "13px", fontWeight: 700 }}
           >
             <CheckCircle2 size={14} />
-            {data.is_published ? "Опубликован" : "Черновик"}
-          </button>
-          <button type="button" className="btn btn-primary" onClick={saveLanding} style={{ fontSize: "13px" }}>
-            <Save size={14} />
-            Сохранить
+            Сохранить и опубликовать
           </button>
           <button type="button" className="btn btn-danger" onClick={deleteLanding} style={{ fontSize: "13px" }}>
             <Trash2 size={14} />
-            Удалить
           </button>
         </div>
       </div>
