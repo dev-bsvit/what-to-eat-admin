@@ -81,11 +81,30 @@ export async function POST(
       return NextResponse.json({ error: saveError.message }, { status: 500 });
     }
 
+    // ── 4. Sync translated catalog names to cuisine_translations ──────────
+    const nameRows = Object.entries(allTranslations)
+      .filter(([lang]) => lang !== sourceLang)
+      .flatMap(([lang, t]) => {
+        const title = (t as unknown as { hero?: { title?: string } })?.hero?.title;
+        if (!title?.trim()) return [];
+        return [{ cuisine_id: cuisineId, language_code: lang, name: title }];
+      });
+
+    if (nameRows.length > 0) {
+      const { error: namesSyncError } = await supabaseAdmin
+        .from("cuisine_translations")
+        .upsert(nameRows, { onConflict: "cuisine_id,language_code" });
+      if (namesSyncError) {
+        console.warn("[translate landing] cuisine_translations sync failed:", namesSyncError.message);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       cuisine_id: cuisineId,
       source_language: sourceLang,
       languages_translated: Object.keys(allTranslations).filter((l) => l !== sourceLang),
+      names_synced: nameRows.length,
     });
   } catch (err) {
     console.error("[translate landing]", err);

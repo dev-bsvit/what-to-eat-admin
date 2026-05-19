@@ -109,6 +109,25 @@ export async function POST(
       }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+
+    // Sync translated catalog names to cuisine_translations when translations are present
+    if (body.translations && typeof body.translations === "object" && !Array.isArray(body.translations)) {
+      const nameRows = Object.entries(body.translations as Record<string, unknown>)
+        .flatMap(([lang, t]) => {
+          const title = (t as unknown as { hero?: { title?: string } })?.hero?.title;
+          if (!title?.trim()) return [];
+          return [{ cuisine_id: cuisineId, language_code: lang, name: title }];
+        });
+      if (nameRows.length > 0) {
+        const { error: namesSyncError } = await supabaseAdmin
+          .from("cuisine_translations")
+          .upsert(nameRows, { onConflict: "cuisine_id,language_code" });
+        if (namesSyncError) {
+          console.warn("[landings POST] cuisine_translations sync failed:", namesSyncError.message);
+        }
+      }
+    }
+
     return NextResponse.json({ data });
   } catch (error) {
     return NextResponse.json(

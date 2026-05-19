@@ -927,7 +927,7 @@ ${base}
       });
       const saveResult = await saveRes.json().catch(() => ({}));
       if (saveRes.ok) {
-        setSaveStatus(`Переводы на 7 языков готовы ✅ (${new Date().toLocaleTimeString()})`);
+        setSaveStatus(`Переводы на 7 языков готовы ✅ — название каталога обновлено везде (${new Date().toLocaleTimeString()})`);
       } else {
         setSaveStatus(`Переведено, ошибка сохранения: ${saveResult.error}`);
       }
@@ -1492,6 +1492,9 @@ ${base}
               <Languages size={15} />
               {isTranslating ? "Переводим..." : "Перевести автоматически (DeepL)"}
             </button>
+            <div style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.4 }}>
+              Переводит все тексты лендинга на 7 языков и автоматически обновляет название каталога во всём приложении.
+            </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>Или скопируй промпт для AI</span>
               <button
