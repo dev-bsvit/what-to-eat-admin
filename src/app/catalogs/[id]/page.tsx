@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, BookOpen, Camera, FolderOpen, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Camera, FolderOpen, Plus, Save, Trash2 } from "lucide-react";
 import LandingEditor from "./LandingEditor";
 import {
   CATALOG_DIETARY_OPTIONS,
@@ -136,7 +136,7 @@ export default function CatalogDetailPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("");
-  const [activeTab, setActiveTab] = useState<"catalog" | "recipes">("catalog");
+  const [activeTab, setActiveTab] = useState<"settings" | "landing" | "translations" | "recipes" | "technical">("settings");
   const [triggerLandingSave, setTriggerLandingSave] = useState(0);
   const [isSavingAll, setIsSavingAll] = useState(false);
 
@@ -244,22 +244,24 @@ export default function CatalogDetailPage() {
 
   async function saveAll() {
     setIsSavingAll(true);
-    await handleSaveCuisine();
-    setTriggerLandingSave(v => v + 1);
+    const savedCatalog = await handleSaveCuisine();
+    if (savedCatalog) {
+      setTriggerLandingSave(v => v + 1);
+    }
     setIsSavingAll(false);
   }
 
-  async function handleSaveCuisine() {
+  async function handleSaveCuisine(): Promise<boolean> {
     if (!editForm.name.trim()) {
       alert("Название обязательно");
-      return;
+      return false;
     }
 
     const nextCatalogId = editForm.catalog_id.trim();
 
     if (editForm.type === "premium" && !nextCatalogId) {
       alert("Для premium каталога нужно выбрать Catalog ID (StoreKit)");
-      return;
+      return false;
     }
 
     if ((editForm.type === "premium" || editForm.type === "gift") && (
@@ -268,7 +270,7 @@ export default function CatalogDetailPage() {
       editForm.recommendation_tags.length === 0
     )) {
       alert("Для premium/gift каталога выберите уровень, время и общие теги для подарка");
-      return;
+      return false;
     }
 
     setSaveStatus("Сохраняю...");
@@ -307,12 +309,14 @@ export default function CatalogDetailPage() {
       const result = await response.json();
       if (!response.ok) {
         setSaveStatus(`Ошибка: ${result.error || "не удалось сохранить"}`);
-        return;
+        return false;
       }
       setCuisine(result.data || cuisine);
       setSaveStatus("Готово");
+      return true;
     } catch {
       setSaveStatus("Ошибка: не удалось подключиться");
+      return false;
     }
   }
 
@@ -363,44 +367,40 @@ export default function CatalogDetailPage() {
         </span>
       </div>
 
-      {/* Header */}
-      <div className="section-header" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h1 className="section-title">
-          {cuisine.name}
-        </h1>
-        <p className="section-subtitle">{recipes.length} рецептов в каталоге</p>
-      </div>
-
-      {/* Actions */}
-      <div className={styles.actionBar}>
-        <button
-          className="btn-large btn-primary"
-          onClick={createRecipe}
-        >
-          <Plus size={16} />
-          Добавить рецепт в этот каталог
-        </button>
-        <button
-          className="btn-large btn-secondary"
-          onClick={() => router.push(`/instagram-import?cuisine_id=${cuisine.id}`)}
-        >
-          <Camera size={16} />
-          Импорт из Instagram
-        </button>
-        <button
-          className="btn-large btn-secondary"
-          onClick={goBack}
-        >
-          <ArrowLeft size={16} />
-          Назад
-        </button>
+      <div className="page-header" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <div className="section-header">
+          <h1 className="section-title">
+            {cuisine.name}
+          </h1>
+          <p className="section-subtitle">
+            Настройки каталога, лендинг, переводы и рецепты в одном рабочем сценарии
+          </p>
+          <div className={styles.metricStrip}>
+            <span className={styles.metric}><BookOpen size={14} /> {recipes.length} рецептов</span>
+            <span className={styles.metric}>{editForm.type || "free"}</span>
+            <span className={styles.metric}>{editForm.status || "active"}</span>
+          </div>
+        </div>
+        <div className={styles.actionBar} style={{ margin: 0 }}>
+          <button className="btn-large btn-secondary" onClick={goBack}>
+            <ArrowLeft size={16} />
+            Назад
+          </button>
+          <button className="btn-large btn-primary" onClick={saveAll} disabled={isSavingAll}>
+            <Save size={16} />
+            {isSavingAll ? "Сохраняю..." : "Сохранить"}
+          </button>
+        </div>
       </div>
 
       {/* Tab navigation */}
       <div className={styles.tabs}>
         {([
-          { key: 'catalog', label: 'Каталог' },
+          { key: 'settings', label: 'Настройки' },
+          { key: 'landing', label: 'Лендинг' },
+          { key: 'translations', label: 'Переводы' },
           { key: 'recipes', label: `Рецепты (${recipes.length})` },
+          { key: 'technical', label: 'Техническое' },
         ] as const).map(({ key, label }) => (
           <button
             key={key}
@@ -412,9 +412,7 @@ export default function CatalogDetailPage() {
         ))}
       </div>
 
-      {/* Tab: Каталог (настройки + лендинг объединены) */}
-      {activeTab === 'catalog' && <>
-        {/* Basic settings card */}
+      {activeTab === 'settings' && (
         <div className={styles.panel} style={{ padding: 16, marginBottom: 16 }}>
           <h2 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>
             Основное
@@ -602,49 +600,10 @@ export default function CatalogDetailPage() {
             </div>
           )}
 
-          <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
-            <button className="btn btn-primary" onClick={saveAll} disabled={isSavingAll}>
-              {isSavingAll ? 'Сохраняю...' : 'Сохранить всё'}
-            </button>
-          </div>
-
-          {/* Technical section — collapsed */}
-          <details className={styles.technical}>
-            <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', userSelect: 'none', padding: '6px 0' }}>
-              Системная информация
-            </summary>
-            <div className={styles.settingsGrid} style={{ marginTop: 10 }}>
-              <div className="form-group">
-                <label className="form-label" style={{ fontSize: 11 }}>UUID</label>
-                <input className="input" value={editForm.id} readOnly style={{ opacity: 0.5, fontSize: 12 }} />
-              </div>
-              <div className="form-group">
-                <label className="form-label" style={{ fontSize: 11 }}>Статус</label>
-                <select className="input" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
-                  <option value="active">active</option>
-                  <option value="archived">archived</option>
-                  <option value="hidden">hidden</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" style={{ fontSize: 11 }}>Модерация</label>
-                <select className="input" value={editForm.moderation_status} onChange={(e) => setEditForm({ ...editForm, moderation_status: e.target.value })}>
-                  <option value="pending">pending</option>
-                  <option value="approved">approved</option>
-                  <option value="rejected">rejected</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label" style={{ fontSize: 11 }}>Покупки / Скачивания</label>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input className="input" type="number" placeholder="покупки" value={editForm.purchases_count} onChange={(e) => setEditForm({ ...editForm, purchases_count: e.target.value })} />
-                  <input className="input" type="number" placeholder="скачив." value={editForm.downloads_count} onChange={(e) => setEditForm({ ...editForm, downloads_count: e.target.value })} />
-                </div>
-              </div>
-            </div>
-          </details>
         </div>
+      )}
 
+      <div style={{ display: activeTab === "landing" || activeTab === "translations" ? undefined : "none" }}>
         <LandingEditor
           cuisineId={cuisineId}
           cuisineName={editForm.name}
@@ -657,11 +616,25 @@ export default function CatalogDetailPage() {
           recommendationTags={editForm.recommendation_tags}
           saveTrigger={triggerLandingSave}
           onCuisineImport={handleCuisineImport}
+          view={activeTab === "translations" ? "translations" : "landing"}
         />
-      </>}
+      </div>
 
       {/* Tab: Recipes */}
       {activeTab === 'recipes' && <>
+      <div className={styles.actionBar} style={{ marginTop: 0 }}>
+        <button className="btn-large btn-primary" onClick={createRecipe}>
+          <Plus size={16} />
+          Добавить рецепт
+        </button>
+        <button
+          className="btn-large btn-secondary"
+          onClick={() => router.push(`/instagram-import?cuisine_id=${cuisine.id}`)}
+        >
+          <Camera size={16} />
+          Импортировать рецепт из Instagram
+        </button>
+      </div>
       {/* Recipe Grid - small cards */}
       <div className={styles.recipeGrid}>
         {recipes.map((recipe) => (
@@ -783,6 +756,52 @@ export default function CatalogDetailPage() {
         </div>
       )}
       </>}
+
+      {activeTab === 'technical' && (
+        <div className={styles.panel} style={{ padding: 16 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: 'var(--text-primary)' }}>
+            Техническое
+          </h2>
+          <div className={styles.settingsGrid}>
+            <div className="form-group">
+              <label className="form-label">UUID</label>
+              <input className="input" value={editForm.id} readOnly />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Статус</label>
+              <select className="input" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+                <option value="active">active</option>
+                <option value="archived">archived</option>
+                <option value="hidden">hidden</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Модерация</label>
+              <select className="input" value={editForm.moderation_status} onChange={(e) => setEditForm({ ...editForm, moderation_status: e.target.value })}>
+                <option value="pending">pending</option>
+                <option value="approved">approved</option>
+                <option value="rejected">rejected</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Покупки</label>
+              <input className="input" type="number" value={editForm.purchases_count} onChange={(e) => setEditForm({ ...editForm, purchases_count: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Скачивания</label>
+              <input className="input" type="number" value={editForm.downloads_count} onChange={(e) => setEditForm({ ...editForm, downloads_count: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Revenue share</label>
+              <input className="input" type="number" step="0.01" value={editForm.revenue_share} onChange={(e) => setEditForm({ ...editForm, revenue_share: e.target.value })} />
+            </div>
+            <div className={`form-group ${styles.spanAll}`}>
+              <label className="form-label">translations JSON</label>
+              <textarea className="input" rows={6} value={editForm.translations} onChange={(e) => setEditForm({ ...editForm, translations: e.target.value })} style={{ fontFamily: 'var(--font-geist-mono)' }} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

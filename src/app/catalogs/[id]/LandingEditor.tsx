@@ -1,12 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import {
-  CheckCircle2,
   Clipboard,
   FileJson2,
   Languages,
-  Save,
-  Trash2,
 } from "lucide-react";
 import {
   isLandingTableMissingError,
@@ -438,6 +435,7 @@ interface Props {
   recommendationTags?: string[];
   saveTrigger?: number;
   onCuisineImport?: (imported: { name?: string; description?: string; price?: string } & CuisineRecommendationImport) => void;
+  view?: "landing" | "translations";
 }
 
 export default function LandingEditor({
@@ -452,6 +450,7 @@ export default function LandingEditor({
   recommendationTags = [],
   saveTrigger,
   onCuisineImport,
+  view = "landing",
 }: Props) {
   const [data, setData] = useState<LandingData | null>(null);
   const [mode, setMode] = useState<"form" | "json">("form");
@@ -464,8 +463,6 @@ export default function LandingEditor({
   const [translationPasteText, setTranslationPasteText] = useState("");
   const [basePasteText, setBasePasteText] = useState("");
   const [isTranslating, setIsTranslating] = useState(false);
-  const [isSyncingNames, setIsSyncingNames] = useState(false);
-  const [isTranslatingName, setIsTranslatingName] = useState(false);
   const [translatingSection, setTranslatingSection] = useState<string | null>(null);
 
   useEffect(() => { loadLanding(); }, [cuisineId]);
@@ -490,7 +487,7 @@ export default function LandingEditor({
 
   // Auto-save when parent triggers (saveTrigger increments from "Сохранить всё")
   useEffect(() => {
-    if (saveTrigger && saveTrigger > 0) { saveLanding(); }
+    if (saveTrigger && saveTrigger > 0) { saveLanding(true); }
   }, [saveTrigger]);
 
   const localDraftKey = `catalog-landing-draft:${cuisineId}`;
@@ -533,14 +530,6 @@ export default function LandingEditor({
         updatedAt: new Date().toISOString(),
       };
       localStorage.setItem(localDraftKey, JSON.stringify(payload));
-    } catch {
-      // ignore localStorage errors
-    }
-  };
-
-  const clearLocalDraft = () => {
-    try {
-      localStorage.removeItem(localDraftKey);
     } catch {
       // ignore localStorage errors
     }
@@ -801,25 +790,7 @@ ${base}
     setJsonText(JSON.stringify(applied, null, 2));
     setTranslations(effectiveTranslations);
     setBasePasteText("");
-    setSaveStatus("Сохраняю...");
-    try {
-      const savePayload = Object.keys(effectiveTranslations).length > 0
-        ? { ...applied, translations: effectiveTranslations }
-        : applied;
-      const res = await fetch(`/api/admin/landings/${cuisineId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(savePayload),
-      });
-      const result = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setSaveStatus(`Применено и сохранено ✅ (${new Date().toLocaleTimeString()})`);
-      } else {
-        setSaveStatus(`Применено, ошибка сохранения: ${result.error}`);
-      }
-    } catch {
-      setSaveStatus("Применено ✅ — ошибка соединения, сохрани вручную");
-    }
+    setSaveStatus("Применено. Нажмите «Сохранить», чтобы опубликовать изменения.");
   }
 
   async function applyTranslationPaste() {
@@ -846,24 +817,7 @@ ${base}
     setTranslations(merged);
     setTranslationPasteText("");
     const count = Object.keys(tx).length;
-    setSaveStatus("Сохраняю переводы...");
-    try {
-      if (data) {
-        const res = await fetch(`/api/admin/landings/${cuisineId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...data, translations: merged }),
-        });
-        const result = await res.json().catch(() => ({}));
-        if (res.ok) {
-          setSaveStatus(`Переводы на ${count} языков сохранены ✅ (${new Date().toLocaleTimeString()})`);
-        } else {
-          setSaveStatus(`Переводы применены, ошибка сохранения: ${result.error}`);
-        }
-      }
-    } catch {
-      setSaveStatus(`Переводы на ${count} языков применены — ошибка соединения, сохрани вручную`);
-    }
+    setSaveStatus(`Переводы на ${count} языков применены. Нажмите «Сохранить», чтобы опубликовать изменения.`);
   }
 
   async function autoTranslate() {
@@ -881,52 +835,11 @@ ${base}
       const tx = result.translations as Record<string, unknown>;
       const merged = { ...translations, ...tx };
       setTranslations(merged);
-      const saveRes = await fetch(`/api/admin/landings/${cuisineId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, translations: merged }),
-      });
-      const saveResult = await saveRes.json().catch(() => ({}));
-      if (saveRes.ok) {
-        setSaveStatus(`Переводы на 7 языков готовы ✅ — название каталога обновлено везде (${new Date().toLocaleTimeString()})`);
-      } else {
-        setSaveStatus(`Переведено, ошибка сохранения: ${saveResult.error}`);
-      }
+      setSaveStatus("Переводы на 7 языков готовы. Нажмите «Сохранить», чтобы опубликовать изменения.");
     } catch (e) {
       setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsTranslating(false);
-    }
-  }
-
-  async function translateCatalogName() {
-    setIsTranslatingName(true);
-    setSaveStatus("Переводим название каталога...");
-    try {
-      const res = await fetch(`/api/admin/landings/${cuisineId}/translate-name`, { method: "POST" });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Ошибка перевода");
-      if (result.full_translations) setTranslations(result.full_translations);
-      setSaveStatus(`Название переведено на ${result.synced} языков ✅ — нажми «Сохранить» для применения`);
-    } catch (e) {
-      setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setIsTranslatingName(false);
-    }
-  }
-
-  async function syncCatalogNames() {
-    setIsSyncingNames(true);
-    setSaveStatus("Синхронизируем название...");
-    try {
-      const res = await fetch(`/api/admin/landings/${cuisineId}/sync-names`, { method: "POST" });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Ошибка синхронизации");
-      setSaveStatus(`Название каталога обновлено на ${result.synced} языках ✅`);
-    } catch (e) {
-      setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setIsSyncingNames(false);
     }
   }
 
@@ -955,12 +868,7 @@ ${base}
       }
       setTranslations(newTx);
       if (data) {
-        const saveRes = await fetch(`/api/admin/landings/${cuisineId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...data, translations: newTx }),
-        });
-        setSaveStatus(saveRes.ok ? `Переведено ✅ (${new Date().toLocaleTimeString()})` : "Переведено, ошибка сохранения");
+        setSaveStatus("Перевод применён. Нажмите «Сохранить», чтобы опубликовать изменения.");
       }
     } catch (e) {
       setSaveStatus(`❌ ${e instanceof Error ? e.message : String(e)}`);
@@ -1215,16 +1123,6 @@ function txInsideSection() {
     }
   }
 
-  async function deleteLanding() {
-    if (!confirm("Удалить лендинг? Это действие необратимо.")) return;
-    await fetch(`/api/admin/landings/${cuisineId}`, { method: "DELETE" }).catch(() => null);
-    clearLocalDraft();
-    setData(null);
-    setJsonText("");
-    setTranslations({});
-    setSaveStatus("Удалено");
-  }
-
   const upd = (patch: Partial<LandingData>) => setData((prev) => prev ? { ...prev, ...patch } : null);
 
   // ── Translation overlay ───────────────────────────────────────────────────
@@ -1305,6 +1203,287 @@ function txInsideSection() {
     </button>
   );
 
+  const mergeDeep = (target: Record<string, any>, patch: Record<string, any>): Record<string, any> => {
+    const next = { ...target };
+    Object.entries(patch).forEach(([key, value]) => {
+      if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        next[key] &&
+        typeof next[key] === "object" &&
+        !Array.isArray(next[key])
+      ) {
+        next[key] = mergeDeep(next[key], value);
+      } else {
+        next[key] = value;
+      }
+    });
+    return next;
+  };
+
+  const activeLangEntry = (
+    translations[activeLang] &&
+    typeof translations[activeLang] === "object" &&
+    !Array.isArray(translations[activeLang])
+  ) ? translations[activeLang] as Record<string, any> : {};
+
+  const patchActiveTranslation = (patch: Record<string, any>) => {
+    if (activeLang === "ru") return;
+    setTranslations(prev => {
+      const current = (
+        prev[activeLang] &&
+        typeof prev[activeLang] === "object" &&
+        !Array.isArray(prev[activeLang])
+      ) ? prev[activeLang] as Record<string, any> : {};
+      return { ...prev, [activeLang]: mergeDeep(current, patch) };
+    });
+    setSaveStatus("Перевод изменён. Нажмите «Сохранить», чтобы опубликовать изменения.");
+  };
+
+  const updateTranslatedArrayItem = (
+    sectionKey: string,
+    arrayKey: string,
+    baseItems: any[],
+    index: number,
+    patch: Record<string, any>
+  ) => {
+    const section = activeLangEntry[sectionKey] && typeof activeLangEntry[sectionKey] === "object"
+      ? activeLangEntry[sectionKey] as Record<string, any>
+      : {};
+    const existingItems = Array.isArray(section[arrayKey]) ? section[arrayKey] as any[] : [];
+    const nextItems = baseItems.map((baseItem, itemIndex) => ({
+      ...baseItem,
+      ...(existingItems[itemIndex] ?? {}),
+      ...(itemIndex === index ? patch : {}),
+    }));
+    patchActiveTranslation({ [sectionKey]: { [arrayKey]: nextItems } });
+  };
+
+  const translatedSection = (key: string) => (
+    activeLangEntry[key] && typeof activeLangEntry[key] === "object" && !Array.isArray(activeLangEntry[key])
+      ? activeLangEntry[key] as Record<string, any>
+      : {}
+  );
+
+  const renderTranslationsEditor = () => {
+    if (!data) return null;
+    const activeLabel = TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label ?? activeLang;
+    const langPreview = translatedSection("preview_card");
+    const langHero = translatedSection("hero");
+    const insideTx = translatedSection("inside_section");
+    const showcaseTx = translatedSection("recipe_showcase");
+    const audienceTx = translatedSection("audience_section");
+    const transformTx = translatedSection("transformation_section");
+    const benefitsTx = translatedSection("benefits_section");
+    const faqTx = Array.isArray(activeLangEntry.faq_items) ? activeLangEntry.faq_items as FAQItem[] : [];
+
+    return (
+      <div>
+        <div className={styles.panel} style={{ padding: 16, marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 6, color: "var(--text-primary)" }}>
+                Переводы каталога и лендинга
+              </h2>
+              <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                Изменения в переводах применятся на сервере только после главной кнопки «Сохранить» в шапке страницы.
+              </p>
+            </div>
+            <button className="btn btn-primary" onClick={autoTranslate} disabled={!data || isTranslating}>
+              <Languages size={15} />
+              {isTranslating ? "Переводим..." : "Перевести все через DeepL"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+          {TRANSLATION_LANGUAGES.map(lang => (
+            <button
+              key={lang.code}
+              type="button"
+              className={activeLang === lang.code ? "btn btn-primary" : "btn btn-secondary"}
+              onClick={() => setActiveLang(lang.code)}
+              style={{ padding: "6px 12px" }}
+            >
+              {lang.label}
+              {lang.code !== "ru" && translations[lang.code] ? " ✓" : ""}
+            </button>
+          ))}
+        </div>
+
+        {activeLang === "ru" ? (
+          <div className={styles.panel} style={{ padding: 16, color: "var(--text-secondary)", fontSize: 14 }}>
+            Русский язык является базовым. Редактируйте его во вкладке «Лендинг» и в «Настройках» каталога.
+          </div>
+        ) : (
+          <div className={styles.panel} style={{ padding: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: "var(--text-primary)" }}>
+              {activeLabel}
+            </h3>
+            <div className={styles.settingsGrid}>
+              <Field label="Название каталога">
+                <input
+                  className="input"
+                  value={String(langPreview.title ?? langHero.title ?? data.preview_card.title ?? "")}
+                  onChange={(e) => patchActiveTranslation({
+                    preview_card: { title: e.target.value },
+                    hero: { title: e.target.value },
+                  })}
+                />
+              </Field>
+              <Field label="Описание">
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={String(langHero.subtitle ?? langPreview.subtitle ?? data.hero.subtitle ?? "")}
+                  onChange={(e) => patchActiveTranslation({
+                    preview_card: { subtitle: e.target.value },
+                    hero: { subtitle: e.target.value },
+                  })}
+                />
+              </Field>
+              {data.recipe_showcase && (
+                <Field label="Заголовок витрины рецептов" span>
+                  <input
+                    className="input"
+                    value={String(showcaseTx.title ?? data.recipe_showcase.title ?? "")}
+                    onChange={(e) => patchActiveTranslation({ recipe_showcase: { title: e.target.value } })}
+                  />
+                </Field>
+              )}
+            </div>
+
+            {data.inside_section?.items?.length ? (
+              <SectionBlock title="Что внутри" open>
+                {data.inside_section.items.map((item, index) => {
+                  const txItem = Array.isArray(insideTx.items) ? insideTx.items[index] ?? {} : {};
+                  return (
+                    <Field key={item.id} label={`Пункт ${index + 1}`} span>
+                      <input
+                        className="input"
+                        value={String(txItem.text ?? item.text ?? "")}
+                        onChange={(e) => updateTranslatedArrayItem("inside_section", "items", data.inside_section!.items, index, { text: e.target.value })}
+                      />
+                    </Field>
+                  );
+                })}
+              </SectionBlock>
+            ) : null}
+
+            {data.audience_section?.items?.length ? (
+              <SectionBlock title="Кому подойдёт" open={false}>
+                <Field label="Заголовок" span>
+                  <textarea
+                    className="input"
+                    rows={2}
+                    value={String(audienceTx.title ?? data.audience_section.title ?? "")}
+                    onChange={(e) => patchActiveTranslation({ audience_section: { title: e.target.value } })}
+                  />
+                </Field>
+                {data.audience_section.items.map((item, index) => {
+                  const txItem = Array.isArray(audienceTx.items) ? audienceTx.items[index] ?? {} : {};
+                  return (
+                    <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8, gridColumn: "1 / -1" }}>
+                      <Field label={`Ключ ${index + 1}`}>
+                        <input
+                          className="input"
+                          value={String(txItem.title ?? item.title ?? "")}
+                          onChange={(e) => updateTranslatedArrayItem("audience_section", "items", data.audience_section!.items, index, { title: e.target.value })}
+                        />
+                      </Field>
+                      <Field label="Текст">
+                        <input
+                          className="input"
+                          value={String(txItem.text ?? item.text ?? "")}
+                          onChange={(e) => updateTranslatedArrayItem("audience_section", "items", data.audience_section!.items, index, { text: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+                  );
+                })}
+              </SectionBlock>
+            ) : null}
+
+            {data.transformation_section?.pairs?.length ? (
+              <SectionBlock title="Узнаёшь себя" open={false}>
+                <Field label="Заголовок">
+                  <input className="input" value={String(transformTx.title ?? data.transformation_section.title ?? "")} onChange={(e) => patchActiveTranslation({ transformation_section: { title: e.target.value } })} />
+                </Field>
+                {data.transformation_section.pairs.map((pair, index) => {
+                  const txPair = Array.isArray(transformTx.pairs) ? transformTx.pairs[index] ?? {} : {};
+                  return (
+                    <div key={pair.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, gridColumn: "1 / -1" }}>
+                      <Field label={`До ${index + 1}`}>
+                        <input className="input" value={String(txPair.beforeText ?? pair.beforeText ?? "")} onChange={(e) => updateTranslatedArrayItem("transformation_section", "pairs", data.transformation_section!.pairs, index, { beforeText: e.target.value })} />
+                      </Field>
+                      <Field label={`После ${index + 1}`}>
+                        <input className="input" value={String(txPair.afterText ?? pair.afterText ?? "")} onChange={(e) => updateTranslatedArrayItem("transformation_section", "pairs", data.transformation_section!.pairs, index, { afterText: e.target.value })} />
+                      </Field>
+                    </div>
+                  );
+                })}
+              </SectionBlock>
+            ) : null}
+
+            {data.benefits_section?.cards?.length ? (
+              <SectionBlock title="Преимущества" open={false}>
+                {data.benefits_section.cards.map((card, index) => {
+                  const txCard = Array.isArray(benefitsTx.cards) ? benefitsTx.cards[index] ?? {} : {};
+                  return (
+                    <div key={card.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr", gap: 8, gridColumn: "1 / -1" }}>
+                      <Field label={`Метка ${index + 1}`}>
+                        <input className="input" value={String(txCard.eyebrow ?? card.eyebrow ?? "")} onChange={(e) => updateTranslatedArrayItem("benefits_section", "cards", data.benefits_section!.cards, index, { eyebrow: e.target.value })} />
+                      </Field>
+                      <Field label="Заголовок">
+                        <input className="input" value={String(txCard.title ?? card.title ?? "")} onChange={(e) => updateTranslatedArrayItem("benefits_section", "cards", data.benefits_section!.cards, index, { title: e.target.value })} />
+                      </Field>
+                      <Field label="Текст">
+                        <input className="input" value={String(txCard.text ?? card.text ?? "")} onChange={(e) => updateTranslatedArrayItem("benefits_section", "cards", data.benefits_section!.cards, index, { text: e.target.value })} />
+                      </Field>
+                    </div>
+                  );
+                })}
+              </SectionBlock>
+            ) : null}
+
+            {data.faq_items.length ? (
+              <SectionBlock title="FAQ" open={false}>
+                {data.faq_items.map((item, index) => {
+                  const txItem = faqTx[index] ?? {};
+                  return (
+                    <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8, gridColumn: "1 / -1" }}>
+                      <Field label={`Вопрос ${index + 1}`}>
+                        <input className="input" value={String(txItem.question ?? item.question ?? "")} onChange={(e) => {
+                          const nextItems = data.faq_items.map((baseItem, itemIndex) => ({
+                            ...baseItem,
+                            ...(faqTx[itemIndex] ?? {}),
+                            ...(itemIndex === index ? { question: e.target.value } : {}),
+                          }));
+                          patchActiveTranslation({ faq_items: nextItems });
+                        }} />
+                      </Field>
+                      <Field label="Ответ">
+                        <textarea className="input" rows={2} value={String(txItem.answer ?? item.answer ?? "")} onChange={(e) => {
+                          const nextItems = data.faq_items.map((baseItem, itemIndex) => ({
+                            ...baseItem,
+                            ...(faqTx[itemIndex] ?? {}),
+                            ...(itemIndex === index ? { answer: e.target.value } : {}),
+                          }));
+                          patchActiveTranslation({ faq_items: nextItems });
+                        }} />
+                      </Field>
+                    </div>
+                  );
+                })}
+              </SectionBlock>
+            ) : null}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
@@ -1326,6 +1505,8 @@ function txInsideSection() {
 
   return (
     <div className={styles.landingEditor}>
+      {view === "translations" ? renderTranslationsEditor() : (
+      <>
       {/* ── Top bar: segment control + actions ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", gap: "12px", flexWrap: "wrap" }}>
         <div style={{ display: "flex", background: "var(--bg-hover)", borderRadius: "10px", padding: "3px", gap: "2px" }}>
@@ -1362,28 +1543,6 @@ function txInsideSection() {
             title="Размер карточки в разделе Исследовать"
           >
             {data.card_size === "large" ? "Большая карточка" : "Маленькая карточка"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => saveLanding(false)}
-            style={{ fontSize: "13px" }}
-            title="Сохранить без публикации"
-          >
-            <Save size={14} />
-            Черновик
-          </button>
-          <button
-            type="button"
-            className="btn btn-success"
-            onClick={() => saveLanding(true)}
-            style={{ fontSize: "13px", fontWeight: 700 }}
-          >
-            <CheckCircle2 size={14} />
-            Сохранить и опубликовать
-          </button>
-          <button type="button" className="btn btn-danger" onClick={deleteLanding} style={{ fontSize: "13px" }}>
-            <Trash2 size={14} />
           </button>
         </div>
       </div>
@@ -1494,62 +1653,6 @@ function txInsideSection() {
       {/* ── Form mode ── */}
       {mode === "form" && (
         <>
-          {/* Name sync/translate buttons */}
-          <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <button
-              className="btn btn-secondary"
-              onClick={translateCatalogName}
-              disabled={!data || isTranslatingName}
-              style={{ borderRadius: "20px", fontSize: "13px", fontWeight: 600 }}
-            >
-              <Languages size={14} />
-              {isTranslatingName ? "Переводим..." : "Перевести название (DeepL)"}
-            </button>
-            <button
-              className="btn btn-secondary"
-              onClick={syncCatalogNames}
-              disabled={!data || isSyncingNames}
-              style={{ borderRadius: "20px", fontSize: "13px", fontWeight: 600 }}
-            >
-              {isSyncingNames ? "Синхронизируем..." : "Синхронизировать название"}
-            </button>
-            <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-              Перевести — если название ещё не переведено. Синхронизировать — если переводы уже есть.
-            </span>
-          </div>
-
-          {/* Language tabs */}
-          <div style={{ marginBottom: "14px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 600, marginRight: "4px" }}>Язык:</span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", flex: 1 }}>
-                {TRANSLATION_LANGUAGES.map(({ code, label }) => {
-                  const hasTranslation = code !== "ru" && !!translations[code];
-                  return (
-                    <button
-                      key={code}
-                      onClick={() => setActiveLang(code)}
-                      style={{
-                        padding: "5px 12px", border: "1px solid", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600,
-                        background: activeLang === code ? "var(--accent-primary, #007aff)" : "var(--bg-surface)",
-                        color: activeLang === code ? "#fff" : hasTranslation ? "var(--accent-primary, #007aff)" : "var(--text-secondary)",
-                        borderColor: activeLang === code ? "var(--accent-primary, #007aff)" : hasTranslation ? "rgba(0,122,255,0.35)" : "var(--border-light)",
-                      }}
-                    >
-                      {label}{hasTranslation ? " ✓" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            {activeLang !== "ru" && (
-              <div style={{ marginTop: "8px", padding: "8px 12px", background: "rgba(0,122,255,0.06)", borderRadius: "8px", fontSize: "12px", color: "var(--text-secondary)" }}>
-                {translations[activeLang]
-                  ? `Показан перевод на ${TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label}. Базовый контент редактируется на вкладке «Русский».`
-                  : `Перевод на ${TRANSLATION_LANGUAGES.find(l => l.code === activeLang)?.label} ещё не создан. Нажми «Перевести через DeepL» — или переключись в JSON и вставь переводы.`}
-              </div>
-            )}
-          </div>
         <div>
           {/* ── Цвета оформления (единый блок для всех трёх структур) ── */}
           <SectionBlock title="Цвета оформления">
@@ -1730,6 +1833,7 @@ function txInsideSection() {
         </div>
       </>
       )}
+      </>)}
     </div>
   );
 }
