@@ -35,8 +35,6 @@ interface TransformationSection { title: string; subtitle?: string; beforeLabel?
 interface BenefitCard { id: string; eyebrow?: string; title: string; text: string; }
 interface BenefitsSection { title: string; subtitle?: string; cards: BenefitCard[]; }
 interface FAQItem { id: string; question: string; answer: string; }
-interface PurchaseFeature { id: string; icon?: string; title: string; subtitle?: string; }
-interface PurchaseCTA { title: string; subtitle?: string; priceBadge?: string; features: PurchaseFeature[]; buttonTitle?: string; }
 interface ColorGradientStop { id: string; colorHex: string; location: number; opacity?: number; }
 interface ColorGradient { stops: ColorGradientStop[]; startPoint?: string; endPoint?: string; }
 
@@ -59,7 +57,6 @@ interface LandingData {
   transformation_section?: TransformationSection | null;
   benefits_section?: BenefitsSection | null;
   faq_items: FAQItem[];
-  purchase_cta?: PurchaseCTA | null;
   theme: {
     pageBackgroundHex?: string; heroBackgroundHex?: string; heroOverlayHex?: string;
     cardBackgroundHex?: string; accentHex?: string; secondaryAccentHex?: string; textOnDarkHex?: string;
@@ -126,16 +123,6 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
       { id: uid(), question: "Что входит в каталог?", answer: "Подборка рецептов с пошаговыми инструкциями." },
       { id: uid(), question: "Доступ навсегда?", answer: "Да, разовая покупка даёт постоянный доступ." },
     ],
-    purchase_cta: {
-      title: "Открыть каталог",
-      subtitle: "Разовая покупка с постоянным доступом",
-      priceBadge: "$2",
-      features: [
-        { id: uid(), icon: "book.closed", title: "Рецепты", subtitle: "внутри каталога" },
-        { id: uid(), icon: "list.bullet.rectangle", title: "Пошаговые инструкции", subtitle: "без лишней теории" },
-      ],
-      buttonTitle: "Открыть каталог",
-    },
     theme: {
       pageBackgroundHex: "0E0E11",
       heroBackgroundHex: "C70A0A",
@@ -532,14 +519,14 @@ export default function LandingEditor({
 
   const applyLanding = (nextData: LandingData, nextTranslations: Record<string, unknown> = {}) => {
     // Sync from cuisine settings (single source of truth for these fields)
-    const img = cuisineImageUrl ?? nextData.preview_card.imageUrl;
-    const priceBadge = cuisinePrice ?? nextData.purchase_cta?.priceBadge ?? "$2";
-    const desc = cuisineDescription || nextData.hero.subtitle || nextData.preview_card.subtitle;
+    const cleanData = { ...nextData } as LandingData & { purchase_cta?: unknown };
+    delete cleanData.purchase_cta;
+    const img = cuisineImageUrl ?? cleanData.preview_card.imageUrl;
+    const desc = cuisineDescription || cleanData.hero.subtitle || cleanData.preview_card.subtitle;
     const synced: LandingData = {
-      ...nextData,
-      preview_card: { ...nextData.preview_card, title: cuisineName, subtitle: desc, imageUrl: img },
-      hero: { ...nextData.hero, title: cuisineName, subtitle: desc, imageUrl: img, badges: nextData.preview_card.badges },
-      purchase_cta: nextData.purchase_cta ? { ...nextData.purchase_cta, priceBadge } : nextData.purchase_cta,
+      ...cleanData,
+      preview_card: { ...cleanData.preview_card, title: cuisineName, subtitle: desc, imageUrl: img },
+      hero: { ...cleanData.hero, title: cuisineName, subtitle: desc, imageUrl: img, badges: cleanData.preview_card.badges },
     };
     setData(synced);
     setJsonText(JSON.stringify(synced, null, 2));
@@ -673,11 +660,9 @@ export default function LandingEditor({
   }
 
   function buildCopyPrompt(): string {
-    const priceHint = cuisinePrice || "$2";
     return `Оформи контент кулинарного каталога в JSON для мобильного приложения.
 
 КАТАЛОГ: ${cuisineName}${cuisineDescription ? `\nОПИСАНИЕ: ${cuisineDescription}` : ""}
-ЦЕНА: ${priceHint}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📝 МОЙ КОНТЕНТ — впиши все свои пункты (добавь столько, сколько нужно):
@@ -738,7 +723,6 @@ FAQ:
   "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [ /* РОВНО _counts.pairs элементов */ {"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"} ] },
   "benefits_section": { "title": "", "cards": [ /* РОВНО _counts.benefits элементов */ {"id":"uuid","eyebrow":"короткая метка (Гибкость/Здоровье/…)","title":"заголовок карточки","text":"из МОЙ КОНТЕНТ"} ] },
   "faq_items": [ /* РОВНО _counts.faq элементов */ {"id":"uuid","question":"из МОЙ КОНТЕНТ","answer":"из МОЙ КОНТЕНТ"} ],
-  "purchase_cta": { "title": "Открыть каталог", "subtitle": "...", "priceBadge": "${priceHint}", "features": [{"id":"uuid","icon":"book.closed","title":"N рецептов","subtitle":"внутри каталога"},{"id":"uuid","icon":"list.bullet.rectangle","title":"Пошаговые инструкции","subtitle":"без лишней теории"},{"id":"uuid","icon":"arrow.clockwise","title":"Обновления","subtitle":"бесплатно навсегда"}], "buttonTitle": "Открыть каталог" },
   "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "heroBackgroundGradient": null, "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
   "recipe_preview_ids": [],
   "is_published": false,
@@ -769,7 +753,7 @@ ${base}
 ЗАДАЧА: Верни ТОЛЬКО объект "translations" со всеми 7 языками.
 
 ПРАВИЛА:
-- Переводи ВСЕ текстовые поля: title, subtitle, text, question, answer, beforeText, afterText, eyebrow, badges, buttonTitle
+- Переводи ВСЕ текстовые поля: title, subtitle, text, question, answer, beforeText, afterText, eyebrow, badges
 - id и emoji — НЕ меняй
 - Количество элементов в каждом массиве = точно такое же как в исходном JSON
 - Верни ТОЛЬКО валидный JSON без markdown-обёртки
@@ -786,8 +770,7 @@ ${base}
     "audience_section": { "title": "Who it's for\nThis is exactly you, if…", "items": [{ "id": "SAME", "emoji": null, "title": "key word (bold)", "text": "rest of phrase (gray)" }] },
     "transformation_section": { "title": "Sound familiar?", "subtitle": null, "beforeLabel": "Before", "afterLabel": "After", "pairs": [{ "id": "SAME", "beforeText": "...", "afterText": "..." }] },
     "benefits_section": { "title": "", "cards": [{ "id": "SAME", "eyebrow": "...", "title": "...", "text": "..." }] },
-    "faq_items": [{ "id": "SAME", "question": "...", "answer": "..." }],
-    "purchase_cta": { "title": "Open catalog", "subtitle": "...", "features": [{ "id": "SAME", "title": "...", "subtitle": "..." }], "buttonTitle": "Open catalog" }
+    "faq_items": [{ "id": "SAME", "question": "...", "answer": "..." }]
   },
   "de": { /* то же самое на немецком — полные секции, те же id/emoji */ },
   "fr": { /* то же самое на французском */ },
@@ -823,15 +806,15 @@ ${base}
     }
     const { landingData, extractedTranslations } = extractTranslationsFromJson(parsed);
     const img = cuisineImageUrl ?? (landingData.preview_card as Record<string, unknown>)?.imageUrl as string | undefined;
-    const priceBadge = cuisinePrice ?? (landingData.purchase_cta as Record<string, unknown>)?.priceBadge as string ?? "$2";
-    const raw2 = landingData as unknown as LandingData;
+    const cleanLandingData = { ...landingData };
+    delete cleanLandingData.purchase_cta;
+    const raw2 = cleanLandingData as unknown as LandingData;
     const desc2 = cuisineDescription || raw2.hero.subtitle || raw2.preview_card.subtitle;
     const applied: LandingData = {
       ...raw2,
       cuisine_id: cuisineId,
       preview_card: { ...raw2.preview_card, title: cuisineName, subtitle: desc2, imageUrl: img },
       hero: { ...raw2.hero, title: cuisineName, subtitle: desc2, imageUrl: img, badges: raw2.preview_card.badges },
-      purchase_cta: raw2.purchase_cta ? { ...raw2.purchase_cta, priceBadge } : raw2.purchase_cta,
     };
     const effectiveTranslations = Object.keys(extractedTranslations).length > 0
       ? { ...translations, ...extractedTranslations }
@@ -1071,26 +1054,6 @@ ${base}
     }));
   }
 
-  function txPurchaseCta() {
-    if (!data?.purchase_cta) return;
-    const cta = data.purchase_cta;
-    const pairs: Array<{ key: string; text: string }> = [
-      ...(cta.title ? [{ key: "title", text: cta.title }] : []),
-      ...(cta.subtitle ? [{ key: "subtitle", text: cta.subtitle }] : []),
-      ...(cta.buttonTitle ? [{ key: "btnTitle", text: cta.buttonTitle }] : []),
-      ...cta.features.flatMap((f, i) => [
-        { key: `ft${i}`, text: f.title },
-        ...(f.subtitle ? [{ key: `fs${i}`, text: f.subtitle }] : []),
-      ]),
-    ];
-    doSectionTranslate("purchase_cta", pairs, (t) => ({
-      purchase_cta: {
-        title: t.title, subtitle: t.subtitle, buttonTitle: t.btnTitle,
-        features: cta.features.map((f, i) => ({ id: f.id, icon: f.icon, title: t[`ft${i}`] ?? f.title, subtitle: t[`fs${i}`] ?? f.subtitle })),
-      },
-    }));
-  }
-
   function switchToJson() {
     if (data) {
       const cuisineMeta = {
@@ -1294,8 +1257,6 @@ ${base}
       benefits_section: langTx.benefits_section && typeof langTx.benefits_section === "object" && d.benefits_section
         ? { ...d.benefits_section, ...(langTx.benefits_section as object) } : d.benefits_section,
       faq_items: Array.isArray(langTx.faq_items) ? langTx.faq_items as FAQItem[] : d.faq_items,
-      purchase_cta: langTx.purchase_cta && typeof langTx.purchase_cta === "object" && d.purchase_cta
-        ? { ...d.purchase_cta, ...(langTx.purchase_cta as object) } : d.purchase_cta,
     };
   })();
 
@@ -1309,7 +1270,6 @@ ${base}
     data?.transformation_section?.pairs?.length,
     data?.benefits_section?.cards?.length,
     data?.faq_items?.length,
-    data?.purchase_cta?.features?.length,
   ].filter((count) => typeof count === "number" && count > 0).length;
   const isJsonReady = sectionScore >= 4 && (data?.faq_items?.length ?? 0) > 0;
 
@@ -1389,7 +1349,7 @@ ${base}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           <span className={isJsonReady ? "status-pill success" : "status-pill warning"}>
             <FileJson2 size={13} />
-            {sectionScore}/6 секций
+            {sectionScore}/5 секций
           </span>
           <span className={translationCount >= 7 ? "status-pill success" : "status-pill muted"}>
             <Languages size={13} />
@@ -1531,6 +1491,22 @@ ${base}
       {/* ── Form mode ── */}
       {mode === "form" && (
         <>
+          {/* Translate button */}
+          <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              className="btn btn-primary"
+              onClick={autoTranslate}
+              disabled={!data || isTranslating}
+              style={{ borderRadius: "20px", fontSize: "14px", fontWeight: 700 }}
+            >
+              <Languages size={15} />
+              {isTranslating ? "Переводим..." : "Перевести на 7 языков (DeepL)"}
+            </button>
+            <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+              Переводит все тексты и обновляет название каталога везде в приложении
+            </span>
+          </div>
+
           {/* Language tabs */}
           <div style={{ marginBottom: "14px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
@@ -1752,37 +1728,6 @@ ${base}
             </div>
           </SectionBlock>
 
-          {/* ── CTA покупки ── */}
-          <SectionBlock title="💰 Кнопка покупки (CTA)" open={!!data.purchase_cta} headerRight={txBtn("purchase_cta", txPurchaseCta)}>
-            <OptionalSection label="Секция" enabled={!!data.purchase_cta} onToggle={isRO ? () => {} : (v) => upd({ purchase_cta: v ? { title: "Открыть каталог", subtitle: "", priceBadge: "$2", features: [], buttonTitle: "Открыть каталог" } : null })}>
-              {data.purchase_cta && <>
-                <Field label="Заголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.purchase_cta?.title ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, title: e.target.value } })} />
-                </Field>
-                <Field label="Подзаголовок">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.purchase_cta?.subtitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, subtitle: e.target.value } })} />
-                </Field>
-                <Field label="Значок цены" hint="Берётся из поля Цена выше">
-                  <input className="input" readOnly value={data.purchase_cta.priceBadge ?? ""} style={{ opacity: 0.6, background: "var(--bg-hover)" }} />
-                </Field>
-                <Field label="Текст кнопки">
-                  <input className="input" style={roStyle} readOnly={isRO} value={viewData.purchase_cta?.buttonTitle ?? ""} onChange={(e) => upd({ purchase_cta: { ...data.purchase_cta!, buttonTitle: e.target.value } })} />
-                </Field>
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <label className="form-label">Фичи (SF-иконка, заголовок, подзаголовок)</label>
-                  {(viewData.purchase_cta?.features ?? []).map((f, i) => (
-                    <div key={f.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr auto", gap: "6px", marginBottom: "6px" }}>
-                      <input className="input" readOnly={isRO} placeholder="SF-иконка" value={f.icon ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, icon: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} style={{ fontFamily: "monospace", fontSize: "12px", ...(roStyle ?? {}) }} />
-                      <input className="input" style={roStyle} readOnly={isRO} placeholder="Заголовок *" value={f.title} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, title: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
-                      <input className="input" style={roStyle} readOnly={isRO} placeholder="Подзаголовок" value={f.subtitle ?? ""} onChange={(e) => { const fs = [...data.purchase_cta!.features]; fs[i] = { ...f, subtitle: e.target.value }; upd({ purchase_cta: { ...data.purchase_cta!, features: fs } }); }} />
-                      {!isRO && <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: data.purchase_cta!.features.filter((_, j) => j !== i) } })} style={{ color: "var(--accent-danger)" }}>×</button>}
-                    </div>
-                  ))}
-                  {!isRO && <button className="btn btn-secondary" onClick={() => upd({ purchase_cta: { ...data.purchase_cta!, features: [...data.purchase_cta!.features, { id: uid(), icon: "", title: "", subtitle: "" }] } })} style={{ marginTop: "4px", fontSize: "13px" }}>+ Добавить</button>}
-                </div>
-              </>}
-            </OptionalSection>
-          </SectionBlock>
         </div>
       </>
       )}
