@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import styles from "./ai-tokens.module.css";
 
 const ENDPOINT_LABELS: Record<string, string> = {
-  "recognize-text": "🎤 Голос",
-  "recognize-image": "📷 Фото",
-  "recognize-recipe": "📖 Рецепт (скан)",
-  "extract-recipe-text": "💬 Рецепт (чат)",
-  "process-recipe": "✨ Рецепт (AI)",
+  "recognize-text": "Голос",
+  "recognize-image": "Фото",
+  "recognize-recipe": "Рецепт (скан)",
+  "extract-recipe-text": "Рецепт (чат)",
+  "process-recipe": "Рецепт (AI)",
 };
 
 const GPT4O_MINI_COST_PER_1K_INPUT = 0.00015;
@@ -39,162 +40,177 @@ export default function AiTokensPage() {
   useEffect(() => {
     setLoading(true);
     fetch(`/api/admin/ai-tokens?days=${days}`)
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
+      .then((response) => response.json())
+      .then((payload) => {
+        setData(payload);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [days]);
 
-  return (
-    <div style={{ padding: "var(--spacing-xl)" }}>
-      <div style={{ marginBottom: "var(--spacing-xl)" }}>
-        <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "4px" }}>AI Токены</h1>
-        <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
-          Витрати токенів OpenAI по користувачам (gpt-4o-mini)
-        </p>
-      </div>
+  const totals = useMemo(() => {
+    const users = data?.users || [];
+    const prompt = users.reduce((sum, user) => sum + user.prompt_tokens, 0);
+    const completion = users.reduce((sum, user) => sum + user.completion_tokens, 0);
+    const requests = users.reduce((sum, user) => sum + user.requests, 0);
+    return {
+      prompt,
+      completion,
+      requests,
+      cost: calcCost(prompt, completion),
+    };
+  }, [data]);
 
-      {/* Period selector */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "var(--spacing-lg)" }}>
-        {[7, 30, 90].map((d) => (
-          <button
-            key={d}
-            type="button"
-            onClick={() => setDays(d)}
-            style={{
-              padding: "6px 16px",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)",
-              background: days === d ? "var(--accent)" : "var(--surface)",
-              color: days === d ? "#fff" : "var(--text-primary)",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: days === d ? 600 : 400,
-            }}
-          >
-            {d} днів
-          </button>
-        ))}
+  return (
+    <div className={styles.page}>
+      <header className={styles.hero}>
+        <div className={styles.kicker}>Admin / AI Usage</div>
+        <div className={styles.heroTop}>
+          <div>
+            <h1 className={styles.title}>AI Токены</h1>
+            <p className={styles.subtitle}>
+              Расход токенов OpenAI по пользователям и endpoints. Стоимость считается по тарифу
+              gpt-4o-mini для быстрой операционной оценки.
+            </p>
+          </div>
+          <div className={styles.heroBadges}>
+            <span className={styles.inverseBadge}>gpt-4o-mini</span>
+            <span className={styles.outlineBadge}>{days} days</span>
+          </div>
+        </div>
+      </header>
+
+      <div className={styles.toolbar}>
+        <div className={styles.segmented} role="tablist" aria-label="Период отчета">
+          {[7, 30, 90].map((period) => (
+            <button
+              key={period}
+              type="button"
+              role="tab"
+              className={`${styles.segmentButton} ${days === period ? styles.segmentButtonActive : ""}`}
+              onClick={() => setDays(period)}
+              aria-selected={days === period}
+            >
+              {period} дней
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
-        <div style={{ color: "var(--text-secondary)" }}>Завантаження...</div>
+        <div className={styles.emptyState}>Загрузка...</div>
       ) : !data ? (
-        <div style={{ color: "var(--text-secondary)" }}>Помилка завантаження</div>
+        <div className={styles.emptyState}>Ошибка загрузки</div>
       ) : (
         <>
-          {/* Summary cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "var(--spacing-md)", marginBottom: "var(--spacing-xl)" }}>
-            <SummaryCard label="Всього токенів" value={data.grandTotal.toLocaleString()} />
-            <SummaryCard label="Користувачів" value={data.users.length.toString()} />
-            <SummaryCard
-              label="Приблизна вартість"
-              value={calcCost(
-                data.users.reduce((s, u) => s + u.prompt_tokens, 0),
-                data.users.reduce((s, u) => s + u.completion_tokens, 0)
-              )}
-            />
-          </div>
+          <section className={styles.metricsGrid} aria-label="Сводка AI usage">
+            <MetricCard label="Всего токенов" value={data.grandTotal.toLocaleString()} />
+            <MetricCard label="Пользователей" value={data.users.length.toString()} />
+            <MetricCard label="Запросов" value={totals.requests.toLocaleString()} />
+            <MetricCard label="Стоимость" value={totals.cost} />
+          </section>
 
-          {/* Table */}
-          {data.users.length === 0 ? (
-            <div style={{
-              padding: "var(--spacing-2xl)",
-              textAlign: "center",
-              color: "var(--text-secondary)",
-              background: "var(--surface)",
-              borderRadius: "var(--radius-md)",
-              border: "1px solid var(--border)",
-            }}>
-              Немає даних за вибраний період
-            </div>
-          ) : (
-            <div style={{ background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", overflow: "hidden" }}>
-              {/* Header */}
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 80px 80px 80px 100px 24px",
-                gap: "var(--spacing-md)",
-                padding: "10px var(--spacing-lg)",
-                borderBottom: "1px solid var(--border)",
-                fontSize: "12px",
-                fontWeight: 600,
-                color: "var(--text-secondary)",
-                textTransform: "uppercase",
-              }}>
-                <span>Користувач</span>
-                <span style={{ textAlign: "right" }}>Запити</span>
-                <span style={{ textAlign: "right" }}>Токени</span>
-                <span style={{ textAlign: "right" }}>Input</span>
-                <span style={{ textAlign: "right" }}>Вартість</span>
-                <span />
+          <section className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div>
+                <p className={styles.eyebrow}>Usage Table</p>
+                <h2>Пользователи за {data.days} дней</h2>
               </div>
-
-              {data.users.map((u) => (
-                <div key={u.userId}>
-                  <div
-                    onClick={() => setExpanded(expanded === u.userId ? null : u.userId)}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "2fr 80px 80px 80px 100px 24px",
-                      gap: "var(--spacing-md)",
-                      padding: "12px var(--spacing-lg)",
-                      borderBottom: "1px solid var(--border)",
-                      cursor: "pointer",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "14px", fontWeight: 500 }}>{u.email}</div>
-                      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "2px" }}>
-                        {Object.keys(u.by_endpoint).map((ep) => ENDPOINT_LABELS[ep] ?? ep).join(" · ")}
-                      </div>
-                    </div>
-                    <span style={{ textAlign: "right", fontSize: "14px" }}>{u.requests}</span>
-                    <span style={{ textAlign: "right", fontSize: "14px", fontWeight: 600 }}>{u.total_tokens.toLocaleString()}</span>
-                    <span style={{ textAlign: "right", fontSize: "12px", color: "var(--text-secondary)" }}>{u.prompt_tokens.toLocaleString()}</span>
-                    <span style={{ textAlign: "right", fontSize: "14px" }}>{calcCost(u.prompt_tokens, u.completion_tokens)}</span>
-                    <span style={{ textAlign: "center", color: "var(--text-secondary)" }}>{expanded === u.userId ? "▲" : "▼"}</span>
-                  </div>
-
-                  {/* Expanded: breakdown by endpoint */}
-                  {expanded === u.userId && (
-                    <div style={{ background: "rgba(0,0,0,0.03)", padding: "var(--spacing-md) var(--spacing-lg)" }}>
-                      {Object.entries(u.by_endpoint).map(([ep, stat]) => (
-                        <div key={ep} style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          padding: "6px 0",
-                          fontSize: "13px",
-                          borderBottom: "1px solid var(--border)",
-                        }}>
-                          <span>{ENDPOINT_LABELS[ep] ?? ep}</span>
-                          <span style={{ color: "var(--text-secondary)" }}>
-                            {stat.requests} запитів · {stat.total_tokens.toLocaleString()} токенів
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+              <span className={styles.neutralBadge}>
+                input {totals.prompt.toLocaleString()} / output {totals.completion.toLocaleString()}
+              </span>
             </div>
-          )}
+
+            {data.users.length === 0 ? (
+              <div className={styles.emptyState}>Нет данных за выбранный период</div>
+            ) : (
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Пользователь</th>
+                      <th>Запросы</th>
+                      <th>Токены</th>
+                      <th>Input</th>
+                      <th>Output</th>
+                      <th>Стоимость</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.users.map((user) => {
+                      const isExpanded = expanded === user.userId;
+                      const endpointLabels = Object.keys(user.by_endpoint)
+                        .map((endpoint) => ENDPOINT_LABELS[endpoint] ?? endpoint)
+                        .join(" / ");
+
+                      return (
+                        <>
+                          <tr key={user.userId} className={isExpanded ? styles.rowActive : ""}>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles.userButton}
+                                onClick={() => setExpanded(isExpanded ? null : user.userId)}
+                                aria-expanded={isExpanded}
+                              >
+                                <span className={`${styles.chevron} ${isExpanded ? styles.chevronOpen : ""}`}>
+                                  ›
+                                </span>
+                                <span>
+                                  <strong>{user.email || "Без email"}</strong>
+                                  <small>{endpointLabels || "endpoints not recorded"}</small>
+                                </span>
+                              </button>
+                            </td>
+                            <td>{user.requests.toLocaleString()}</td>
+                            <td><strong>{user.total_tokens.toLocaleString()}</strong></td>
+                            <td className={styles.mutedCell}>{user.prompt_tokens.toLocaleString()}</td>
+                            <td className={styles.mutedCell}>{user.completion_tokens.toLocaleString()}</td>
+                            <td>{calcCost(user.prompt_tokens, user.completion_tokens)}</td>
+                            <td className={styles.actionCell}>{isExpanded ? "Open" : "View"}</td>
+                          </tr>
+
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={7} className={styles.detailCell}>
+                                <div className={styles.endpointGrid}>
+                                  {Object.entries(user.by_endpoint).map(([endpoint, stat]) => (
+                                    <article key={endpoint} className={styles.endpointCard}>
+                                      <div>
+                                        <p className={styles.eyebrow}>Endpoint</p>
+                                        <h3>{ENDPOINT_LABELS[endpoint] ?? endpoint}</h3>
+                                        <code>{endpoint}</code>
+                                      </div>
+                                      <div className={styles.endpointMetrics}>
+                                        <span>{stat.requests} запросов</span>
+                                        <strong>{stat.total_tokens.toLocaleString()} токенов</strong>
+                                      </div>
+                                    </article>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </>
       )}
     </div>
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{
-      background: "var(--surface)",
-      border: "1px solid var(--border)",
-      borderRadius: "var(--radius-md)",
-      padding: "var(--spacing-lg)",
-    }}>
-      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "6px", textTransform: "uppercase", fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: "28px", fontWeight: 700 }}>{value}</div>
+    <div className={styles.metricCard}>
+      <span className={styles.metricValue}>{value}</span>
+      <span className={styles.metricLabel}>{label}</span>
     </div>
   );
 }

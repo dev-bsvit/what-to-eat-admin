@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import styles from "./reviews-moderation.module.css";
 
 type TargetType = "recipe_review" | "cuisine_review";
 
@@ -72,6 +73,10 @@ function actionSuccessMessage(action: "hide" | "restore" | "dismiss" | "block_au
   }
 }
 
+function isReviewHidden(review?: Review | null) {
+  return Boolean(review?.is_hidden || review?.moderation_status === "rejected");
+}
+
 export default function ReviewsModerationPage() {
   const [tab, setTab] = useState<Tab>("reports");
   const [reports, setReports] = useState<ReviewReport[]>([]);
@@ -113,6 +118,17 @@ export default function ReviewsModerationPage() {
     loadData();
   }, [loadData]);
 
+  const metrics = useMemo(() => {
+    const hiddenReviews = reviews.filter(isReviewHidden).length;
+    const reportedReviews = reviews.filter((review) => (review.reported_count || 0) > 0).length;
+    return {
+      reports: reports.length,
+      reviews: reviews.length,
+      hiddenReviews,
+      reportedReviews,
+    };
+  }, [reports, reviews]);
+
   async function runAction(params: {
     action: "hide" | "restore" | "dismiss" | "block_author";
     reportId?: string;
@@ -152,94 +168,116 @@ export default function ReviewsModerationPage() {
     }
   }
 
-  return (
-    <div>
-      <div className="section-header">
-        <h1 className="section-title">Модерация отзывов</h1>
-        <p className="section-subtitle">
-          Здесь видны новые жалобы пользователей и все текстовые отзывы. Можно скрыть плохой отзыв или заблокировать автора.
-        </p>
-      </div>
+  const activeItems = tab === "reports" ? reports : reviews;
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
-        <button
-          onClick={() => setTab("reports")}
-          className={tab === "reports" ? "btn btn-primary" : "btn btn-secondary"}
-        >
-          Жалобы
-        </button>
-        <button
-          onClick={() => setTab("reviews")}
-          className={tab === "reviews" ? "btn btn-primary" : "btn btn-secondary"}
-        >
-          Все отзывы
-        </button>
-        <button onClick={loadData} className="btn btn-secondary" style={{ marginLeft: "auto" }}>
-          Обновить
+  return (
+    <div className={styles.page}>
+      <header className={styles.hero}>
+        <div className={styles.kicker}>Admin / Review Moderation</div>
+        <div className={styles.heroTop}>
+          <div>
+            <h1 className={styles.title}>Модерация отзывов</h1>
+            <p className={styles.subtitle}>
+              Очередь жалоб и полный список текстовых отзывов с быстрыми действиями: скрыть,
+              вернуть, отклонить жалобу или заблокировать автора.
+            </p>
+          </div>
+          <div className={styles.heroBadges}>
+            <span className={styles.inverseBadge}>Moderation</span>
+            <span className={styles.outlineBadge}>200 latest</span>
+          </div>
+        </div>
+      </header>
+
+      <section className={styles.metricsGrid} aria-label="Сводка модерации">
+        <MetricCard value={String(metrics.reports)} label="pending reports" />
+        <MetricCard value={String(metrics.reviews)} label="reviews loaded" />
+        <MetricCard value={String(metrics.reportedReviews)} label="reported reviews" />
+        <MetricCard value={String(metrics.hiddenReviews)} label="hidden reviews" />
+      </section>
+
+      <div className={styles.toolbar}>
+        <div className={styles.tabBar} role="tablist" aria-label="Разделы модерации">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "reports"}
+            className={`${styles.tabButton} ${tab === "reports" ? styles.tabButtonActive : ""}`}
+            onClick={() => setTab("reports")}
+          >
+            Жалобы
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "reviews"}
+            className={`${styles.tabButton} ${tab === "reviews" ? styles.tabButtonActive : ""}`}
+            onClick={() => setTab("reviews")}
+          >
+            Все отзывы
+          </button>
+        </div>
+        <button type="button" onClick={loadData} className={styles.secondaryButton} disabled={loading}>
+          {loading ? "Загрузка..." : "Обновить"}
         </button>
       </div>
 
       {status && (
-        <div style={{
-          padding: 14,
-          borderRadius: 12,
-          marginBottom: 20,
-          background: status.startsWith("Ошибка") ? "#fee2e2" : "#dcfce7",
-          color: status.startsWith("Ошибка") ? "#991b1b" : "#166534",
-        }}>
+        <div className={`${styles.statusBox} ${status.startsWith("Ошибка") ? styles.statusError : ""}`}>
           {status}
         </div>
       )}
 
-      {loading ? (
-        <div className="section">Загрузка...</div>
-      ) : tab === "reports" ? (
-        <div className="section">
-          <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>
-            Новые жалобы ({reports.length})
-          </h2>
-          {reports.length === 0 ? (
-            <p style={{ color: "var(--text-secondary)" }}>Жалоб пока нет.</p>
-          ) : (
-            <div style={{ display: "grid", gap: 16 }}>
-              {reports.map((report) => (
-                <ReviewCard
-                  key={report.id}
-                  review={report.review}
-                  report={report}
-                  busy={busyId === report.id}
-                  onHide={() => runAction({ action: "hide", reportId: report.id, review: report.review })}
-                  onRestore={() => runAction({ action: "restore", reportId: report.id, review: report.review })}
-                  onDismiss={() => runAction({ action: "dismiss", reportId: report.id, review: report.review })}
-                  onBlockAuthor={() => runAction({ action: "block_author", reportId: report.id, review: report.review })}
-                />
-              ))}
-            </div>
-          )}
+      <section className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <p className={styles.eyebrow}>{tab === "reports" ? "Reports Queue" : "Review Index"}</p>
+            <h2>{tab === "reports" ? `Новые жалобы (${reports.length})` : `Все отзывы (${reviews.length})`}</h2>
+          </div>
+          <span className={styles.neutralBadge}>{tab === "reports" ? "pending" : "all statuses"}</span>
         </div>
-      ) : (
-        <div className="section">
-          <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>
-            Все отзывы ({reviews.length})
-          </h2>
-          {reviews.length === 0 ? (
-            <p style={{ color: "var(--text-secondary)" }}>Отзывов пока нет.</p>
-          ) : (
-            <div style={{ display: "grid", gap: 16 }}>
-              {reviews.map((review) => (
-                <ReviewCard
-                  key={`${review.target_type}-${review.id}`}
-                  review={review}
-                  busy={busyId === review.id}
-                  onHide={() => runAction({ action: "hide", review })}
-                  onRestore={() => runAction({ action: "restore", review })}
-                  onBlockAuthor={() => runAction({ action: "block_author", review })}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+
+        {loading ? (
+          <div className={styles.emptyState}>Загрузка...</div>
+        ) : activeItems.length === 0 ? (
+          <div className={styles.emptyState}>{tab === "reports" ? "Жалоб пока нет." : "Отзывов пока нет."}</div>
+        ) : (
+          <div className={styles.reviewList}>
+            {tab === "reports"
+              ? reports.map((report) => (
+                  <ReviewCard
+                    key={report.id}
+                    review={report.review}
+                    report={report}
+                    busy={busyId === report.id}
+                    onHide={() => runAction({ action: "hide", reportId: report.id, review: report.review })}
+                    onRestore={() => runAction({ action: "restore", reportId: report.id, review: report.review })}
+                    onDismiss={() => runAction({ action: "dismiss", reportId: report.id, review: report.review })}
+                    onBlockAuthor={() => runAction({ action: "block_author", reportId: report.id, review: report.review })}
+                  />
+                ))
+              : reviews.map((review) => (
+                  <ReviewCard
+                    key={`${review.target_type}-${review.id}`}
+                    review={review}
+                    busy={busyId === review.id}
+                    onHide={() => runAction({ action: "hide", review })}
+                    onRestore={() => runAction({ action: "restore", review })}
+                    onBlockAuthor={() => runAction({ action: "block_author", review })}
+                  />
+                ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function MetricCard({ value, label }: { value: string; label: string }) {
+  return (
+    <div className={styles.metricCard}>
+      <span className={styles.metricValue}>{value}</span>
+      <span className={styles.metricLabel}>{label}</span>
     </div>
   );
 }
@@ -263,104 +301,87 @@ function ReviewCard({
 }) {
   if (!review) {
     return (
-      <div className="card" style={{ padding: 18 }}>
-        <strong>Отзыв не найден</strong>
-        {report && <p style={{ marginTop: 8 }}>Жалоба: {report.id}</p>}
-        {onDismiss && (
-          <button
-            className="btn btn-secondary"
-            disabled={busy}
-            onClick={onDismiss}
-            style={{ marginTop: 16 }}
-          >
-            Отклонить жалобу
-          </button>
-        )}
-      </div>
+      <article className={styles.reviewCard}>
+        <div className={styles.reviewMain}>
+          <div>
+            <p className={styles.eyebrow}>Missing Review</p>
+            <h3>Отзыв не найден</h3>
+            {report && <p className={styles.mutedText}>Жалоба: {report.id}</p>}
+          </div>
+          {onDismiss && (
+            <button className={styles.secondaryButton} disabled={busy} onClick={onDismiss}>
+              Отклонить жалобу
+            </button>
+          )}
+        </div>
+      </article>
     );
   }
 
-  const hidden = review.is_hidden || review.moderation_status === "rejected";
+  const hidden = isReviewHidden(review);
+  const reportMeta = report
+    ? [
+        `Статус: ${report.status}`,
+        `От: ${authorName(report.reporter)}`,
+        `Дата: ${formatDate(report.created_at)}`,
+      ]
+    : [];
 
   return (
-    <div className="card" style={{ padding: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              background: review.target_type === "recipe_review" ? "#dbeafe" : "#fce7f3",
-              color: review.target_type === "recipe_review" ? "#1d4ed8" : "#be185d",
-              fontSize: 13,
-              fontWeight: 700,
-            }}>
-              {typeLabel(review.target_type)}
-            </span>
-            <span style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              background: hidden ? "#fee2e2" : "#dcfce7",
-              color: hidden ? "#991b1b" : "#166534",
-              fontSize: 13,
-              fontWeight: 700,
-            }}>
+    <article className={styles.reviewCard}>
+      <div className={styles.reviewMain}>
+        <div className={styles.reviewContent}>
+          <div className={styles.badgeRow}>
+            <span className={styles.neutralBadge}>{typeLabel(review.target_type)}</span>
+            <span className={hidden ? styles.outlineDangerBadge : styles.inverseBadge}>
               {hidden ? "Скрыт" : "Показывается"}
             </span>
+            <span className={styles.outlineBadge}>Rating {review.rating}/5</span>
             {review.reported_count ? (
-              <span style={{ color: "#b45309", fontWeight: 700 }}>
-                Жалоб: {review.reported_count}
-              </span>
+              <span className={styles.outlineDangerBadge}>Жалоб: {review.reported_count}</span>
             ) : null}
           </div>
 
-          <h3 style={{ marginTop: 12, fontSize: 20, fontWeight: 700 }}>
-            {sourceTitle(review)}
-          </h3>
-          <p style={{ color: "var(--text-secondary)", marginTop: 4 }}>
-            Автор: {authorName(review.author)} · Оценка: {review.rating}/5 · {formatDate(review.created_at)}
+          <h3>{sourceTitle(review)}</h3>
+          <p className={styles.mutedText}>
+            Автор: {authorName(review.author)} / {formatDate(review.created_at)}
           </p>
+
+          <div className={styles.reviewText}>
+            {review.review_text || "Текста нет, только оценка."}
+          </div>
         </div>
 
         {report && (
-          <div style={{ minWidth: 220, textAlign: "right", color: "var(--text-secondary)" }}>
-            <div>Жалоба: {report.status}</div>
-            <div>{formatDate(report.created_at)}</div>
-            <div>От: {authorName(report.reporter)}</div>
-          </div>
+          <aside className={styles.reportPanel}>
+            <p className={styles.eyebrow}>Report</p>
+            <strong>{report.reason || "Причина не указана"}</strong>
+            {reportMeta.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </aside>
         )}
       </div>
 
-      <div style={{
-        marginTop: 16,
-        padding: 16,
-        borderRadius: 12,
-        background: "var(--bg-secondary)",
-        whiteSpace: "pre-wrap",
-        lineHeight: 1.5,
-      }}>
-        {review.review_text || "Текста нет, только оценка."}
-      </div>
-
-      <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+      <div className={styles.actionsRow}>
         {hidden ? (
-          <button className="btn btn-secondary" disabled={busy} onClick={onRestore}>
+          <button className={styles.secondaryButton} disabled={busy} onClick={onRestore}>
             Вернуть отзыв
           </button>
         ) : (
-          <button className="btn btn-danger" disabled={busy} onClick={onHide}>
+          <button className={styles.dangerButton} disabled={busy} onClick={onHide}>
             Скрыть отзыв
           </button>
         )}
-        <button className="btn btn-danger" disabled={busy} onClick={onBlockAuthor}>
+        <button className={styles.dangerButton} disabled={busy} onClick={onBlockAuthor}>
           Заблокировать автора
         </button>
         {onDismiss && (
-          <button className="btn btn-secondary" disabled={busy} onClick={onDismiss}>
+          <button className={styles.ghostButton} disabled={busy} onClick={onDismiss}>
             Отклонить жалобу
           </button>
         )}
       </div>
-    </div>
+    </article>
   );
 }
