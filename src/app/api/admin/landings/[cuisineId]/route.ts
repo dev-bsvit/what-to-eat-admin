@@ -83,7 +83,6 @@ export async function POST(
       transformation_section: body.transformation_section ?? null,
       benefits_section: body.benefits_section ?? null,
       faq_items: body.faq_items ?? [],
-      purchase_cta: body.purchase_cta ?? null,
       theme: body.theme ?? {},
       recipe_preview_ids: body.recipe_preview_ids ?? [],
       is_published: body.is_published ?? false,
@@ -113,6 +112,7 @@ export async function POST(
     // Sync translated catalog names to cuisine_translations when translations are present
     if (body.translations && typeof body.translations === "object" && !Array.isArray(body.translations)) {
       const nameRows = Object.entries(body.translations as Record<string, unknown>)
+        .filter(([lang]) => lang !== "ru")
         .flatMap(([lang, t]) => {
           const title = (t as unknown as { hero?: { title?: string } })?.hero?.title;
           if (!title?.trim()) return [];

@@ -28,7 +28,10 @@ export async function POST(
       return NextResponse.json({ error: "No translations found — translate first" }, { status: 400 });
     }
 
+    // Never overwrite the source language (ru) — cuisine.name is the authoritative base
+    const SOURCE_LANG = "ru";
     const nameRows = Object.entries(translations)
+      .filter(([lang]) => lang !== SOURCE_LANG)
       .flatMap(([lang, t]) => {
         const title = (t as unknown as { hero?: { title?: string } })?.hero?.title;
         if (!title?.trim()) return [];
