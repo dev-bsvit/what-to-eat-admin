@@ -766,8 +766,8 @@ export default function RecipesPage() {
   const [steps, setSteps] = useState<RecipeStep[]>([]);
   const [cuisines, setCuisines] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
   const [showInstagramModal, setShowInstagramModal] = useState(false);
+  const [recipeEditorMode, setRecipeEditorMode] = useState<"form" | "json">("form");
   const [importText, setImportText] = useState("");
   const [importStatus, setImportStatus] = useState("");
   const [importFileName, setImportFileName] = useState("");
@@ -933,18 +933,18 @@ export default function RecipesPage() {
     const trimmed = raw.trim();
     if (!trimmed) {
       setImportStatus("Вставьте JSON рецепта.");
-      return;
+      return false;
     }
     let parsed: any;
     try {
       parsed = JSON.parse(trimmed);
     } catch {
       setImportStatus("Ошибка JSON: проверь формат.");
-      return;
+      return false;
     }
     if (!parsed || typeof parsed !== "object") {
       setImportStatus("Неверный формат: ожидается объект.");
-      return;
+      return false;
     }
 
     const normalized = parsed.recipe && typeof parsed.recipe === "object" ? parsed.recipe : parsed;
@@ -1117,6 +1117,7 @@ export default function RecipesPage() {
     }
 
     setImportStatus("Готово. Данные применены");
+    return true;
   }
 
   async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1730,7 +1731,7 @@ export default function RecipesPage() {
           <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
             <button
               className="btn btn-secondary"
-              onClick={() => setShowImportModal(true)}
+              onClick={() => setRecipeEditorMode("json")}
             >
               <Upload size={15} />
               Импорт JSON
@@ -1772,6 +1773,55 @@ export default function RecipesPage() {
             )}
           </div>
         </div>
+
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '12px',
+          flexWrap: 'wrap',
+          marginBottom: 'var(--spacing-lg)',
+        }}>
+          <div style={{ display: 'flex', background: 'var(--bg-hover)', borderRadius: '10px', padding: '3px', gap: '2px' }}>
+            {([
+              { key: "form", label: "Форма" },
+              { key: "json", label: "JSON" },
+            ] as const).map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setRecipeEditorMode(item.key)}
+                style={{
+                  padding: '6px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  transition: 'all 0.15s',
+                  background: recipeEditorMode === item.key ? 'var(--bg-base, #fff)' : 'transparent',
+                  color: recipeEditorMode === item.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  boxShadow: recipeEditorMode === item.key ? '0 1px 4px rgba(0,0,0,0.12)' : 'none',
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <span className={form.title && form.cuisine_id ? "status-pill success" : "status-pill warning"}>
+              {form.title && form.cuisine_id ? "База заполнена" : "Нужно название и каталог"}
+            </span>
+            <span className={form.tags.length ? "status-pill success" : "status-pill warning"}>
+              {form.tags.length ? `${form.tags.length} тегов` : "Нет тегов"}
+            </span>
+            <span className={steps.length ? "status-pill success" : "status-pill muted"}>
+              {steps.length} шагов
+            </span>
+          </div>
+        </div>
+
         {translateStatus && (
           <div style={{
             padding: '8px 16px',
@@ -1785,6 +1835,115 @@ export default function RecipesPage() {
             {translateStatus}
           </div>
         )}
+
+        {recipeEditorMode === "json" && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: 'var(--spacing-lg)' }}>
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-light)',
+              borderRadius: '14px',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                  Промпт для AI
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  Скопируйте промпт, вставьте в чат и верните сюда готовый JSON рецепта.
+                </div>
+              </div>
+              <textarea
+                className="input"
+                readOnly
+                rows={18}
+                value={importPrompt}
+                style={{ fontFamily: 'monospace', fontSize: '12px', resize: 'vertical', flex: 1 }}
+              />
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => navigator.clipboard.writeText(importPrompt)}
+                style={{ borderRadius: '20px', fontSize: '14px', fontWeight: 700 }}
+              >
+                Скопировать промпт
+              </button>
+            </div>
+
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-light)',
+              borderRadius: '14px',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                  JSON рецепта
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  Применение JSON заполняет форму, ингредиенты, шаги, теги, питание и переводы. Сохранение выполняется основной кнопкой.
+                </div>
+              </div>
+              <textarea
+                className="input"
+                rows={18}
+                placeholder="Вставьте JSON объекта рецепта"
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                style={{ fontFamily: 'monospace', fontSize: '12px', resize: 'vertical', flex: 1 }}
+                spellCheck={false}
+              />
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Файл .json</label>
+                <input
+                  type="file"
+                  accept=".json"
+                  className="input"
+                  onChange={handleImportFile}
+                />
+                {importFileName && (
+                  <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Загружен файл: {importFileName}
+                  </div>
+                )}
+              </div>
+              {importStatus && (
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  color: importStatus.startsWith("Ошибка") || importStatus.startsWith("Неверный") || importStatus.startsWith("Вставьте")
+                    ? 'var(--accent-danger)'
+                    : 'var(--text-secondary)',
+                  background: 'var(--color-ghost-gray)',
+                  border: '1px solid var(--border-light)',
+                }}>
+                  {importStatus}
+                </div>
+              )}
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => {
+                  if (applyImportRecipe(importText)) {
+                    setRecipeEditorMode("form");
+                  }
+                }}
+                disabled={!importText.trim()}
+                style={{ borderRadius: '20px', fontSize: '14px', fontWeight: 700 }}
+              >
+                Применить JSON
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: recipeEditorMode === "form" ? undefined : "none" }}>
 
         {/* Основное */}
         <div style={{
@@ -3182,106 +3341,7 @@ export default function RecipesPage() {
           )}
         </div>
       </div>
-
-      {showImportModal && (
-        <div
-          className="modal-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowImportModal(false);
-            }
-          }}
-        >
-          <div className="modal animate-slide-up" style={{ maxWidth: '760px' }}>
-            <h2 className="modal-header">Импорт рецепта</h2>
-
-            <div style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-light)',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--spacing-md)',
-              marginBottom: 'var(--spacing-lg)',
-            }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>
-                Промпт для AI
-              </div>
-              <div style={{
-                fontSize: '12px',
-                color: 'var(--text-secondary)',
-                marginBottom: '8px',
-              }}>
-                Скопируйте и используйте в чате. Ответ — JSON объект рецепта.
-              </div>
-              <div style={{
-                background: 'var(--bg-page)',
-                border: '1px dashed var(--border-light)',
-                borderRadius: 'var(--radius-md)',
-                padding: 'var(--spacing-sm)',
-                fontSize: '12px',
-                lineHeight: 1.4,
-                whiteSpace: 'pre-wrap',
-              }}>
-                {importPrompt}
-              </div>
-              <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => navigator.clipboard.writeText(importPrompt)}
-                >
-                  Скопировать промпт
-                </button>
-              </div>
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 'var(--spacing-lg)' }}>
-              <label className="form-label">JSON рецепта</label>
-              <textarea
-                className="input"
-                rows={10}
-                placeholder="Вставьте JSON объекта рецепта"
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 'var(--spacing-lg)' }}>
-              <label className="form-label">Или загрузите файл (.json)</label>
-              <input
-                type="file"
-                accept=".json"
-                className="input"
-                onChange={handleImportFile}
-              />
-              {importFileName && (
-                <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Загружен файл: {importFileName}
-                </div>
-              )}
-            </div>
-
-            {importStatus && (
-              <div style={{ marginBottom: 'var(--spacing-md)', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                {importStatus}
-              </div>
-            )}
-
-            <div className="modal-footer">
-              <button
-                className="btn btn-primary"
-                onClick={() => applyImportRecipe(importText)}
-              >
-                Применить
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowImportModal(false)}
-              >
-                Закрыть
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
       {showInstagramModal && (
         <div
