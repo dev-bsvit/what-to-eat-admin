@@ -1,0 +1,683 @@
+.page {
+  --color-canvas-white: #ffffff;
+  --color-ghost-gray: #f2f2f2;
+  --color-subtle-ash: #e5e5e5;
+  --color-midtone-gray: #737373;
+  --color-rich-black: #0a0a0a;
+  --color-deep-black: #000000;
+  --color-callout-red: #c22b10;
+  --font-geist: "Geist", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-geist-mono: "Geist Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --shadow-subtle-2: oklab(0.145 -0.00000143796 0.00000340492 / 0.1) 0px 0px 0px 1px;
+  --shadow-focus: lab(100 0 0) 0px 0px 0px 2px;
+
+  color: var(--color-rich-black);
+  font-family: var(--font-geist);
+  margin: 0 auto;
+  max-width: 1240px;
+  width: 100%;
+}
+
+.hero {
+  margin-bottom: 32px;
+}
+
+.kicker {
+  color: var(--color-midtone-gray);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.heroTop {
+  align-items: flex-start;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+}
+
+.title {
+  color: var(--color-deep-black);
+  font-size: 48px;
+  font-weight: 600;
+  letter-spacing: -2.4px;
+  line-height: 1;
+  margin: 0;
+}
+
+.subtitle {
+  color: var(--color-rich-black);
+  font-size: 18px;
+  letter-spacing: -0.45px;
+  line-height: 1.33;
+  margin: 16px 0 0;
+  max-width: 720px;
+}
+
+.heroBadges,
+.activityGroup,
+.settingsLine,
+.badgeList,
+.recipeMeta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.metricsGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 24px;
+}
+
+.metricCard,
+.card,
+.detailPanel,
+.modal {
+  background: var(--color-canvas-white);
+  border-radius: 14px;
+  box-shadow: var(--shadow-subtle-2);
+}
+
+.metricCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+}
+
+.metricValue {
+  color: var(--color-deep-black);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -1.2px;
+  line-height: 1;
+}
+
+.metricLabel {
+  color: var(--color-midtone-gray);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.toolbar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.searchInput {
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
+  color: var(--color-rich-black);
+  flex: 1;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.43;
+  min-height: 38px;
+  min-width: 240px;
+  outline: none;
+  padding: 7px 10px;
+}
+
+.searchInput::placeholder {
+  color: var(--color-midtone-gray);
+}
+
+.searchInput:focus,
+.secondaryButton:focus-visible,
+.userButton:focus-visible,
+.entityButton:focus-visible,
+.deleteButton:focus-visible,
+.modalClose:focus-visible {
+  box-shadow: var(--shadow-focus), var(--shadow-subtle-2);
+  outline: none;
+}
+
+.secondaryButton {
+  background: var(--color-deep-black);
+  border: 1px solid var(--color-deep-black);
+  border-radius: 9999px;
+  color: var(--color-canvas-white);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.43;
+  padding: 8px 16px;
+}
+
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.statusBox,
+.emptyState {
+  color: var(--color-midtone-gray);
+  font-size: 14px;
+  line-height: 1.43;
+}
+
+.statusBox {
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+}
+
+.emptyState {
+  align-items: center;
+  background: var(--color-ghost-gray);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  min-height: 160px;
+  padding: 16px;
+}
+
+.card {
+  overflow: hidden;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.43;
+  min-width: 1020px;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--color-subtle-ash);
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table th {
+  background: var(--color-ghost-gray);
+  color: var(--color-midtone-gray);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.rowActive td {
+  background: color-mix(in srgb, var(--color-ghost-gray) 50%, var(--color-canvas-white));
+}
+
+.userButton {
+  align-items: flex-start;
+  background: transparent;
+  border: 0;
+  color: var(--color-rich-black);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.userButton strong {
+  color: var(--color-deep-black);
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.43;
+  margin-bottom: 2px;
+}
+
+.userButton code,
+.microText,
+.mutedCell {
+  color: var(--color-midtone-gray);
+}
+
+.userButton code {
+  display: block;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chevron {
+  color: var(--color-midtone-gray);
+  font-size: 20px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.16s ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.microText {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.settingsLine span {
+  background: var(--color-ghost-gray);
+  border-radius: 26px;
+  color: var(--color-rich-black);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 2px 8px;
+}
+
+.actionCell {
+  text-align: right;
+}
+
+.deleteButton {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--color-callout-red) 32%, var(--color-subtle-ash));
+  border-radius: 9999px;
+  color: var(--color-callout-red);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  padding: 5px 10px;
+}
+
+.deleteButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.inverseBadge,
+.neutralBadge,
+.outlineBadge {
+  align-items: center;
+  border-radius: 26px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.inverseBadge {
+  background: #171717;
+  color: var(--color-canvas-white);
+}
+
+.neutralBadge {
+  background: var(--color-ghost-gray);
+  color: var(--color-rich-black);
+}
+
+.outlineBadge {
+  background: transparent;
+  border: 1px solid #a1a1a1;
+  color: var(--color-rich-black);
+}
+
+.detailCell {
+  background: var(--color-canvas-white);
+  padding: 16px !important;
+}
+
+.detailsGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.detailPanel {
+  padding: 16px;
+}
+
+.onboardingPanel {
+  grid-column: span 4;
+}
+
+.panelHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--color-subtle-ash);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+}
+
+.panelHeader h3 {
+  color: var(--color-deep-black);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.43;
+  margin: 0;
+}
+
+.definitionList,
+.definitionGrid {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.definitionGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.definitionList div,
+.definitionGrid div {
+  min-width: 0;
+}
+
+.definitionList dt,
+.definitionGrid dt {
+  color: var(--color-midtone-gray);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.definitionList dd,
+.definitionGrid dd {
+  color: var(--color-rich-black);
+  font-size: 13px;
+  line-height: 1.38;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.entityList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entityItem,
+.entityButton {
+  background: var(--color-ghost-gray);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
+  color: var(--color-rich-black);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.entityButton {
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+
+.entityItem span,
+.entityButton span {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.38;
+}
+
+.entityItem small,
+.entityButton small {
+  color: var(--color-midtone-gray);
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.panelEmpty {
+  align-items: center;
+  background: var(--color-ghost-gray);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
+  color: var(--color-midtone-gray);
+  display: flex;
+  font-size: 13px;
+  justify-content: center;
+  min-height: 84px;
+  padding: 12px;
+}
+
+.badgeList {
+  margin-top: 12px;
+}
+
+.loadMoreWrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.modalOverlay {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.64);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  padding: 20px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 1000;
+}
+
+.modal {
+  max-height: 90vh;
+  max-width: 900px;
+  overflow: auto;
+  position: relative;
+  width: 100%;
+}
+
+.modalClose {
+  align-items: center;
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 9999px;
+  color: var(--color-rich-black);
+  cursor: pointer;
+  display: flex;
+  font-size: 22px;
+  height: 36px;
+  justify-content: center;
+  line-height: 1;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 36px;
+  z-index: 2;
+}
+
+.recipeImage {
+  aspect-ratio: 16 / 6;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.recipeBody {
+  padding: 24px;
+}
+
+.recipeHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.recipeHeader h2 {
+  color: var(--color-deep-black);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -1.2px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.recipeSection {
+  border-top: 1px solid var(--color-subtle-ash);
+  padding-top: 16px;
+}
+
+.recipeSection + .recipeSection {
+  margin-top: 20px;
+}
+
+.recipeSection h3 {
+  color: var(--color-deep-black);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.43;
+  margin: 0 0 12px;
+}
+
+.recipeSection p {
+  color: var(--color-rich-black);
+  font-size: 14px;
+  line-height: 1.56;
+  margin: 0;
+}
+
+.ingredientList {
+  display: grid;
+  gap: 8px;
+}
+
+.ingredientRow {
+  align-items: center;
+  background: var(--color-ghost-gray);
+  border-radius: 10px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.ingredientRow span,
+.ingredientRow strong {
+  color: var(--color-rich-black);
+  font-size: 14px;
+  line-height: 1.43;
+}
+
+.ingredientRow strong {
+  font-weight: 500;
+}
+
+.instructionList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.instructionList li {
+  background: var(--color-ghost-gray);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  padding: 10px;
+}
+
+.instructionList span {
+  align-items: center;
+  background: var(--color-deep-black);
+  border-radius: 9999px;
+  color: var(--color-canvas-white);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  height: 28px;
+  justify-content: center;
+  line-height: 1;
+  width: 28px;
+}
+
+.instructionList p {
+  align-self: center;
+}
+
+@media (max-width: 1120px) {
+  .metricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .onboardingPanel {
+    grid-column: span 2;
+  }
+
+  .definitionGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .heroTop,
+  .toolbar,
+  .recipeHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .title {
+    font-size: 40px;
+    letter-spacing: -2px;
+  }
+
+  .subtitle {
+    font-size: 16px;
+    letter-spacing: 0;
+  }
+
+  .metricsGrid,
+  .detailsGrid,
+  .definitionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .onboardingPanel {
+    grid-column: span 1;
+  }
+
+  .searchInput,
+  .secondaryButton {
+    width: 100%;
+  }
+
+  .recipeBody {
+    padding: 18px;
+  }
+}
