@@ -13,6 +13,7 @@ import {
   LANDING_TABLE_MISSING_WARNING,
 } from "@/lib/landingErrors";
 import { CATALOG_RECOMMENDATION_PROMPT } from "@/lib/catalogRecommendationTags";
+import styles from "../catalogs-blueprint.module.css";
 
 const TRANSLATION_LANGUAGES = [
   { code: "ru", label: "Русский" },
@@ -1307,13 +1308,15 @@ function txInsideSection() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
-    return <div style={{ padding: "32px", color: "var(--text-secondary)" }}>Загрузка лендинга...</div>;
+    return <div className={styles.landingEditor} style={{ padding: "32px", color: "var(--text-secondary)" }}>Загрузка лендинга...</div>;
   }
 
   if (!data) {
     return (
-      <div style={{ textAlign: "center", padding: "48px 24px", background: "var(--bg-surface)", borderRadius: "var(--radius-lg)", border: "2px dashed var(--border-medium)" }}>
-        <div style={{ fontSize: "52px", marginBottom: "16px" }}>📄</div>
+      <div className={`${styles.landingEditor} ${styles.panel}`} style={{ textAlign: "center", padding: "48px 24px" }}>
+        <div className={styles.emptyIcon}>
+          <FileJson2 size={22} />
+        </div>
         <p style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "8px" }}>Лендинг ещё не создан</p>
         <p style={{ fontSize: "14px", color: "var(--text-secondary)", marginBottom: "24px" }}>Создай черновик — он заполнится данными каталога автоматически</p>
         <button className="btn-large btn-primary" onClick={createDraft}>Создать черновик</button>
@@ -1322,7 +1325,7 @@ function txInsideSection() {
   }
 
   return (
-    <div>
+    <div className={styles.landingEditor}>
       {/* ── Top bar: segment control + actions ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", gap: "12px", flexWrap: "wrap" }}>
         <div style={{ display: "flex", background: "var(--bg-hover)", borderRadius: "10px", padding: "3px", gap: "2px" }}>
@@ -1358,7 +1361,7 @@ function txInsideSection() {
             style={{ fontSize: "13px" }}
             title="Размер карточки в разделе Исследовать"
           >
-            {data.card_size === "large" ? "⬛ Большая" : "▪️ Маленькая"}
+            {data.card_size === "large" ? "Большая карточка" : "Маленькая карточка"}
           </button>
           <button
             type="button"
@@ -1389,10 +1392,10 @@ function txInsideSection() {
       {saveStatus && (
         <div style={{
           marginBottom: "12px", padding: "8px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 500,
-          background: saveStatus.includes("⚠️") ? "rgba(255,159,10,0.1)" : saveStatus.includes("Ошибка") || saveStatus.includes("❌") ? "rgba(255,59,48,0.1)" : "rgba(52,199,89,0.1)",
-          color: saveStatus.includes("⚠️") ? "#ff9f0a" : saveStatus.includes("Ошибка") || saveStatus.includes("❌") ? "var(--accent-danger)" : "var(--text-secondary)",
+          background: saveStatus.includes("локально") || saveStatus.includes("Таблица") ? "var(--color-ghost-gray)" : saveStatus.includes("Ошибка") || saveStatus.includes("JSON") ? "rgba(194,43,16,0.08)" : "var(--color-ghost-gray)",
+          color: saveStatus.includes("Ошибка") || saveStatus.includes("JSON") ? "var(--accent-danger)" : "var(--text-secondary)",
           border: "1px solid",
-          borderColor: saveStatus.includes("⚠️") ? "rgba(255,159,10,0.25)" : saveStatus.includes("Ошибка") || saveStatus.includes("❌") ? "rgba(255,59,48,0.25)" : "rgba(52,199,89,0.2)",
+          borderColor: saveStatus.includes("Ошибка") || saveStatus.includes("JSON") ? "rgba(194,43,16,0.25)" : "var(--color-subtle-ash)",
         }}>
           {saveStatus}
         </div>
@@ -1549,7 +1552,7 @@ function txInsideSection() {
           </div>
         <div>
           {/* ── Цвета оформления (единый блок для всех трёх структур) ── */}
-          <SectionBlock title="🎨 Цвета оформления">
+          <SectionBlock title="Цвета оформления">
             <ColorField
               label="Основной фон (карточка + hero)"
               value={data.preview_card.backgroundHex}
@@ -1601,14 +1604,14 @@ function txInsideSection() {
           </SectionBlock>
 
           {/* ── Порядок ── */}
-          <SectionBlock title="⚙️ Порядок отображения" open={false}>
+          <SectionBlock title="Порядок отображения" open={false}>
             <Field label="Порядок (меньше = выше в списке)">
               <input className="input" type="number" value={data.sort_order} onChange={(e) => upd({ sort_order: parseInt(e.target.value) || 0 })} style={{ maxWidth: "120px" }} />
             </Field>
           </SectionBlock>
 
           {/* ── Описание каталога ── */}
-          <SectionBlock title="📝 Описание каталога" open headerRight={txBtn("description", txDescription)}>
+          <SectionBlock title="Описание каталога" open headerRight={txBtn("description", txDescription)}>
             <Field label="Описание" span hint="Показывается в белом блоке под hero. Одно поле — редактирует оба: preview_card.subtitle и hero.subtitle.">
               <textarea
                 className="input"
@@ -1625,7 +1628,7 @@ function txInsideSection() {
           </SectionBlock>
 
           {/* ── Секция «Что внутри» ── */}
-          <SectionBlock title="📦 Секция «Что внутри»" open={!!data.inside_section} headerRight={txBtn("inside_section", txInsideSection)}>
+          <SectionBlock title="Секция «Что внутри»" open={!!data.inside_section} headerRight={txBtn("inside_section", txInsideSection)}>
             <OptionalSection label="Секция" enabled={!!data.inside_section} onToggle={isRO ? () => {} : (v) => upd({ inside_section: v ? { title: "Что внутри", subtitle: "", items: [] } : null })}>
               {data.inside_section && (
                 <BulletItemsList items={viewData.inside_section?.items ?? []} onChange={isRO ? () => {} : (items) => upd({ inside_section: { ...data.inside_section!, items } })} hideTitle textPlaceholder="Текст пункта (используй **слово** для акцентного цвета)" />
@@ -1634,7 +1637,7 @@ function txInsideSection() {
           </SectionBlock>
 
           {/* ── Витрина рецептов ── */}
-          <SectionBlock title="🍽️ Витрина рецептов" open={!!data.recipe_showcase} headerRight={txBtn("recipe_showcase", txRecipeShowcase)}>
+          <SectionBlock title="Витрина рецептов" open={!!data.recipe_showcase} headerRight={txBtn("recipe_showcase", txRecipeShowcase)}>
             <OptionalSection label="Секция" enabled={!!data.recipe_showcase} onToggle={isRO ? () => {} : (v) => upd({ recipe_showcase: v ? { title: "Примеры рецептов" } : null })}>
               {data.recipe_showcase && (
                 <Field label="Заголовок" span hint="Одна строка — заголовок блока с рецептами">
@@ -1645,7 +1648,7 @@ function txInsideSection() {
           </SectionBlock>
 
           {/* ── Аудитория ── */}
-          <SectionBlock title="👥 Секция «Кому подойдёт»" open={!!data.audience_section} headerRight={txBtn("audience_section", txAudienceSection)}>
+          <SectionBlock title="Секция «Кому подойдёт»" open={!!data.audience_section} headerRight={txBtn("audience_section", txAudienceSection)}>
             <OptionalSection label="Секция" enabled={!!data.audience_section} onToggle={isRO ? () => {} : (v) => upd({ audience_section: v ? { title: "Кому подойдёт?\nЭто точно про тебя, если…", items: [] } : null })}>
               {data.audience_section && <>
                 <Field label="Заголовок блока" span hint="Можно перенос строки через ↵. Например: «Кому подойдёт?↵Это точно про тебя, если…»">
@@ -1663,7 +1666,7 @@ function txInsideSection() {
           </SectionBlock>
 
           {/* ── Трансформация ── */}
-          <SectionBlock title="🔄 Секция «Узнаёшь себя?»" open={!!data.transformation_section} headerRight={txBtn("transformation_section", txTransformationSection)}>
+          <SectionBlock title="Секция «Узнаёшь себя?»" open={!!data.transformation_section} headerRight={txBtn("transformation_section", txTransformationSection)}>
             <OptionalSection label="Секция" enabled={!!data.transformation_section} onToggle={isRO ? () => {} : (v) => upd({ transformation_section: v ? { title: "Узнаёшь себя?", beforeLabel: "До", afterLabel: "После", pairs: [] } : null })}>
               {data.transformation_section && <>
                 <Field label="Заголовок">
@@ -1691,7 +1694,7 @@ function txInsideSection() {
           </SectionBlock>
 
           {/* ── Преимущества ── */}
-          <SectionBlock title="✨ Преимущества" open={!!data.benefits_section} headerRight={txBtn("benefits_section", txBenefitsSection)}>
+          <SectionBlock title="Преимущества" open={!!data.benefits_section} headerRight={txBtn("benefits_section", txBenefitsSection)}>
             <OptionalSection label="Секция" enabled={!!data.benefits_section} onToggle={isRO ? () => {} : (v) => upd({ benefits_section: v ? { title: "", cards: [] } : null })}>
               {data.benefits_section && <>
                 <div style={{ gridColumn: "1 / -1" }}>
@@ -1711,7 +1714,7 @@ function txInsideSection() {
           </SectionBlock>
 
           {/* ── FAQ ── */}
-          <SectionBlock title="❓ FAQ" headerRight={txBtn("faq_items", txFaqItems)}>
+          <SectionBlock title="FAQ" headerRight={txBtn("faq_items", txFaqItems)}>
             <div style={{ gridColumn: "1 / -1" }}>
               {(viewData.faq_items ?? []).map((item, i) => (
                 <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "6px", marginBottom: "8px", alignItems: "start" }}>

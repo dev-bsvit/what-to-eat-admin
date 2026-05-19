@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { ArrowLeft, BookOpen, Camera, FolderOpen, Plus, Trash2 } from "lucide-react";
 import LandingEditor from "./LandingEditor";
 import {
   CATALOG_DIETARY_OPTIONS,
@@ -9,6 +10,7 @@ import {
   CATALOG_LEVEL_OPTIONS,
   CATALOG_TIME_OPTIONS,
 } from "@/lib/catalogRecommendationTags";
+import styles from "../catalogs-blueprint.module.css";
 
 interface Recipe {
   id: string;
@@ -80,9 +82,9 @@ function RecommendationCheckboxGroup({
               onClick={() => onChange(toggleValue(values, option.value))}
               style={{
                 border: "1px solid",
-                borderColor: selected ? "#007aff" : "var(--border-light)",
-                background: selected ? "rgba(0,122,255,0.12)" : "var(--bg-surface)",
-                color: selected ? "#007aff" : "var(--text-primary)",
+                borderColor: selected ? "var(--color-deep-black)" : "var(--color-subtle-ash)",
+                background: selected ? "var(--color-deep-black)" : "var(--color-canvas-white)",
+                color: selected ? "var(--color-canvas-white)" : "var(--color-rich-black)",
                 borderRadius: 999,
                 padding: "6px 10px",
                 cursor: "pointer",
@@ -295,7 +297,7 @@ export default function CatalogDetailPage() {
         recommendation_dietary: editForm.recommendation_dietary,
         recommendation_tags: editForm.recommendation_tags,
         translations: editForm.translations || null,
-          revenue_share: editForm.revenue_share ? parseFloat(editForm.revenue_share) : null,
+        revenue_share: editForm.revenue_share ? parseFloat(editForm.revenue_share) : null,
         };
       const response = await fetch("/api/admin/cuisines", {
         method: "POST",
@@ -308,8 +310,8 @@ export default function CatalogDetailPage() {
         return;
       }
       setCuisine(result.data || cuisine);
-      setSaveStatus("Готово ✅");
-    } catch (error) {
+      setSaveStatus("Готово");
+    } catch {
       setSaveStatus("Ошибка: не удалось подключиться");
     }
   }
@@ -348,10 +350,13 @@ export default function CatalogDetailPage() {
   }
 
   return (
-    <div>
+    <div className={`${styles.blueprint} ${styles.wide}`}>
       {/* Breadcrumb */}
       <div className="breadcrumb">
-        <span onClick={goBack} style={{ cursor: 'pointer' }}>📁 Каталоги</span>
+        <span onClick={goBack} style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <FolderOpen size={14} />
+          Каталоги
+        </span>
         <span>/</span>
         <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
           {cuisine.name}
@@ -367,39 +372,41 @@ export default function CatalogDetailPage() {
       </div>
 
       {/* Actions */}
-      <div style={{
-        display: 'flex',
-        gap: 'var(--spacing-md)',
-        marginBottom: 'var(--spacing-xl)',
-      }}>
+      <div className={styles.actionBar}>
         <button
           className="btn-large btn-primary"
           onClick={createRecipe}
         >
-          <span style={{ fontSize: '20px' }}>+</span>
+          <Plus size={16} />
           Добавить рецепт в этот каталог
         </button>
         <button
           className="btn-large btn-secondary"
           onClick={() => router.push(`/instagram-import?cuisine_id=${cuisine.id}`)}
         >
-          📷 Импорт из Instagram
+          <Camera size={16} />
+          Импорт из Instagram
         </button>
         <button
           className="btn-large btn-secondary"
           onClick={goBack}
         >
-          ← Назад
+          <ArrowLeft size={16} />
+          Назад
         </button>
       </div>
 
       {/* Tab navigation */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: 'var(--spacing-xl)', background: 'var(--bg-hover)', borderRadius: '12px', padding: '4px', width: 'fit-content' }}>
+      <div className={styles.tabs}>
         {([
-          { key: 'catalog', label: '📋 Каталог' },
-          { key: 'recipes', label: `🍳 Рецепты (${recipes.length})` },
+          { key: 'catalog', label: 'Каталог' },
+          { key: 'recipes', label: `Рецепты (${recipes.length})` },
         ] as const).map(({ key, label }) => (
-          <button key={key} onClick={() => setActiveTab(key)} style={{ padding: '8px 18px', border: 'none', borderRadius: '9px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, background: activeTab === key ? 'var(--bg-surface)' : 'transparent', color: activeTab === key ? 'var(--text-primary)' : 'var(--text-secondary)', boxShadow: activeTab === key ? '0 1px 4px rgba(0,0,0,0.12)' : 'none', transition: 'all 0.15s' }}>
+          <button
+            key={key}
+            className={`${styles.tab} ${activeTab === key ? styles.tabActive : ""}`}
+            onClick={() => setActiveTab(key)}
+          >
             {label}
           </button>
         ))}
@@ -408,13 +415,7 @@ export default function CatalogDetailPage() {
       {/* Tab: Каталог (настройки + лендинг объединены) */}
       {activeTab === 'catalog' && <>
         {/* Basic settings card */}
-        <div style={{
-          background: 'var(--bg-surface)',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border-light)',
-          padding: 'var(--spacing-lg)',
-          marginBottom: 'var(--spacing-lg)',
-        }}>
+        <div className={styles.panel} style={{ padding: 16, marginBottom: 16 }}>
           <h2 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>
             Основное
           </h2>
@@ -434,7 +435,7 @@ export default function CatalogDetailPage() {
           )}
 
           {/* Main fields — compact 2-column grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div className={styles.settingsGrid}>
 
             {/* Row 1: Название + Теги */}
             <div className="form-group">
@@ -458,7 +459,7 @@ export default function CatalogDetailPage() {
             </div>
 
             {/* Row 2: Описание — full width */}
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <div className={`form-group ${styles.spanAll}`}>
               <label className="form-label">Подзаголовок</label>
               <input
                 className="input"
@@ -498,7 +499,7 @@ export default function CatalogDetailPage() {
             </div>
 
             {/* Row 4: Catalog ID — full width */}
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <div className={`form-group ${styles.spanAll}`}>
               <label className="form-label">
                 Catalog ID
                 <span style={{ fontWeight: 400, color: 'var(--text-secondary)', marginLeft: 6 }}>
@@ -565,20 +566,14 @@ export default function CatalogDetailPage() {
           </div>
 
           {(editForm.type === "premium" || editForm.type === "gift") && (
-            <div style={{
-              marginTop: 16,
-              border: "1px solid var(--border-light)",
-              borderRadius: "var(--radius-md)",
-              padding: 14,
-              background: "var(--bg-hover)",
-            }}>
+            <div className={styles.subtlePanel} style={{ marginTop: 16 }}>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: "var(--text-primary)" }}>
                 Наклейки для подарка *
               </div>
               <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
                 Эти поля использует анкета регистрации, чтобы выбрать подходящий подарок.
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className={styles.settingsGrid}>
                 <RecommendationCheckboxGroup
                   title="Уровень *"
                   values={editForm.recommendation_levels}
@@ -609,16 +604,16 @@ export default function CatalogDetailPage() {
 
           <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
             <button className="btn btn-primary" onClick={saveAll} disabled={isSavingAll}>
-              {isSavingAll ? 'Сохраняю...' : '💾 Сохранить всё'}
+              {isSavingAll ? 'Сохраняю...' : 'Сохранить всё'}
             </button>
           </div>
 
           {/* Technical section — collapsed */}
-          <details style={{ marginTop: 16 }}>
+          <details className={styles.technical}>
             <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', userSelect: 'none', padding: '6px 0' }}>
-              ⚙️ Системная информация
+              Системная информация
             </summary>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, padding: 12, background: 'var(--bg-hover)', borderRadius: 10 }}>
+            <div className={styles.settingsGrid} style={{ marginTop: 10 }}>
               <div className="form-group">
                 <label className="form-label" style={{ fontSize: 11 }}>UUID</label>
                 <input className="input" value={editForm.id} readOnly style={{ opacity: 0.5, fontSize: 12 }} />
@@ -668,11 +663,7 @@ export default function CatalogDetailPage() {
       {/* Tab: Recipes */}
       {activeTab === 'recipes' && <>
       {/* Recipe Grid - small cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-        gap: 'var(--spacing-md)',
-      }}>
+      <div className={styles.recipeGrid}>
         {recipes.map((recipe) => (
           <div
             key={recipe.id}
@@ -704,7 +695,7 @@ export default function CatalogDetailPage() {
                 zIndex: 1,
               }}
             >
-              ✕
+              <Trash2 size={14} />
             </button>
             {recipe.image_url && (
               <div style={{
@@ -750,21 +741,15 @@ export default function CatalogDetailPage() {
               </p>
             )}
 
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-              fontSize: '12px',
-              color: 'var(--text-secondary)',
-            }}>
+            <div className={styles.recipeMeta}>
               {recipe.servings && (
-                <span>👥 {recipe.servings} порций</span>
+                <span>{recipe.servings} порций</span>
               )}
               {(recipe.cook_time || recipe.prep_time) && (
-                <span>⏱️ {(recipe.cook_time || 0) + (recipe.prep_time || 0)} мин</span>
+                <span>{(recipe.cook_time || 0) + (recipe.prep_time || 0)} мин</span>
               )}
               {recipe.calories && (
-                <span>🔥 {recipe.calories} ккал</span>
+                <span>{recipe.calories} ккал</span>
               )}
             </div>
           </div>
@@ -779,7 +764,9 @@ export default function CatalogDetailPage() {
           borderRadius: 'var(--radius-lg)',
           border: '2px dashed var(--border-medium)',
         }}>
-          <div style={{ fontSize: '64px', marginBottom: 'var(--spacing-lg)' }}>📝</div>
+          <div className={styles.emptyIcon}>
+            <BookOpen size={22} />
+          </div>
           <p style={{ fontSize: '18px', color: 'var(--text-primary)', marginBottom: 'var(--spacing-sm)' }}>
             Нет рецептов в этом каталоге
           </p>
@@ -790,7 +777,7 @@ export default function CatalogDetailPage() {
             className="btn-large btn-primary"
             onClick={createRecipe}
           >
-            <span style={{ fontSize: '20px' }}>+</span>
+            <Plus size={16} />
             Добавить рецепт
           </button>
         </div>

@@ -1,0 +1,504 @@
+.blueprint {
+  --color-canvas-white: #ffffff;
+  --color-ghost-gray: #f2f2f2;
+  --color-subtle-ash: #e5e5e5;
+  --color-midtone-gray: #737373;
+  --color-rich-black: #0a0a0a;
+  --color-deep-black: #000000;
+  --color-callout-red: #c22b10;
+  --color-success-green: #10c22b;
+  --font-geist: "Geist", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-geist-mono: "Geist Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --shadow-subtle-2: oklab(0.145 -0.00000143796 0.00000340492 / 0.1) 0px 0px 0px 1px;
+  --shadow-focus: lab(100 0 0) 0px 0px 0px 2px;
+
+  --bg-main: var(--color-canvas-white);
+  --bg-surface: var(--color-canvas-white);
+  --bg-hover: var(--color-ghost-gray);
+  --bg-page: var(--color-ghost-gray);
+  --text-primary: var(--color-rich-black);
+  --text-secondary: var(--color-midtone-gray);
+  --text-muted: var(--color-midtone-gray);
+  --border-light: var(--color-subtle-ash);
+  --border-medium: #a1a1a1;
+  --border-input: var(--color-subtle-ash);
+  --border-input-hover: var(--color-rich-black);
+  --accent-primary: var(--color-deep-black);
+  --accent-hover: var(--color-rich-black);
+  --accent-light: var(--color-ghost-gray);
+  --accent-success: var(--color-success-green);
+  --accent-danger: var(--color-callout-red);
+  --color-primary: var(--color-deep-black);
+
+  color: var(--color-rich-black);
+  font-family: var(--font-geist);
+  margin: 0 auto;
+  max-width: 1280px;
+  width: 100%;
+}
+
+.wide {
+  max-width: 1500px;
+}
+
+.blueprint :global(.section-title),
+.title {
+  color: var(--color-deep-black);
+  font-size: 48px;
+  font-weight: 600;
+  letter-spacing: -2.4px;
+  line-height: 1;
+  margin: 0;
+}
+
+.blueprint :global(.section-subtitle),
+.subtitle {
+  color: var(--color-rich-black);
+  font-size: 18px;
+  letter-spacing: -0.45px;
+  line-height: 1.33;
+  margin-top: 12px;
+  max-width: 820px;
+}
+
+.blueprint :global(.page-header) {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--color-subtle-ash);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+}
+
+.blueprint :global(.section-header) {
+  margin-bottom: 0;
+}
+
+.blueprint :global(.btn),
+.blueprint :global(.btn-large) {
+  border-radius: 9999px !important;
+  font-family: var(--font-geist);
+  font-size: 14px;
+  font-weight: 500;
+  min-height: 38px;
+  padding: 8px 16px;
+}
+
+.blueprint :global(.btn-primary),
+.blueprint :global(.btn-large.btn-primary),
+.blueprint :global(.btn-success) {
+  background: var(--color-deep-black) !important;
+  border: 1px solid var(--color-deep-black) !important;
+  color: var(--color-canvas-white) !important;
+}
+
+.blueprint :global(.btn-secondary),
+.blueprint :global(.btn-large.btn-secondary) {
+  background: var(--color-canvas-white) !important;
+  border: 1px solid var(--color-subtle-ash) !important;
+  color: var(--color-rich-black) !important;
+}
+
+.blueprint :global(.btn-danger) {
+  background: var(--color-canvas-white) !important;
+  border: 1px solid var(--color-callout-red) !important;
+  color: var(--color-callout-red) !important;
+}
+
+.blueprint :global(.input),
+.blueprint :global(.input-large),
+.blueprint :global(.input-sm) {
+  background: var(--color-canvas-white) !important;
+  border: 1px solid var(--color-subtle-ash) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  color: var(--color-rich-black) !important;
+  font-family: var(--font-geist);
+  font-size: 14px;
+  min-height: 38px;
+}
+
+.blueprint :global(.input:focus),
+.blueprint :global(.input-large:focus),
+.blueprint :global(.input-sm:focus) {
+  border-color: var(--color-rich-black) !important;
+  box-shadow: var(--shadow-focus) !important;
+}
+
+.blueprint :global(textarea.input) {
+  line-height: 1.43;
+  min-height: 92px;
+}
+
+.blueprint :global(.form-label) {
+  color: var(--color-rich-black);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.blueprint :global(.form-group) {
+  margin-bottom: 16px;
+}
+
+.metricStrip,
+.catalogSummary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.metric,
+.blueprint :global(.catalog-summary span),
+.blueprint :global(.catalog-card-meta span),
+.blueprint :global(.status-pill) {
+  align-items: center;
+  background: var(--color-ghost-gray) !important;
+  border: 1px solid var(--color-subtle-ash) !important;
+  border-radius: 26px !important;
+  color: var(--color-rich-black) !important;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 6px;
+  line-height: 1.5;
+  padding: 2px 8px !important;
+}
+
+.blueprint :global(.status-pill.success) {
+  background: var(--color-deep-black) !important;
+  border-color: var(--color-deep-black) !important;
+  color: var(--color-canvas-white) !important;
+}
+
+.blueprint :global(.status-pill.warning) {
+  background: var(--color-canvas-white) !important;
+  border-color: var(--color-callout-red) !important;
+  color: var(--color-callout-red) !important;
+}
+
+.blueprint :global(.catalog-toolbar) {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(280px, 1fr) auto auto;
+  margin-bottom: 16px;
+}
+
+.blueprint :global(.catalog-type-filter) {
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
+  display: inline-flex;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.blueprint :global(.catalog-type-filter button) {
+  background: var(--color-canvas-white);
+  border: 0;
+  border-right: 1px solid var(--color-subtle-ash);
+  border-radius: 0;
+  color: var(--color-rich-black);
+  height: 38px;
+  padding: 0 12px;
+}
+
+.blueprint :global(.catalog-type-filter button:last-child) {
+  border-right: 0;
+}
+
+.blueprint :global(.catalog-type-filter button.is-active) {
+  background: var(--color-deep-black);
+  color: var(--color-canvas-white);
+}
+
+.blueprint :global(.catalog-toggle) {
+  color: var(--color-rich-black);
+  font-size: 13px;
+}
+
+.blueprint :global(.catalog-toggle input) {
+  accent-color: var(--color-deep-black);
+}
+
+.blueprint :global(.catalog-grid) {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(284px, 1fr));
+}
+
+.blueprint :global(.catalog-card),
+.blueprint :global(.app-card),
+.panel,
+.blueprint :global(.modal) {
+  background: var(--color-canvas-white) !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  box-shadow: var(--shadow-subtle-2) !important;
+}
+
+.blueprint :global(.catalog-card) {
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.blueprint :global(.catalog-card:hover) {
+  box-shadow: var(--shadow-focus), var(--shadow-subtle-2) !important;
+  transform: translateY(-1px);
+}
+
+.blueprint :global(.catalog-card-media) {
+  background: var(--color-ghost-gray) !important;
+  border-bottom: 1px solid var(--color-subtle-ash);
+}
+
+.blueprint :global(.catalog-card-placeholder) {
+  background: var(--color-ghost-gray) !important;
+  color: var(--color-rich-black) !important;
+}
+
+.blueprint :global(.catalog-chip) {
+  background: var(--color-deep-black) !important;
+  border-radius: 26px !important;
+  bottom: 10px;
+  color: var(--color-canvas-white) !important;
+  padding: 2px 8px !important;
+}
+
+.blueprint :global(.catalog-delete-button) {
+  background: var(--color-canvas-white) !important;
+  border: 1px solid var(--color-subtle-ash) !important;
+  border-radius: 10px !important;
+  box-shadow: var(--shadow-subtle-2) !important;
+  color: var(--color-callout-red) !important;
+}
+
+.blueprint :global(.catalog-card-body) {
+  gap: 10px;
+  padding: 16px;
+}
+
+.blueprint :global(.catalog-card-body h3) {
+  color: var(--color-deep-black);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.45px;
+  line-height: 1.33;
+}
+
+.blueprint :global(.catalog-card-body p) {
+  color: var(--color-midtone-gray);
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+}
+
+.blueprint :global(.catalog-open-button) {
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 9999px;
+  color: var(--color-rich-black);
+}
+
+.blueprint :global(.empty-state) {
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 14px;
+  box-shadow: var(--shadow-subtle-2);
+}
+
+.emptyIcon {
+  align-items: center;
+  background: var(--color-ghost-gray);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 14px;
+  color: var(--color-rich-black);
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  margin-bottom: 16px;
+  width: 48px;
+}
+
+.blueprint :global(.breadcrumb) {
+  border-bottom: 1px solid var(--color-subtle-ash);
+  color: var(--color-midtone-gray);
+  font-size: 13px;
+  margin-bottom: 20px;
+  padding: 0 0 12px;
+}
+
+.actionBar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.tabs {
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
+  display: inline-flex;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.tab {
+  background: var(--color-canvas-white);
+  border: 0;
+  border-right: 1px solid var(--color-subtle-ash);
+  color: var(--color-rich-black);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  min-height: 38px;
+  padding: 8px 14px;
+}
+
+.tab:last-child {
+  border-right: 0;
+}
+
+.tabActive {
+  background: var(--color-deep-black);
+  color: var(--color-canvas-white);
+}
+
+.settingsGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.spanAll {
+  grid-column: 1 / -1;
+}
+
+.subtlePanel {
+  background: var(--color-ghost-gray) !important;
+  border: 1px solid var(--color-subtle-ash) !important;
+  border-radius: 14px !important;
+  padding: 16px !important;
+}
+
+.technical {
+  border-top: 1px solid var(--color-subtle-ash);
+  margin-top: 16px;
+  padding-top: 12px;
+}
+
+.technical summary {
+  color: var(--color-midtone-gray) !important;
+  cursor: pointer;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+.recipeGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.recipeMeta {
+  color: var(--color-midtone-gray);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.recipeWorkspace {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 360px minmax(0, 1fr);
+  height: calc(100vh - 64px);
+}
+
+.previewRail {
+  background: var(--color-canvas-white);
+  border-radius: 14px;
+  box-shadow: var(--shadow-subtle-2);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.formRail {
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.blueprint .recipeWorkspace [style*="linear-gradient"] {
+  background: var(--color-ghost-gray) !important;
+}
+
+.blueprint .recipeWorkspace [style*="#667eea"],
+.blueprint .recipeWorkspace [style*="#764ba2"],
+.blueprint .recipeWorkspace [style*="#f97316"] {
+  color: var(--color-rich-black) !important;
+}
+
+.landingEditor {
+  margin-top: 16px;
+}
+
+.landingEditor > div,
+.landingEditor details,
+.landingEditor [style*="border-radius: 14px"],
+.landingEditor [style*="borderRadius: 14"] {
+  border-color: var(--color-subtle-ash) !important;
+  box-shadow: var(--shadow-subtle-2);
+}
+
+.landingEditor [style*="rgba(0,122,255"],
+.landingEditor [style*="#007aff"],
+.landingEditor [style*="#34c759"],
+.landingEditor [style*="#ff9f0a"] {
+  background: var(--color-ghost-gray) !important;
+  border-color: var(--color-subtle-ash) !important;
+  color: var(--color-rich-black) !important;
+}
+
+@media (max-width: 1100px) {
+  .blueprint :global(.catalog-toolbar),
+  .recipeWorkspace {
+    grid-template-columns: 1fr;
+  }
+
+  .previewRail {
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .blueprint :global(.page-header),
+  .actionBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .blueprint :global(.section-title),
+  .title {
+    font-size: 38px;
+    letter-spacing: -1.6px;
+  }
+
+  .blueprint :global(.section-subtitle),
+  .subtitle {
+    font-size: 16px;
+  }
+
+  .settingsGrid {
+    grid-template-columns: 1fr;
+  }
+}

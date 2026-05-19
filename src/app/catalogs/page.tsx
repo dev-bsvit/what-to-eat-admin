@@ -21,6 +21,7 @@ import {
   CATALOG_LEVEL_OPTIONS,
   CATALOG_TIME_OPTIONS,
 } from "@/lib/catalogRecommendationTags";
+import styles from "./catalogs-blueprint.module.css";
 
 interface Cuisine {
   id: string;
@@ -68,9 +69,9 @@ function CheckboxGroup({
               onClick={() => onChange(toggleValue(values, option.value))}
               style={{
                 border: "1px solid",
-                borderColor: selected ? "#007aff" : "var(--border-light)",
-                background: selected ? "rgba(0,122,255,0.12)" : "var(--bg-surface)",
-                color: selected ? "#007aff" : "var(--text-primary)",
+                borderColor: selected ? "var(--color-deep-black)" : "var(--color-subtle-ash)",
+                background: selected ? "var(--color-deep-black)" : "var(--color-canvas-white)",
+                color: selected ? "var(--color-canvas-white)" : "var(--color-rich-black)",
                 borderRadius: 999,
                 padding: "6px 10px",
                 cursor: "pointer",
@@ -311,7 +312,7 @@ export default function CatalogsPage() {
   }
 
   return (
-    <div className="catalogs-page">
+    <div className={`${styles.blueprint} catalogs-page`}>
       {/* Page Header */}
       <div className="page-header">
         <div className="section-header">
@@ -438,7 +439,9 @@ export default function CatalogsPage() {
 
       {filteredCuisines.length === 0 && !loading && (
         <div className="empty-state">
-          <div className="empty-state-icon">📁</div>
+          <div className={styles.emptyIcon}>
+            <FolderOpen size={22} />
+          </div>
           <div className="empty-state-title">
             {searchTerm ? "Каталоги не найдены" : "Нет каталогов"}
           </div>

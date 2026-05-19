@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Clock3, Download, Languages, Save, Upload, UsersRound } from "lucide-react";
 import RecipeIngredientsEditor from "@/components/RecipeIngredientsEditor";
+import styles from "../catalogs/catalogs-blueprint.module.css";
 
 interface Ingredient {
   id: string;
@@ -1114,7 +1116,7 @@ export default function RecipesPage() {
       setSteps(loadedSteps);
     }
 
-    setImportStatus("Готово ✅ Данные применены");
+    setImportStatus("Готово. Данные применены");
   }
 
   async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1150,7 +1152,7 @@ export default function RecipesPage() {
 
       const payload = data?.recipe ? { recipe: data.recipe } : data;
       applyImportRecipe(JSON.stringify(payload));
-      setInstagramStatus("Готово ✅ Данные применены");
+      setInstagramStatus("Готово. Данные применены");
       setShowInstagramModal(false);
     } catch (error) {
       setInstagramStatus(error instanceof Error ? error.message : "Ошибка импорта Instagram.");
@@ -1495,12 +1497,12 @@ export default function RecipesPage() {
       });
       const result = await response.json();
       if (!response.ok) {
-        setTranslateStatus(`❌ Ошибка: ${result.error}`);
+        setTranslateStatus(`Ошибка: ${result.error}`);
       } else {
-        setTranslateStatus(`✅ Переведено на ${result.languages?.length || 0} языков`);
+        setTranslateStatus(`Переведено на ${result.languages?.length || 0} языков`);
       }
     } catch {
-      setTranslateStatus("❌ Ошибка соединения");
+      setTranslateStatus("Ошибка соединения");
     } finally {
       setTranslating(false);
     }
@@ -1550,9 +1552,9 @@ export default function RecipesPage() {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 'var(--spacing-xl)', height: 'calc(100vh - 64px)' }}>
+    <div className={`${styles.blueprint} ${styles.wide} ${styles.recipeWorkspace}`}>
       {/* Left: Preview */}
-      <div style={{
+      <div className={styles.previewRail} style={{
         width: '380px',
         flexShrink: 0,
         background: 'var(--bg-surface)',
@@ -1592,13 +1594,13 @@ export default function RecipesPage() {
             <div style={{
               width: '100%',
               height: '180px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: 'var(--color-ghost-gray)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '56px',
+              color: 'var(--color-midtone-gray)',
             }}>
-              🍽️
+              <Upload size={42} />
             </div>
           )}
 
@@ -1606,7 +1608,7 @@ export default function RecipesPage() {
           <div style={{ padding: 'var(--spacing-md)' }}>
             <div style={{
               fontSize: '11px',
-              color: '#667eea',
+              color: 'var(--color-midtone-gray)',
               fontWeight: 600,
               marginBottom: '4px',
               textTransform: 'uppercase',
@@ -1644,13 +1646,13 @@ export default function RecipesPage() {
             }}>
               {form.servings && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span>👥</span>
+                  <UsersRound size={13} />
                   <span>{form.servings} порций</span>
                 </div>
               )}
               {(form.prep_time || form.cook_time) && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span>⏱️</span>
+                  <Clock3 size={13} />
                   <span>{(parseInt(form.prep_time) || 0) + (parseInt(form.cook_time) || 0)} мин</span>
                 </div>
               )}
@@ -1706,7 +1708,7 @@ export default function RecipesPage() {
       </div>
 
       {/* Right: Form */}
-      <div style={{
+      <div className={styles.formRail} style={{
         flex: 1,
         overflowY: 'auto',
         paddingRight: 'var(--spacing-md)',
@@ -1730,12 +1732,14 @@ export default function RecipesPage() {
               className="btn btn-secondary"
               onClick={() => setShowImportModal(true)}
             >
+              <Upload size={15} />
               Импорт JSON
             </button>
             <button
               className="btn btn-secondary"
               onClick={() => setShowInstagramModal(true)}
             >
+              <Download size={15} />
               Импорт Instagram
             </button>
             <button
@@ -1751,6 +1755,7 @@ export default function RecipesPage() {
               disabled={loading}
               style={{ minWidth: '120px' }}
             >
+              <Save size={15} />
               {loading ? 'Сохранение...' : 'Сохранить'}
             </button>
             {editId && (
@@ -1761,7 +1766,8 @@ export default function RecipesPage() {
                 title="Перевести рецепт на все языки через DeepL"
                 style={{ minWidth: '130px' }}
               >
-                {translating ? '⏳ Перевод...' : '🌐 Перевести'}
+                <Languages size={15} />
+                {translating ? 'Перевод...' : 'Перевести'}
               </button>
             )}
           </div>
@@ -1770,7 +1776,7 @@ export default function RecipesPage() {
           <div style={{
             padding: '8px 16px',
             fontSize: '13px',
-            color: translateStatus.startsWith('✅') ? '#22c55e' : '#ef4444',
+            color: translateStatus.startsWith('Ошибка') ? 'var(--accent-danger)' : 'var(--text-secondary)',
             background: 'var(--bg-surface)',
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--border-light)',
@@ -2258,7 +2264,6 @@ export default function RecipesPage() {
                 marginBottom: 'var(--spacing-lg)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <span style={{ fontSize: 18 }}>🎰</span>
                   <strong style={{ fontSize: 14, color: 'var(--text-primary)' }}>
                     Теги для рулетки
                   </strong>
