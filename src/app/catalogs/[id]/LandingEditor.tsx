@@ -332,31 +332,6 @@ function GradientField({
   );
 }
 
-function BadgesField({ label = "Значки", value: valueProp, onChange }: { label?: string; value?: string[]; onChange: (v: string[]) => void }) {
-  const value = valueProp ?? [];
-  const [newBadge, setNewBadge] = useState("");
-  const add = () => { if (newBadge.trim()) { onChange([...value, newBadge.trim()]); setNewBadge(""); } };
-  return (
-    <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-      <label className="form-label">{label}</label>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px", minHeight: "28px" }}>
-        {value.map((badge, i) => (
-          <span key={i} style={{ background: "var(--bg-hover)", padding: "4px 10px", borderRadius: "20px", fontSize: "13px", display: "flex", alignItems: "center", gap: "4px" }}>
-            {badge}
-            <button onClick={() => onChange(value.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-danger)", fontSize: "15px", lineHeight: 1, padding: 0 }}>×</button>
-          </span>
-        ))}
-      </div>
-      <input
-        className="input"
-        placeholder="Новый значок — Enter для добавления"
-        value={newBadge}
-        onChange={(e) => setNewBadge(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") { add(); e.preventDefault(); } }}
-      />
-    </div>
-  );
-}
 
 function OptionalSection({ label, enabled, onToggle, children }: { label: string; enabled: boolean; onToggle: (v: boolean) => void; children?: React.ReactNode }) {
   return (
@@ -1002,21 +977,7 @@ ${base}
     }));
   }
 
-  function txHero() {
-    if (!data) return;
-    const h = data.hero;
-    const pairs: Array<{ key: string; text: string }> = [
-      { key: "title", text: h.title },
-      ...(h.subtitle ? [{ key: "subtitle", text: h.subtitle }] : []),
-      ...(h.badges ?? []).map((b, i) => ({ key: `badge_${i}`, text: b })),
-    ];
-    doSectionTranslate("hero", pairs, (t) => ({
-      preview_card: { title: t.title, subtitle: t.subtitle, badges: (h.badges ?? []).map((b, i) => t[`badge_${i}`] ?? b) },
-      hero: { title: t.title, subtitle: t.subtitle, badges: (h.badges ?? []).map((b, i) => t[`badge_${i}`] ?? b) },
-    }));
-  }
-
-  function txInsideSection() {
+function txInsideSection() {
     if (!data?.inside_section?.items?.length) return;
     const items = data.inside_section.items;
     doSectionTranslate("inside_section", items.map((it, i) => ({ key: `i${i}`, text: it.text })), (t) => ({
@@ -1636,18 +1597,6 @@ ${base}
               label="Фон карточек контента"
               value={data.theme.cardBackgroundHex}
               onChange={(v) => upd({ theme: { ...data.theme, cardBackgroundHex: v } })}
-            />
-          </SectionBlock>
-
-          {/* ── Значки (синхронизированы в карточке и hero) ── */}
-          <SectionBlock title="🏷️ Значки (карточка и лендинг)" open={false} headerRight={txBtn("hero", txHero)}>
-            <BadgesField
-              label="Значки — показываются и в карточке каталога, и в шапке лендинга"
-              value={viewData.preview_card?.badges ?? []}
-              onChange={isRO ? () => {} : (v) => upd({
-                preview_card: { ...data.preview_card, badges: v },
-                hero: { ...data.hero, badges: v },
-              })}
             />
           </SectionBlock>
 
