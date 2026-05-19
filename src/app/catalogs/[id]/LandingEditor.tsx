@@ -56,8 +56,8 @@ interface LandingData {
   benefits_section?: BenefitsSection | null;
   faq_items: FAQItem[];
   theme: {
-    pageBackgroundHex?: string; heroBackgroundHex?: string; heroOverlayHex?: string;
-    cardBackgroundHex?: string; accentHex?: string; secondaryAccentHex?: string; textOnDarkHex?: string;
+    heroBackgroundHex?: string; heroOverlayHex?: string;
+    accentHex?: string; textOnDarkHex?: string;
     heroBackgroundGradient?: ColorGradient | null;
   };
   recipe_preview_ids: string[];
@@ -122,12 +122,9 @@ function defaultLanding(cuisineId: string, name: string, description?: string | 
       { id: uid(), question: "Доступ навсегда?", answer: "Да, разовая покупка даёт постоянный доступ." },
     ],
     theme: {
-      pageBackgroundHex: "0E0E11",
       heroBackgroundHex: "C70A0A",
       heroOverlayHex: "7F3A44",
-      cardBackgroundHex: "F2F2F7",
       accentHex: "FF375F",
-      secondaryAccentHex: "F4D000",
       textOnDarkHex: "FFFFFF",
       heroBackgroundGradient: null,
     },
@@ -435,7 +432,7 @@ interface Props {
   recommendationTags?: string[];
   saveTrigger?: number;
   onCuisineImport?: (imported: { name?: string; description?: string; price?: string } & CuisineRecommendationImport) => void;
-  view?: "landing" | "translations";
+  view?: "landing" | "translations" | "technical";
 }
 
 export default function LandingEditor({
@@ -690,7 +687,7 @@ FAQ:
   "transformation_section": { "title": "Узнаёшь себя?", "subtitle": null, "beforeLabel": "До", "afterLabel": "После", "pairs": [ /* РОВНО _counts.pairs элементов */ {"id":"uuid","beforeText":"из МОЙ КОНТЕНТ","afterText":"из МОЙ КОНТЕНТ"} ] },
   "benefits_section": { "title": "", "cards": [ /* РОВНО _counts.benefits элементов */ {"id":"uuid","eyebrow":"короткая метка (Гибкость/Здоровье/…)","title":"заголовок карточки","text":"из МОЙ КОНТЕНТ"} ] },
   "faq_items": [ /* РОВНО _counts.faq элементов */ {"id":"uuid","question":"из МОЙ КОНТЕНТ","answer":"из МОЙ КОНТЕНТ"} ],
-  "theme": { "pageBackgroundHex": "0E0E11", "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "heroBackgroundGradient": null, "cardBackgroundHex": "F2F2F7", "accentHex": "HEX", "secondaryAccentHex": "F4D000", "textOnDarkHex": "FFFFFF" },
+  "theme": { "heroBackgroundHex": "HEX", "heroOverlayHex": "HEX", "heroBackgroundGradient": null, "accentHex": "HEX", "textOnDarkHex": "FFFFFF" },
   "recipe_preview_ids": [],
   "is_published": false,
   "sort_order": 0
@@ -1484,6 +1481,38 @@ function txInsideSection() {
     );
   };
 
+  const renderTechnicalEditor = () => {
+    if (!data) return null;
+
+    return (
+      <div className={styles.panel} style={{ padding: 16, marginBottom: 16 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: "var(--text-primary)" }}>
+          Технические настройки лендинга
+        </h2>
+        <div className={styles.settingsGrid}>
+          <Field label="Порядок отображения" hint="Меньше = выше в списке каталогов. Это техническое поле и не влияет на контент лендинга.">
+            <input
+              className="input"
+              type="number"
+              value={data.sort_order}
+              onChange={(e) => upd({ sort_order: parseInt(e.target.value) || 0 })}
+            />
+          </Field>
+          <Field label="Размер карточки">
+            <select
+              className="input"
+              value={data.card_size ?? "small"}
+              onChange={(e) => upd({ card_size: e.target.value as "large" | "small" })}
+            >
+              <option value="small">small</option>
+              <option value="large">large</option>
+            </select>
+          </Field>
+        </div>
+      </div>
+    );
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
@@ -1505,7 +1534,7 @@ function txInsideSection() {
 
   return (
     <div className={styles.landingEditor}>
-      {view === "translations" ? renderTranslationsEditor() : (
+      {view === "translations" ? renderTranslationsEditor() : view === "technical" ? renderTechnicalEditor() : (
       <>
       {/* ── Top bar: segment control + actions ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", gap: "12px", flexWrap: "wrap" }}>
@@ -1654,64 +1683,64 @@ function txInsideSection() {
       {mode === "form" && (
         <>
         <div>
-          {/* ── Цвета оформления (единый блок для всех трёх структур) ── */}
-          <SectionBlock title="Цвета оформления">
-            <ColorField
-              label="Основной фон (карточка + hero)"
-              value={data.preview_card.backgroundHex}
-              onChange={(v) => upd({
-                preview_card: { ...data.preview_card, backgroundHex: v },
-                hero: { ...data.hero, backgroundHex: v },
-                theme: { ...data.theme, heroBackgroundHex: v },
-              })}
-            />
-            <GradientField
-              label="Градиент основного фона"
-              value={data.preview_card.backgroundGradient ?? data.theme.heroBackgroundGradient}
-              fallbackStartHex={data.preview_card.backgroundHex ?? data.theme.heroBackgroundHex}
-              fallbackEndHex={data.preview_card.overlayHex ?? data.theme.heroOverlayHex}
-              onChange={setPrimaryGradient}
-            />
-            <ColorField
-              label="Оверлей (поверх фона)"
-              value={data.preview_card.overlayHex}
-              onChange={(v) => upd({
-                preview_card: { ...data.preview_card, overlayHex: v },
-                hero: { ...data.hero, overlayHex: v },
-                theme: { ...data.theme, heroOverlayHex: v },
-              })}
-            />
-            <ColorField
-              label="Акцент (кнопки, значки)"
-              value={data.preview_card.accentHex ?? data.theme.accentHex}
-              onChange={(v) => upd({
-                preview_card: { ...data.preview_card, accentHex: v },
-                theme: { ...data.theme, accentHex: v },
-              })}
-            />
-            <ColorField
-              label="Доп. акцент (жёлтый/золотой)"
-              value={data.theme.secondaryAccentHex}
-              onChange={(v) => upd({ theme: { ...data.theme, secondaryAccentHex: v } })}
-            />
-            <ColorField
-              label="Фон страницы (очень тёмный)"
-              value={data.theme.pageBackgroundHex}
-              onChange={(v) => upd({ theme: { ...data.theme, pageBackgroundHex: v } })}
-            />
-            <ColorField
-              label="Фон карточек контента"
-              value={data.theme.cardBackgroundHex}
-              onChange={(v) => upd({ theme: { ...data.theme, cardBackgroundHex: v } })}
-            />
-          </SectionBlock>
+          <div className={styles.panel} style={{ padding: 16, marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap" }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, color: "var(--text-primary)" }}>
+                  Цвета оформления
+                </h2>
+                <p style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.45 }}>
+                  Управляет hero и карточкой каталога. Лишние системные цвета скрыты.
+                </p>
+              </div>
+              <div
+                style={{
+                  width: 180,
+                  height: 48,
+                  border: "1px solid var(--border-light)",
+                  borderRadius: 14,
+                  background: gradientCss(data.preview_card.backgroundGradient ?? data.theme.heroBackgroundGradient, data.preview_card.backgroundHex),
+                  boxShadow: "var(--shadow-subtle-2)",
+                }}
+              />
+            </div>
 
-          {/* ── Порядок ── */}
-          <SectionBlock title="Порядок отображения" open={false}>
-            <Field label="Порядок (меньше = выше в списке)">
-              <input className="input" type="number" value={data.sort_order} onChange={(e) => upd({ sort_order: parseInt(e.target.value) || 0 })} style={{ maxWidth: "120px" }} />
-            </Field>
-          </SectionBlock>
+            <div className={styles.settingsGrid}>
+              <ColorField
+                label="Основной фон"
+                value={data.preview_card.backgroundHex}
+                onChange={(v) => upd({
+                  preview_card: { ...data.preview_card, backgroundHex: v },
+                  hero: { ...data.hero, backgroundHex: v },
+                  theme: { ...data.theme, heroBackgroundHex: v },
+                })}
+              />
+              <ColorField
+                label="Оверлей"
+                value={data.preview_card.overlayHex}
+                onChange={(v) => upd({
+                  preview_card: { ...data.preview_card, overlayHex: v },
+                  hero: { ...data.hero, overlayHex: v },
+                  theme: { ...data.theme, heroOverlayHex: v },
+                })}
+              />
+              <ColorField
+                label="Акцент"
+                value={data.preview_card.accentHex ?? data.theme.accentHex}
+                onChange={(v) => upd({
+                  preview_card: { ...data.preview_card, accentHex: v },
+                  theme: { ...data.theme, accentHex: v },
+                })}
+              />
+              <GradientField
+                label="Градиент основного фона"
+                value={data.preview_card.backgroundGradient ?? data.theme.heroBackgroundGradient}
+                fallbackStartHex={data.preview_card.backgroundHex ?? data.theme.heroBackgroundHex}
+                fallbackEndHex={data.preview_card.overlayHex ?? data.theme.heroOverlayHex}
+                onChange={setPrimaryGradient}
+              />
+            </div>
+          </div>
 
           {/* ── Описание каталога ── */}
           <SectionBlock title="Описание каталога" open headerRight={txBtn("description", txDescription)}>

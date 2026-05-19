@@ -603,7 +603,7 @@ export default function CatalogDetailPage() {
         </div>
       )}
 
-      <div style={{ display: activeTab === "landing" || activeTab === "translations" ? undefined : "none" }}>
+      <div style={{ display: activeTab === "landing" || activeTab === "translations" || activeTab === "technical" ? undefined : "none" }}>
         <LandingEditor
           cuisineId={cuisineId}
           cuisineName={editForm.name}
@@ -616,7 +616,7 @@ export default function CatalogDetailPage() {
           recommendationTags={editForm.recommendation_tags}
           saveTrigger={triggerLandingSave}
           onCuisineImport={handleCuisineImport}
-          view={activeTab === "translations" ? "translations" : "landing"}
+          view={activeTab === "translations" ? "translations" : activeTab === "technical" ? "technical" : "landing"}
         />
       </div>
 
