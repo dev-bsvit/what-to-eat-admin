@@ -250,19 +250,33 @@ const PRODUCT_ROOTS: Record<string, string> = {
  * If product A has variant "green" and product B has no variant, they are DIFFERENT products.
  */
 const VARIANT_MARKERS: Record<string, string> = {
+  // Green / spring
   зеленый: "green", зеленая: "green", зеленое: "green", зеленые: "green",
   зелен: "green", green: "green", scallion: "green", scallions: "green",
   spring: "green",
+  // Red
   красный: "red", красная: "red", красн: "red", red: "red",
+  // Purple / violet (colour-variant, not product identity)
+  фиолетовый: "purple", фиолетовая: "purple", фиолетовое: "purple",
+  фиолетовые: "purple", фиолетов: "purple", purple: "purple", violet: "purple",
+  // Pickled / salted
   маринованный: "pickled", маринованная: "pickled", маринованные: "pickled",
   маринован: "pickled", соленый: "pickled", соленая: "pickled",
   соленые: "pickled", солен: "pickled", pickled: "pickled", salted: "pickled",
+  квашеный: "pickled", квашеная: "pickled", квашеные: "pickled", квашен: "pickled",
+  // Sea / marine
   морской: "sea", морская: "sea", sea: "sea",
+  // Brown
   коричневый: "brown", brown: "brown",
+  // White
   белый: "white", белая: "white", white: "white",
+  // Black
   черный: "black", черная: "black", черн: "black", black: "black",
+  // Ground / powdered
   молотый: "ground", молотая: "ground", ground: "ground", powdered: "ground",
+  // Dried
   сухой: "dried", сухая: "dried", dried: "dried",
+  // Smoked
   копченый: "smoked", копченая: "smoked", смок: "smoked", smoked: "smoked",
 };
 
@@ -293,8 +307,10 @@ const DESCRIPTOR_TOKENS = new Set([
   "нежный", "нежная", "нежн",
   "ароматный", "ароматная", "аромат",
   "закусочный", "закусочная", "закусочные", "закусочн",
+  "салатный", "салатная", "салатные", "салатн",
   "столовый", "столовая", "столов",
   "домашний", "домашняя", "домашн",
+  "репчатый", "репчатая", "репчат",
   // Quantity / packaging
   "грамм", "граммов", "гр", "кг", "мл", "литр", "литра", "шт", "штука",
   "упаковка", "пачка", "банка", "бутылка", "пакет",
