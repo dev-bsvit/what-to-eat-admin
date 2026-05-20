@@ -553,7 +553,7 @@ export default function LandingEditor({
     if (!cuisineName) return;
     setData(prev => {
       if (!prev) return prev;
-      const heroSub = cuisineDescription || prev.hero.subtitle || "";
+      const heroSub = prev.hero.subtitle || cuisineDescription || "";
       const updated: LandingData = {
         ...prev,
         preview_card: { ...prev.preview_card, title: cuisineName, subtitle: heroSub },
@@ -576,7 +576,7 @@ export default function LandingEditor({
     const cleanData = { ...nextData } as LandingData & { purchase_cta?: unknown };
     delete cleanData.purchase_cta;
     const img = cuisineImageUrl ?? cleanData.preview_card.imageUrl;
-    const desc = cuisineDescription || cleanData.hero.subtitle || cleanData.preview_card.subtitle;
+    const desc = cleanData.hero.subtitle || cleanData.preview_card.subtitle || cuisineDescription || undefined;
     const synced: LandingData = {
       ...cleanData,
       preview_card: { ...cleanData.preview_card, title: cuisineName, subtitle: desc, imageUrl: img },
@@ -855,7 +855,7 @@ ${base}
     const cleanLandingData = { ...landingData };
     delete cleanLandingData.purchase_cta;
     const raw2 = cleanLandingData as unknown as LandingData;
-    const desc2 = cuisineDescription || raw2.hero.subtitle || raw2.preview_card.subtitle;
+    const desc2 = raw2.hero.subtitle || raw2.preview_card.subtitle || cuisineDescription || undefined;
     const applied: LandingData = {
       ...raw2,
       cuisine_id: cuisineId,
@@ -912,7 +912,8 @@ ${base}
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Ошибка перевода");
       const tx = result.translations as Record<string, unknown>;
-      const merged = { ...translations, ...tx };
+      const { ru: _src, ...txFiltered } = tx;
+      const merged = { ...translations, ...txFiltered };
       setTranslations(merged);
       setSaveStatus("Переводы на 7 языков готовы. Нажмите «Сохранить», чтобы опубликовать изменения.");
     } catch (e) {
@@ -943,7 +944,18 @@ ${base}
       for (const [lang, translated] of Object.entries(result)) {
         const t: Record<string, string> = {};
         pairs.forEach(({ key }, i) => { t[key] = translated[i]; });
-        newTx[lang] = { ...(newTx[lang] ?? {}), ...buildPatch(t) };
+        const patch = buildPatch(t);
+        const existing = newTx[lang] ?? {};
+        const merged: Record<string, unknown> = { ...existing };
+        for (const [key, value] of Object.entries(patch)) {
+          if (value !== null && typeof value === "object" && !Array.isArray(value) &&
+              existing[key] !== null && typeof existing[key] === "object" && !Array.isArray(existing[key])) {
+            merged[key] = { ...(existing[key] as Record<string, unknown>), ...(value as Record<string, unknown>) };
+          } else {
+            merged[key] = value;
+          }
+        }
+        newTx[lang] = merged;
       }
       setTranslations(newTx);
       if (data) {
@@ -960,8 +972,8 @@ ${base}
     if (!data?.hero?.subtitle) return;
     const subtitle = data.hero.subtitle;
     doSectionTranslate("description", [{ key: "subtitle", text: subtitle }], (t) => ({
-      preview_card: { ...data!.preview_card, subtitle: t.subtitle ?? subtitle },
-      hero: { ...data!.hero, subtitle: t.subtitle ?? subtitle },
+      preview_card: { subtitle: t.subtitle ?? subtitle },
+      hero: { subtitle: t.subtitle ?? subtitle },
     }));
   }
 
@@ -1164,12 +1176,13 @@ ${base}
 
     if (publishOverride !== undefined) payload = { ...payload, is_published: publishOverride };
 
-    // Always use cuisineName as the authoritative title (overrides any stale value in data)
+    // Always use cuisineName as the authoritative title (overrides any stale value in data).
+    // Subtitle is intentionally NOT overridden here — it's managed independently in the landing editor.
     if (cuisineName) {
       payload = {
         ...payload,
-        preview_card: { ...payload.preview_card, title: cuisineName, subtitle: cuisineDescription || payload.hero.subtitle || payload.preview_card.subtitle },
-        hero: { ...payload.hero, title: cuisineName, subtitle: cuisineDescription || payload.hero.subtitle || payload.preview_card.subtitle },
+        preview_card: { ...payload.preview_card, title: cuisineName },
+        hero: { ...payload.hero, title: cuisineName },
       };
     }
 
