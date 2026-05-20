@@ -836,7 +836,7 @@ async function applyApproveNew(
       description: cp.description,
       storage_tips: cp.storage_tips,
       synonyms: cp.synonyms,
-      moderation_status: "approved",
+      moderation_status: "manually_approved",
       needs_moderation: false,
       updated_at: new Date().toISOString(),
     })
@@ -904,7 +904,7 @@ async function applyMerge(
   const { error: markMergedError } = await supabaseAdmin
     .from("product_dictionary")
     .update({
-      moderation_status: "merged",
+      moderation_status: "rejected",
       needs_moderation: false,
       updated_at: new Date().toISOString(),
     })
@@ -939,7 +939,7 @@ async function applyDecision(
     const { error } = await supabaseAdmin
       .from("product_dictionary")
       .update({
-        moderation_status: "needs_review",
+        moderation_status: "pending",
         needs_moderation: true,
         updated_at: new Date().toISOString(),
       })
@@ -975,7 +975,7 @@ async function applyManualDecision(
     const { error } = await supabaseAdmin
       .from("product_dictionary")
       .update({
-        moderation_status: "approved",
+        moderation_status: "manually_approved",
         needs_moderation: false,
         updated_at: new Date().toISOString(),
       })
@@ -995,7 +995,7 @@ async function applyManualDecision(
     const { error } = await supabaseAdmin
       .from("product_dictionary")
       .update({
-        moderation_status: "needs_review",
+        moderation_status: "pending",
         needs_moderation: true,
         updated_at: new Date().toISOString(),
       })
