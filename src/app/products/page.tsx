@@ -1,18 +1,19 @@
 "use client";
 
-import { Package, ShieldCheck } from "lucide-react";
+import { Bot, Package, ShieldCheck } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProductsManager from "./ProductsManager";
 import ModerationManager from "./ModerationManager";
+import ModerationAgentPanel from "./ModerationAgentPanel";
 import styles from "../catalogs/catalogs-blueprint.module.css";
 
-type ProductsWorkspaceView = "products" | "moderation";
+type ProductsWorkspaceView = "products" | "moderation" | "agent";
 
 export default function ProductsWorkspacePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
-  const activeView: ProductsWorkspaceView = viewParam === "moderation" ? "moderation" : "products";
+  const activeView: ProductsWorkspaceView = viewParam === "moderation" || viewParam === "agent" ? viewParam : "products";
 
   const setView = (view: ProductsWorkspaceView) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -87,11 +88,33 @@ export default function ProductsWorkspacePage() {
               <ShieldCheck size={14} />
               Модерация
             </button>
+            <button
+              type="button"
+              onClick={() => setView("agent")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "7px 14px",
+                borderRadius: 9999,
+                border: 0,
+                cursor: "pointer",
+                background: activeView === "agent" ? "var(--color-deep-black, #000)" : "transparent",
+                color: activeView === "agent" ? "var(--color-canvas-white, #fff)" : "var(--color-rich-black, #0a0a0a)",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <Bot size={14} />
+              AI агент
+            </button>
           </div>
         </div>
       </div>
 
-      {activeView === "products" ? <ProductsManager /> : <ModerationManager />}
+      {activeView === "products" && <ProductsManager />}
+      {activeView === "moderation" && <ModerationManager />}
+      {activeView === "agent" && <ModerationAgentPanel />}
     </div>
   );
 }
