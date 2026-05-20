@@ -107,6 +107,7 @@ type ManualDecision = {
   productId: string;
   action: AgentDecision["action"];
   mergeIntoProductId?: string | null;
+  cleanProduct?: AgentDecision["cleanProduct"] | null;
 };
 
 type RunRequest = {
@@ -972,15 +973,55 @@ async function applyManualDecision(
   if (!product) return { applied: false, reason: "product_not_found" };
 
   if (manual.action === "approve_new") {
+    const cp = manual.cleanProduct;
+    const productUpdate: Record<string, unknown> = {
+      moderation_status: "manually_approved",
+      needs_moderation: false,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (cp) {
+      Object.assign(productUpdate, {
+        canonical_name: cp.canonical_name,
+        category: cp.category,
+        icon: cp.icon,
+        preferred_unit: cp.preferred_unit,
+        calories: cp.calories,
+        protein: cp.protein,
+        fat: cp.fat,
+        carbohydrates: cp.carbohydrates,
+        fiber: cp.fiber,
+        typical_serving: cp.typical_serving,
+        requires_expiry: cp.requires_expiry,
+        default_shelf_life_days: cp.default_shelf_life_days,
+        seasonal_months: cp.seasonal_months,
+        description: cp.description,
+        storage_tips: cp.storage_tips,
+        synonyms: cp.synonyms,
+      });
+    }
+
     const { error } = await supabaseAdmin
       .from("product_dictionary")
-      .update({
-        moderation_status: "manually_approved",
-        needs_moderation: false,
-        updated_at: new Date().toISOString(),
-      })
+      .update(productUpdate)
       .eq("id", manual.productId);
     if (error) throw new Error(error.message);
+
+    if (cp?.translations) {
+      const translationRows = Object.entries(cp.translations).map(([language_code, t]) => ({
+        product_id: manual.productId,
+        language_code,
+        name: t.name,
+        synonyms: t.synonyms ?? [],
+        description: t.description ?? null,
+        storage_tips: t.storage_tips ?? null,
+      }));
+      const { error: transError } = await supabaseAdmin
+        .from("product_translations")
+        .upsert(translationRows, { onConflict: "product_id,language_code" });
+      if (transError) throw new Error(transError.message);
+    }
+
     return { applied: true, reason: "manually_approved" };
   }
 

@@ -489,6 +489,9 @@ export default function ModerationAgentPanel() {
       [productId]: { ...prev[productId], applying: true, error: null },
     }));
 
+    const item = response?.results.find((r) => r.productId === productId);
+    const cleanProduct = item?.decision.cleanProduct ?? null;
+
     try {
       const res = await fetch("/api/admin/products/moderation-agent", {
         method: "POST",
@@ -498,6 +501,7 @@ export default function ModerationAgentPanel() {
             productId,
             action: pa.action,
             mergeIntoProductId: pa.mergeIntoProductId ?? null,
+            cleanProduct,
           },
         }),
       });
