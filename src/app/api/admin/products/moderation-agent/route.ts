@@ -268,23 +268,41 @@ const VARIANT_MARKERS: Record<string, string> = {
 
 /**
  * These tokens do NOT identify the product and should be stripped before comparison.
- * Sizes, quantities, packaging, generic state words.
+ * Sizes, quantities, packaging, texture, flavor, and generic state words.
  */
 const DESCRIPTOR_TOKENS = new Set([
-  "свежий", "свежая", "свежее", "свежие", "свеж",
+  // Size / portion
   "средний", "средняя", "среднее", "средние", "средн",
   "крупный", "крупная", "мелкий", "мелкая", "крупн", "мелк",
+  "небольшой", "небольшая", "небольш",
+  "большой", "большая", "больш",
+  // Prep state (generic — not differentiating variants)
+  "свежий", "свежая", "свежее", "свежие", "свеж",
   "очищенный", "очищенная", "нарезанный", "нарезанная", "очищ",
-  "грамм", "граммов", "гр", "кг", "мл", "литр", "литра", "шт", "штука",
-  "упаковка", "пачка", "банка", "бутылка", "пакет",
-  "fresh", "dry", "sweet", "crispy", "crunchy", "medium", "large", "small",
-  "gram", "grams", "kg", "ml", "liter", "litre", "pcs", "pack", "package",
-  "organic", "натуральный", "натурал",
-  "спелый", "спелая", "спелые",
   "вареный", "вареная", "вареные", "варен",
   "жареный", "жареная", "жарен",
   "замороженный", "замороженная", "заморожен",
   "консервированный", "консервированная", "консервир",
+  "натуральный", "натурал",
+  "спелый", "спелая", "спелые",
+  "молодой", "молодая", "молод",
+  // Texture / taste (these are descriptors, not product identity)
+  "хрустящий", "хрустящая", "хрустящее", "хрустящие", "хрустящ",
+  "острый", "острая", "острое", "острые", "остр",
+  "сладкий", "сладкая", "сладкое", "сладкие", "сладк",
+  "нежный", "нежная", "нежн",
+  "ароматный", "ароматная", "аромат",
+  "закусочный", "закусочная", "закусочные", "закусочн",
+  "столовый", "столовая", "столов",
+  "домашний", "домашняя", "домашн",
+  // Quantity / packaging
+  "грамм", "граммов", "гр", "кг", "мл", "литр", "литра", "шт", "штука",
+  "упаковка", "пачка", "банка", "бутылка", "пакет",
+  // English equivalents
+  "fresh", "dry", "sweet", "crispy", "crunchy", "spicy", "tender",
+  "medium", "large", "small", "big",
+  "gram", "grams", "kg", "ml", "liter", "litre", "pcs", "pack", "package",
+  "organic", "natural", "homemade",
 ]);
 
 function rawTokens(value: string): string[] {
@@ -351,6 +369,21 @@ function hasVariantConflict(a: Set<string>, b: Set<string>): boolean {
   return false;
 }
 
+/**
+ * Compute the union of variants across ALL names of a product (canonical + synonyms).
+ * This ensures a product with "соленые огурцы" as canonical and "огурцы закусочные" as
+ * synonym is always treated as "pickled" — even when scoring against a specific synonym.
+ */
+function productVariantUnion(product: ProductRow): Set<string> {
+  const all = new Set<string>();
+  const names = [product.canonical_name, ...(product.synonyms ?? [])];
+  for (const name of names) {
+    const { variants } = extractConcept(name);
+    variants.forEach((v) => all.add(v));
+  }
+  return all;
+}
+
 function tokenOverlap(a: string, b: string): number {
   const aRoots = extractConcept(a).roots;
   const bRoots = extractConcept(b).roots;
@@ -399,6 +432,12 @@ function buildMatchReason(
 }
 
 function candidateScore(product: ProductRow, candidate: ProductRow): Candidate | null {
+  // Product-level variant union: checked once at product level, not per name pair.
+  // Prevents "огурцы закусочные" (synonym without "соленые") from bypassing pickled↔fresh conflict.
+  const productVariants = productVariantUnion(product);
+  const candidateVariants = productVariantUnion(candidate);
+  if (hasVariantConflict(productVariants, candidateVariants)) return null;
+
   const productNames = nameEntries(product);
   const candidateNames = nameEntries(candidate);
   let bestScore = 0;
@@ -421,9 +460,6 @@ function candidateScore(product: ProductRow, candidate: ProductRow): Candidate |
 
       // Must share at least one root OR be an exact string match
       if (commonRoots.length === 0 && pNorm !== cNorm) continue;
-
-      // Conflicting variants → definitely different products
-      if (hasVariantConflict(pConcept.variants, cConcept.variants)) continue;
 
       if (pNorm === cNorm) {
         score = 1;
