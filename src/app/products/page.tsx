@@ -1,18 +1,19 @@
 "use client";
 
-import { Package, Sparkles } from "lucide-react";
+import { Cpu, Package, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProductsManager from "./ProductsManager";
 import ProductBrainPanel from "./ProductBrainPanel";
+import NvidiaModelPanel from "./NvidiaModelPanel";
 import styles from "../catalogs/catalogs-blueprint.module.css";
 
-type View = "products" | "brain";
+type View = "products" | "brain" | "nvidia";
 
 export default function ProductsWorkspacePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
-  const activeView: View = viewParam === "brain" ? "brain" : "products";
+  const activeView: View = viewParam === "brain" || viewParam === "nvidia" ? viewParam : "products";
 
   const setView = (view: View) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -51,6 +52,7 @@ export default function ProductsWorkspacePage() {
             {([
               { id: "products", icon: Package, label: "База продуктов" },
               { id: "brain",    icon: Sparkles, label: "Обработка" },
+              { id: "nvidia",   icon: Cpu, label: "NVIDIA тест" },
             ] as const).map(({ id, icon: Icon, label }) => (
               <button
                 key={id}
@@ -81,6 +83,12 @@ export default function ProductsWorkspacePage() {
 
       {activeView === "products" && <ProductsManager />}
       {activeView === "brain" && <ProductBrainPanel />}
+      {activeView === "nvidia" && (
+        <div style={{ display: "grid", gap: 32 }}>
+          <ProductBrainPanel provider="nvidia" />
+          <NvidiaModelPanel />
+        </div>
+      )}
     </div>
   );
 }

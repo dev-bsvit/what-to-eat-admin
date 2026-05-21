@@ -239,7 +239,10 @@ function IssueRow({
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-export default function ProductBrainPanel() {
+export default function ProductBrainPanel({ provider = "openai" }: { provider?: "openai" | "nvidia" }) {
+  const isNvidia = provider === "nvidia";
+  const modelLabel = isNvidia ? "Gemma 3N (NVIDIA)" : "GPT-4o-mini";
+  const accentColor = isNvidia ? "#1a6b1a" : "#000";
   const [stats, setStats] = useState<SmartStats | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [running, setRunning] = useState(false);
@@ -292,7 +295,7 @@ export default function ProductBrainPanel() {
         const res = await fetch("/api/admin/products/smart-process", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode, limit: 10 }),
+          body: JSON.stringify({ mode, limit: 10, provider }),
         });
 
         if (!res.ok) {
@@ -368,9 +371,14 @@ export default function ProductBrainPanel() {
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
               <span style={{
-                background: "#000", color: "#fff", borderRadius: 8,
+                background: accentColor, color: "#fff", borderRadius: 8,
                 padding: "3px 10px", fontSize: 12, fontWeight: 700,
-              }}>GPT-4o-mini</span>
+              }}>{modelLabel}</span>
+              {isNvidia && (
+                <span style={{ background: "#e6f4ea", color: "#1a6b1a", border: "1px solid #b7dfbc", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>
+                  Тест
+                </span>
+              )}
               {stats && (
                 <span style={s.badge(allDone ? "#22c55e" : "#8a4b00")}>
                   {allDone ? "База чистая" : `${stats.totalIssues} проблем`}
@@ -378,12 +386,14 @@ export default function ProductBrainPanel() {
               )}
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px", lineHeight: 1.2 }}>
-              {allDone ? "🎉 База в идеальном состоянии" : "Запустить полную обработку"}
+              {allDone ? "🎉 База в идеальном состоянии" : isNvidia ? "Тест: обработка через Gemma" : "Запустить полную обработку"}
             </div>
             <div style={{ fontSize: 13, color: "#737373", marginTop: 6, lineHeight: 1.5 }}>
               {allDone
                 ? `Все ${total} продуктов имеют полные переводы, синонимы и КБЖУ`
-                : "Авто-режим: исправляет по приоритету — сначала переводы, потом недостающие языки, потом синонимы"
+                : isNvidia
+                  ? "То же самое что основной режим, но через google/gemma-3n-e2b-it (NVIDIA API)"
+                  : "Авто-режим: исправляет по приоритету — сначала переводы, потом недостающие языки, потом синонимы"
               }
             </div>
           </div>
@@ -392,11 +402,11 @@ export default function ProductBrainPanel() {
             {!running ? (
               <button
                 type="button"
-                style={s.btn({ primary: true, disabled: loadingStats || allDone, size: "lg" })}
+                style={s.btn({ primary: true, color: accentColor, disabled: loadingStats || allDone, size: "lg" })}
                 disabled={loadingStats || allDone}
                 onClick={() => runLoop("auto")}
               >
-                {allDone ? "✓ Готово" : "🪄 Запустить всё"}
+                {allDone ? "✓ Готово" : isNvidia ? "🧪 Запустить тест" : "🪄 Запустить всё"}
               </button>
             ) : (
               <button type="button" style={s.btn({ size: "lg" })} onClick={stop}>

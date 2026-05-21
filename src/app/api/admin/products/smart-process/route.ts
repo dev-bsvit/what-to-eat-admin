@@ -5,7 +5,9 @@ import { normalize } from "@/lib/stringUtils";
 
 export const maxDuration = 300;
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_URL  = "https://api.openai.com/v1/chat/completions";
+const NVIDIA_URL  = "https://integrate.api.nvidia.com/v1/chat/completions";
+const NVIDIA_MODEL = "google/gemma-3n-e2b-it";
 
 const CATEGORIES = [
   "grains", "meat", "dairy", "vegetables", "fruits",
@@ -235,9 +237,10 @@ type GPTResult = {
   outputTokens: number;
 };
 
-async function callGPTTranslate(product: ProductRow): Promise<GPTResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+async function callGPTTranslate(product: ProductRow, provider: "openai" | "nvidia" = "openai"): Promise<GPTResult> {
+  const isNvidia = provider === "nvidia";
+  const apiKey = isNvidia ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error(`${isNvidia ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} is not set`);
 
   const prompt = `Ты нормализуешь и переводишь продукты для кулинарного приложения.
 
@@ -285,13 +288,15 @@ async function callGPTTranslate(product: ProductRow): Promise<GPTResult> {
   }
 }`;
 
-  const response = await fetch(OPENAI_URL, {
+  const response = await fetch(isNvidia ? NVIDIA_URL : OPENAI_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: isNvidia ? NVIDIA_MODEL : "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.1,
+      temperature: isNvidia ? 0.2 : 0.1,
+      max_tokens: isNvidia ? 4096 : undefined,
+      top_p: isNvidia ? 0.7 : undefined,
     }),
   });
 
@@ -409,8 +414,8 @@ async function applyFull(productId: string, data: Awaited<ReturnType<typeof call
 
 // ── Process one product ───────────────────────────────────────────────────────
 
-async function processOne(product: ProductRow, mode: string): Promise<ProcessResult> {
-  const gpt = await callGPTTranslate(product);
+async function processOne(product: ProductRow, mode: string, provider: "openai" | "nvidia" = "openai"): Promise<ProcessResult> {
+  const gpt = await callGPTTranslate(product, provider);
   const changed = normalize(gpt.canonical_name) !== normalize(product.canonical_name);
 
   if (mode === "fix-translations" || mode === "fill-languages" || mode === "enrich-synonyms") {
@@ -458,6 +463,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const limit = Math.min(Math.max(body.limit ?? 5, 1), 20);
     const dryRun = body.dryRun === true;
+    const provider: "openai" | "nvidia" = body.provider === "nvidia" ? "nvidia" : "openai";
     let mode: string = body.mode ?? "auto";
 
     // Resolve auto mode
@@ -480,7 +486,7 @@ export async function POST(request: Request) {
     const results = await Promise.all(
       products.map(async (product) => {
         try {
-          if (!dryRun) return await processOne(product, mode);
+          if (!dryRun) return await processOne(product, mode, provider);
           return { productId: product.id, name: product.canonical_name, action: mode, changed: false, inputTokens: 0, outputTokens: 0 };
         } catch (err) {
           return {
