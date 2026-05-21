@@ -130,6 +130,10 @@ function IssueRow({
   const [preview, setPreview] = useState<PreviewProduct[] | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
+  useEffect(() => {
+    setPreview(null);
+  }, [count]);
+
   const togglePreview = async () => {
     if (expanded) { setExpanded(false); return; }
     setExpanded(true);
