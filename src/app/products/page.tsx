@@ -1,25 +1,20 @@
 "use client";
 
-import { Bot, Package, ShieldCheck, Sparkles } from "lucide-react";
+import { Package, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProductsManager from "./ProductsManager";
-import ModerationManager from "./ModerationManager";
-import ModerationAgentPanel from "./ModerationAgentPanel";
-import BatchCleanPanel from "./BatchCleanPanel";
+import ProductBrainPanel from "./ProductBrainPanel";
 import styles from "../catalogs/catalogs-blueprint.module.css";
 
-type ProductsWorkspaceView = "products" | "moderation" | "agent" | "clean";
+type View = "products" | "brain";
 
 export default function ProductsWorkspacePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
-  const activeView: ProductsWorkspaceView =
-    viewParam === "moderation" || viewParam === "agent" || viewParam === "clean"
-      ? viewParam
-      : "products";
+  const activeView: View = viewParam === "brain" ? "brain" : "products";
 
-  const setView = (view: ProductsWorkspaceView) => {
+  const setView = (view: View) => {
     const next = new URLSearchParams(searchParams.toString());
     if (view === "products") {
       next.delete("view");
@@ -32,6 +27,7 @@ export default function ProductsWorkspacePage() {
 
   return (
     <div className={`${styles.blueprint} ${styles.wide}`} style={{ display: "block" }}>
+      {/* Header */}
       <div style={{
         position: "sticky",
         top: 0,
@@ -43,103 +39,48 @@ export default function ProductsWorkspacePage() {
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 18, lineHeight: 1.33, letterSpacing: "-0.45px", fontWeight: 600, color: "var(--color-deep-black, #000)" }}>
+            <h1 style={{ margin: 0, fontSize: 18, lineHeight: 1.33, letterSpacing: "-0.45px", fontWeight: 600 }}>
               Продукты
             </h1>
-            <p style={{ margin: "4px 0 0", fontSize: 13, lineHeight: 1.45, color: "var(--color-midtone-gray, #737373)" }}>
-              База продуктов и модерация пользовательских добавлений в одном рабочем месте
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--color-midtone-gray, #737373)" }}>
+              База продуктов и автоматическая обработка качества
             </p>
           </div>
 
-          <div style={{ display: "flex", background: "var(--color-ghost-gray, #f2f2f2)", borderRadius: 9999, padding: 3, gap: 2 }}>
-            <button
-              type="button"
-              onClick={() => setView("products")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "7px 14px",
-                borderRadius: 9999,
-                border: 0,
-                cursor: "pointer",
-                background: activeView === "products" ? "var(--color-deep-black, #000)" : "transparent",
-                color: activeView === "products" ? "var(--color-canvas-white, #fff)" : "var(--color-rich-black, #0a0a0a)",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              <Package size={14} />
-              База продуктов
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("moderation")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "7px 14px",
-                borderRadius: 9999,
-                border: 0,
-                cursor: "pointer",
-                background: activeView === "moderation" ? "var(--color-deep-black, #000)" : "transparent",
-                color: activeView === "moderation" ? "var(--color-canvas-white, #fff)" : "var(--color-rich-black, #0a0a0a)",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              <ShieldCheck size={14} />
-              Модерация
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("agent")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "7px 14px",
-                borderRadius: 9999,
-                border: 0,
-                cursor: "pointer",
-                background: activeView === "agent" ? "var(--color-deep-black, #000)" : "transparent",
-                color: activeView === "agent" ? "var(--color-canvas-white, #fff)" : "var(--color-rich-black, #0a0a0a)",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              <Bot size={14} />
-              AI агент
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("clean")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "7px 14px",
-                borderRadius: 9999,
-                border: 0,
-                cursor: "pointer",
-                background: activeView === "clean" ? "var(--color-deep-black, #000)" : "transparent",
-                color: activeView === "clean" ? "var(--color-canvas-white, #fff)" : "var(--color-rich-black, #0a0a0a)",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              <Sparkles size={14} />
-              Очистка базы
-            </button>
+          <div style={{ display: "flex", background: "#f2f2f2", borderRadius: 9999, padding: 3, gap: 2 }}>
+            {([
+              { id: "products", icon: Package, label: "База продуктов" },
+              { id: "brain",    icon: Sparkles, label: "Обработка" },
+            ] as const).map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setView(id)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "7px 16px",
+                  borderRadius: 9999,
+                  border: 0,
+                  cursor: "pointer",
+                  background: activeView === id ? "#000" : "transparent",
+                  color: activeView === id ? "#fff" : "#0a0a0a",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  transition: "background 0.15s",
+                }}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
       {activeView === "products" && <ProductsManager />}
-      {activeView === "moderation" && <ModerationManager />}
-      {activeView === "agent" && <ModerationAgentPanel />}
-      {activeView === "clean" && <BatchCleanPanel />}
+      {activeView === "brain" && <ProductBrainPanel />}
     </div>
   );
 }
