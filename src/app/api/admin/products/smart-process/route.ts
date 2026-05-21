@@ -48,7 +48,7 @@ type ProcessResult = {
   error?: string;
 };
 
-export type SmartStats = {
+type SmartStats = {
   total: number;
   badTranslations: number;
   missingLanguages: number;
@@ -68,7 +68,7 @@ const asNum = (v: unknown) => (typeof v === "number" && isFinite(v) ? v : null);
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
-export async function getSmartStats(): Promise<SmartStats> {
+async function getSmartStats(): Promise<SmartStats> {
   const [
     { count: total },
     allTranslationsRaw,
