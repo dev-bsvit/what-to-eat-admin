@@ -119,15 +119,10 @@ async function getSmartStats(): Promise<SmartStats> {
     supabaseAdmin.from("product_dictionary").select("id, canonical_name, moderation_status").limit(5000),
   ]);
 
-  type AllRow = { id: string; canonical_name: string; moderation_status?: string | null };
-
-  // Bad names: emoji/weight, excluding confirmed duplicates
+  // Bad names: emoji or weight/quantity in canonical_name
   const badNameIds = new Set(
     (allIdsRes.data ?? [])
-      .filter(p => {
-        const r = p as AllRow;
-        return hasBadName(r.canonical_name) && r.moderation_status !== "duplicate";
-      })
+      .filter(p => hasBadName((p as { id: string; canonical_name: string }).canonical_name))
       .map(p => p.id)
   );
 
@@ -191,9 +186,7 @@ async function fetchBatch(mode: string, limit: number): Promise<ProductRow[]> {
   const translations = await fetchAllTranslations();
 
   if (mode === "fix-names") {
-    return (allProducts as ProductRow[])
-      .filter(p => hasBadName(p.canonical_name) && p.moderation_status !== "duplicate")
-      .slice(0, limit);
+    return (allProducts as ProductRow[]).filter(p => hasBadName(p.canonical_name)).slice(0, limit);
   }
 
   if (mode === "fix-translations") {
@@ -602,13 +595,21 @@ async function processFixName(product: ProductRow): Promise<ProcessResult> {
     .maybeSingle();
 
   if (dup) {
-    // Mark as duplicate so it's excluded from queue permanently
-    await supabaseAdmin
-      .from("product_dictionary")
-      .update({ moderation_status: "duplicate", needs_moderation: false })
-      .eq("id", product.id);
-    console.log(`[fix-names] MARKED DUPLICATE: "${product.canonical_name}" → "${cleaned}" exists as ${dup.id}`);
-    return { productId: product.id, name: product.canonical_name, action: "fix-names", changed: true, inputTokens: 0, outputTokens: 0, error: `Дубликат: помечен и исключён из очереди` };
+    console.log(`[fix-names] DUPLICATE: "${product.canonical_name}" → "${cleaned}" exists as ${dup.id}. Deleting...`);
+    // Delete translations first (FK constraint), then the product
+    await supabaseAdmin.from("product_translations").delete().eq("product_id", product.id);
+    const { error: delErr } = await supabaseAdmin.from("product_dictionary").delete().eq("id", product.id);
+    if (delErr) {
+      // FK prevents deletion (referenced in recipes/lists) — rename to avoid bad-name detection
+      const safeName = `${cleaned} (${product.id.slice(0, 6)})`;
+      await supabaseAdmin.from("product_dictionary")
+        .update({ canonical_name: safeName, updated_at: new Date().toISOString() })
+        .eq("id", product.id);
+      console.log(`[fix-names] RENAMED (FK): "${product.canonical_name}" → "${safeName}"`);
+      return { productId: product.id, name: safeName, action: "fix-names", changed: true, inputTokens: 0, outputTokens: 0, error: `Дубликат: переименован (есть ссылки в рецептах)` };
+    }
+    console.log(`[fix-names] DELETED duplicate "${product.canonical_name}"`);
+    return { productId: product.id, name: product.canonical_name, action: "fix-names", changed: true, inputTokens: 0, outputTokens: 0 };
   }
 
   // Update canonical_name
