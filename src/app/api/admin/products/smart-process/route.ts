@@ -116,12 +116,19 @@ async function getSmartStats(): Promise<SmartStats> {
     supabaseAdmin.from("product_dictionary").select("*", { count: "exact", head: true }),
     fetchAllTranslations(),
     supabaseAdmin.from("product_dictionary").select("id").or("needs_moderation.eq.true,moderation_status.eq.pending"),
-    supabaseAdmin.from("product_dictionary").select("id, canonical_name").limit(5000),
+    supabaseAdmin.from("product_dictionary").select("id, canonical_name, moderation_status").limit(5000),
   ]);
 
-  // Bad names: emoji, weight/quantity in canonical_name
+  type AllRow = { id: string; canonical_name: string; moderation_status?: string | null };
+
+  // Bad names: emoji/weight, excluding confirmed duplicates
   const badNameIds = new Set(
-    (allIdsRes.data ?? []).filter(p => hasBadName((p as { id: string; canonical_name: string }).canonical_name)).map(p => p.id)
+    (allIdsRes.data ?? [])
+      .filter(p => {
+        const r = p as AllRow;
+        return hasBadName(r.canonical_name) && r.moderation_status !== "duplicate";
+      })
+      .map(p => p.id)
   );
 
   // Bad translations: Cyrillic in Latin languages
@@ -184,7 +191,9 @@ async function fetchBatch(mode: string, limit: number): Promise<ProductRow[]> {
   const translations = await fetchAllTranslations();
 
   if (mode === "fix-names") {
-    return (allProducts as ProductRow[]).filter(p => hasBadName(p.canonical_name)).slice(0, limit);
+    return (allProducts as ProductRow[])
+      .filter(p => hasBadName(p.canonical_name) && p.moderation_status !== "duplicate")
+      .slice(0, limit);
   }
 
   if (mode === "fix-translations") {
@@ -263,7 +272,7 @@ async function callDeepLBatch(
   if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} not set`);
 
   // Step 1: DeepL — 8 language names in parallel
-  const names = await Promise.all(
+  const rawNames = await Promise.all(
     APP_LANGUAGES.map(lang =>
       translateBatch([product.canonical_name], lang, "RU")
         .then(r => {
@@ -273,6 +282,15 @@ async function callDeepLBatch(
         .catch(() => ({ lang, name: product.canonical_name }))
     )
   );
+  // For Latin languages: if DeepL returned Cyrillic (fallback), use English translation instead
+  const enName = rawNames.find(n => n.lang === "en")?.name ?? product.canonical_name;
+  const names = rawNames.map(n => {
+    if (LATIN_LANGUAGES.includes(n.lang) && hasCyrillic(n.name)) {
+      console.log(`[DeepL] ${n.lang} returned Cyrillic for "${product.canonical_name}", using EN fallback "${enName}"`);
+      return { lang: n.lang, name: enName };
+    }
+    return n;
+  });
   const nameMap: Record<string, string> = Object.fromEntries(names.map(n => [n.lang, n.name]));
 
   // Step 2: AI — synonyms + description + storage_tips (short prompt)
@@ -559,9 +577,10 @@ async function applyFull(productId: string, data: Awaited<ReturnType<typeof call
 
 function cleanName(name: string): string {
   return name
-    .replace(/\p{Emoji_Presentation}/gu, "")
-    .replace(/[—–-]\s*\d[\d,.]*/g, "")
-    .replace(/\d[\d,.]*\s*(кг|г\b|мл|л\b|килограмм|грамм|кило|kg\b|g\b|ml\b|l\b)/gi, "")
+    .replace(/\p{Emoji_Presentation}/gu, "")                                           // убрать emoji
+    .replace(/[—–-]\s*\d[\d,.]*\s*(кг|г|мл|л|килограмм|грамм|кило|kg|g|ml|l)?\b/gi, "") // — 100 Мл или — 1,2
+    .replace(/\d[\d,.]*\s*(кг|г\b|мл|л\b|килограмм|грамм|кило|kg\b|g\b|ml\b|l\b)/gi, "") // 150 Грамм, 50 Мл
+    .replace(/\s+(кг|г|мл|л|килограмм|грамм|кило|kg|g|ml|l)\b/gi, "")                // осиротевшие единицы " Мл"
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -583,8 +602,13 @@ async function processFixName(product: ProductRow): Promise<ProcessResult> {
     .maybeSingle();
 
   if (dup) {
-    console.log(`[fix-names] DUPLICATE: "${cleaned}" already exists (${dup.id})`);
-    return { productId: product.id, name: product.canonical_name, action: "fix-names", changed: false, inputTokens: 0, outputTokens: 0, error: `Дубликат: "${cleaned}" уже есть в базе` };
+    // Mark as duplicate so it's excluded from queue permanently
+    await supabaseAdmin
+      .from("product_dictionary")
+      .update({ moderation_status: "duplicate", needs_moderation: false })
+      .eq("id", product.id);
+    console.log(`[fix-names] MARKED DUPLICATE: "${product.canonical_name}" → "${cleaned}" exists as ${dup.id}`);
+    return { productId: product.id, name: product.canonical_name, action: "fix-names", changed: true, inputTokens: 0, outputTokens: 0, error: `Дубликат: помечен и исключён из очереди` };
   }
 
   // Update canonical_name

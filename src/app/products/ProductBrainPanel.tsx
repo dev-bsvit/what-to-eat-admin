@@ -446,7 +446,17 @@ export default function ProductBrainPanel() {
 
         const batchIds = data.results.map(r => r.productId);
         const allSeen = batchIds.every(id => processedIdsRef.current.has(id));
-        if (allSeen) { setStatus("⚠ Продукты не поддаются исправлению — остановлено."); break; }
+        if (allSeen) {
+          if (isAutoLoop) {
+            // Can't fix this mode's remaining items — reset and let auto pick next mode
+            processedIdsRef.current = new Set();
+            remaining = data.remaining;
+            if (remaining === 0) break;
+            continue;
+          }
+          setStatus("⚠ Продукты не поддаются исправлению — остановлено.");
+          break;
+        }
         batchIds.forEach(id => processedIdsRef.current.add(id));
 
         processed = applyBatchResult(data, processed);
