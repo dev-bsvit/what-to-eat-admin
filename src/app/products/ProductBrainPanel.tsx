@@ -22,6 +22,7 @@ type ProviderType = "deepl" | "deepl-nvidia" | "openai" | "nvidia";
 
 type SmartStats = {
   total: number;
+  badNames: number;
   badTranslations: number;
   missingLanguages: number;
   poorSynonyms: number;
@@ -69,6 +70,7 @@ const BATCH_SIZES = [5, 10, 20] as const;
 // ── Mode metadata ─────────────────────────────────────────────────────────────
 
 const MODE_META: Record<string, { label: string; description: string; priority: number }> = {
+  "fix-names":        { label: "Кривые имена",     description: "Emoji, вес или мусор в названии",           priority: 0 },
   "fix-translations": { label: "Плохие переводы",  description: "Кириллица в EN / DE / IT / FR / ES / PT",   priority: 1 },
   "fill-languages":   { label: "Неполные языки",   description: "Продукты без всех 8 переводов",             priority: 2 },
   "pending":          { label: "Новые продукты",   description: "Пользовательские добавления на модерации",  priority: 3 },
@@ -565,6 +567,7 @@ export default function ProductBrainPanel() {
           <div style={{ padding: "20px 0", color: C.muted, fontSize: 13 }}>Загружаю статистику…</div>
         ) : stats ? (
           <>
+            <IssueRow modeKey="fix-names"        count={stats.badNames}          onRun={runLoop} running={running} activeMode={activeMode} />
             <IssueRow modeKey="fix-translations" count={stats.badTranslations}   onRun={runLoop} running={running} activeMode={activeMode} />
             <IssueRow modeKey="fill-languages"   count={stats.missingLanguages}  onRun={runLoop} running={running} activeMode={activeMode} />
             <IssueRow modeKey="pending"          count={stats.pendingModeration} onRun={runLoop} running={running} activeMode={activeMode} />

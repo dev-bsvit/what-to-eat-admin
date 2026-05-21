@@ -58,6 +58,7 @@ const PRICE_OUT = 0.60  / 1_000_000; // $0.60 per 1M output tokens
 
 type SmartStats = {
   total: number;
+  badNames: number;
   badTranslations: number;
   missingLanguages: number;
   poorSynonyms: number;
@@ -70,6 +71,13 @@ type SmartStats = {
 
 function hasCyrillic(s: string): boolean {
   return /[Ѐ-ӿ]/.test(s);
+}
+
+function hasBadName(name: string): boolean {
+  if (/\p{Emoji_Presentation}/u.test(name)) return true;
+  if (/[—–]\s*\d/.test(name)) return true;
+  if (/[\d,\.]+\s*(кг|г\b|мл|л\b|килограмм|грамм|кило|kg\b|g\b|ml\b|l\b)/i.test(name)) return true;
+  return false;
 }
 
 const asNum = (v: unknown) => (typeof v === "number" && isFinite(v) ? v : null);
@@ -106,8 +114,13 @@ async function getSmartStats(): Promise<SmartStats> {
     supabaseAdmin.from("product_dictionary").select("*", { count: "exact", head: true }),
     fetchAllTranslations(),
     supabaseAdmin.from("product_dictionary").select("id").or("needs_moderation.eq.true,moderation_status.eq.pending"),
-    supabaseAdmin.from("product_dictionary").select("id").limit(5000),
+    supabaseAdmin.from("product_dictionary").select("id, canonical_name").limit(5000),
   ]);
+
+  // Bad names: emoji, weight/quantity in canonical_name
+  const badNameIds = new Set(
+    (allIdsRes.data ?? []).filter(p => hasBadName((p as { id: string; canonical_name: string }).canonical_name)).map(p => p.id)
+  );
 
   // Bad translations: Cyrillic in Latin languages
   const badTranslationIds = new Set(
@@ -135,16 +148,18 @@ async function getSmartStats(): Promise<SmartStats> {
 
   const pendingIds = new Set((pendingIdsRes.data ?? []).map(p => p.id));
 
+  const badNames = badNameIds.size;
   const badTranslations = badTranslationIds.size;
   const missingLanguages = missingLangIds.size;
   const poorSynonyms = poorSynonymIds.size;
   const pendingModeration = pendingIds.size;
 
   // Unique products with at least one issue (avoids double-counting)
-  const uniqueAffected = new Set([...badTranslationIds, ...missingLangIds, ...poorSynonymIds, ...pendingIds]);
+  const uniqueAffected = new Set([...badNameIds, ...badTranslationIds, ...missingLangIds, ...poorSynonymIds, ...pendingIds]);
 
   return {
     total: total ?? 0,
+    badNames,
     badTranslations,
     missingLanguages,
     poorSynonyms,
@@ -165,6 +180,10 @@ async function fetchBatch(mode: string, limit: number): Promise<ProductRow[]> {
   if (!allProducts?.length) return [];
 
   const translations = await fetchAllTranslations();
+
+  if (mode === "fix-names") {
+    return (allProducts as ProductRow[]).filter(p => hasBadName(p.canonical_name)).slice(0, limit);
+  }
 
   if (mode === "fix-translations") {
     const badIds = new Set(
@@ -220,6 +239,7 @@ function badIds_check(productId: string, translations: Array<{ product_id: strin
 
 async function getAutoMode(): Promise<string | null> {
   const stats = await getSmartStats();
+  if (stats.badNames > 0) return "fix-names";
   if (stats.badTranslations > 0) return "fix-translations";
   if (stats.missingLanguages > 0) return "fill-languages";
   if (stats.pendingModeration > 0) return "pending";
@@ -527,20 +547,23 @@ async function applyFull(productId: string, data: Awaited<ReturnType<typeof call
 // ── Process one product ───────────────────────────────────────────────────────
 
 async function processOne(product: ProductRow, mode: string, provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia" = "openai"): Promise<ProcessResult> {
+  // fix-names must use GPT: DeepL can't normalize canonical names
   // DeepL hybrid: accurate names via DeepL + AI for synonyms only
-  if (provider === "deepl" || provider === "deepl-nvidia") {
+  if ((provider === "deepl" || provider === "deepl-nvidia") && mode !== "fix-names") {
     const synonymsProvider = provider === "deepl-nvidia" ? "nvidia" : "openai";
     const { translations, inputTokens, outputTokens } = await callDeepLBatch(product, synonymsProvider);
     await applyTranslations(product.id, translations);
     return { productId: product.id, name: product.canonical_name, action: mode, changed: false, inputTokens, outputTokens };
   }
 
-  const gpt = await callGPTTranslate(product, provider, mode);
+  const gptProvider = mode === "fix-names" ? "openai" : (provider === "deepl" || provider === "deepl-nvidia" ? "openai" : provider);
+  const gpt = await callGPTTranslate(product, gptProvider, mode);
   const changed = normalize(gpt.canonical_name) !== normalize(product.canonical_name);
 
   if (mode === "fix-translations" || mode === "fill-languages" || mode === "enrich-synonyms") {
     await applyTranslations(product.id, gpt.translations);
   } else {
+    // "pending" and "fix-names" use applyFull to update canonical_name + all fields
     await applyFull(product.id, gpt);
   }
 
