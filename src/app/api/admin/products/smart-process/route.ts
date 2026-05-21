@@ -84,7 +84,7 @@ async function getSmartStats(): Promise<SmartStats> {
     allIdsRes,
   ] = await Promise.all([
     supabaseAdmin.from("product_dictionary").select("*", { count: "exact", head: true }),
-    supabaseAdmin.from("product_translations").select("product_id, language_code, name, synonyms").limit(10000),
+    supabaseAdmin.from("product_translations").select("product_id, language_code, name, synonyms").limit(50000),
     supabaseAdmin.from("product_dictionary").select("id").or("needs_moderation.eq.true,moderation_status.eq.pending"),
     supabaseAdmin.from("product_dictionary").select("id").limit(5000),
   ]);
@@ -149,7 +149,7 @@ async function fetchBatch(mode: string, limit: number): Promise<ProductRow[]> {
   const { data: allTranslations } = await supabaseAdmin
     .from("product_translations")
     .select("product_id, language_code, name, synonyms")
-    .limit(10000);
+    .limit(50000);
   const translations = allTranslations ?? [];
 
   if (mode === "fix-translations") {
@@ -463,8 +463,11 @@ export async function GET(request: Request) {
       });
     }
 
-    const stats = await getSmartStats();
-    return NextResponse.json({ success: true, stats });
+    const [stats, { count: translationRows }] = await Promise.all([
+      getSmartStats(),
+      supabaseAdmin.from("product_translations").select("*", { count: "exact", head: true }),
+    ]);
+    return NextResponse.json({ success: true, stats, debug: { translationRows } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
   }
