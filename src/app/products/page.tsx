@@ -1,19 +1,23 @@
 "use client";
 
-import { Bot, Package, ShieldCheck } from "lucide-react";
+import { Bot, Package, ShieldCheck, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProductsManager from "./ProductsManager";
 import ModerationManager from "./ModerationManager";
 import ModerationAgentPanel from "./ModerationAgentPanel";
+import BatchCleanPanel from "./BatchCleanPanel";
 import styles from "../catalogs/catalogs-blueprint.module.css";
 
-type ProductsWorkspaceView = "products" | "moderation" | "agent";
+type ProductsWorkspaceView = "products" | "moderation" | "agent" | "clean";
 
 export default function ProductsWorkspacePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
-  const activeView: ProductsWorkspaceView = viewParam === "moderation" || viewParam === "agent" ? viewParam : "products";
+  const activeView: ProductsWorkspaceView =
+    viewParam === "moderation" || viewParam === "agent" || viewParam === "clean"
+      ? viewParam
+      : "products";
 
   const setView = (view: ProductsWorkspaceView) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -108,6 +112,26 @@ export default function ProductsWorkspacePage() {
               <Bot size={14} />
               AI агент
             </button>
+            <button
+              type="button"
+              onClick={() => setView("clean")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "7px 14px",
+                borderRadius: 9999,
+                border: 0,
+                cursor: "pointer",
+                background: activeView === "clean" ? "var(--color-deep-black, #000)" : "transparent",
+                color: activeView === "clean" ? "var(--color-canvas-white, #fff)" : "var(--color-rich-black, #0a0a0a)",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <Sparkles size={14} />
+              Очистка базы
+            </button>
           </div>
         </div>
       </div>
@@ -115,6 +139,7 @@ export default function ProductsWorkspacePage() {
       {activeView === "products" && <ProductsManager />}
       {activeView === "moderation" && <ModerationManager />}
       {activeView === "agent" && <ModerationAgentPanel />}
+      {activeView === "clean" && <BatchCleanPanel />}
     </div>
   );
 }
