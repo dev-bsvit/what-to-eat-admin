@@ -357,9 +357,16 @@ ${fixTranslationsWarning}
   };
 }
 
-// ── Apply: translations only (upsert, don't touch product_dictionary) ─────────
+// ── Apply: translations (delete + insert — avoids upsert constraint issues) ───
 
 async function applyTranslations(productId: string, translations: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>) {
+  const { error: delError } = await supabaseAdmin
+    .from("product_translations")
+    .delete()
+    .eq("product_id", productId);
+
+  if (delError) throw new Error(`Delete translations failed: ${delError.message}`);
+
   const rows = Object.entries(translations).map(([language_code, t]) => ({
     product_id: productId,
     language_code,
@@ -371,9 +378,9 @@ async function applyTranslations(productId: string, translations: Record<string,
 
   const { error } = await supabaseAdmin
     .from("product_translations")
-    .upsert(rows, { onConflict: "product_id,language_code" });
+    .insert(rows);
 
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(`Insert translations failed: ${error.message}`);
 }
 
 // ── Apply: full update (for pending/new products) ─────────────────────────────
