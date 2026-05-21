@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const LANGUAGES = ["en", "ru", "de", "it", "fr", "es", "pt-BR", "uk"] as const;
 const LANG_FLAGS: Record<string, string> = {
@@ -10,52 +10,50 @@ const LANG_FLAGS: Record<string, string> = {
 const LATIN = ["en", "de", "it", "fr", "es", "pt-BR"];
 const hasCyrillic = (s: string) => /[Ѐ-ӿ]/.test(s);
 
-type SearchProduct = { id: string; canonical_name: string; category: string | null; icon: string | null };
+const ISSUE_META: Record<string, { label: string; color: string }> = {
+  "fix-translations": { label: "Кириллица в переводах", color: "#c22b10" },
+  "fill-languages":   { label: "Неполные языки",        color: "#8a4b00" },
+  "enrich-synonyms":  { label: "Бедные синонимы",       color: "#555" },
+};
+
+type QueueItem = { id: string; canonical_name: string; category: string | null; icon: string | null; issue: string };
 type Translation = { name: string; synonyms: string[]; description: string | null; storage_tips: string | null };
 type Translations = Record<string, Translation>;
-
 type TestResult = {
-  before: Translations;
   after: Translations;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-  timeTaken: number;
+  inputTokens: number; outputTokens: number; costUsd: number; timeTaken: number;
   applied: boolean;
-  issues: string[];
-  product: { id: string; name: string; canonicalAfter: string };
 };
 
 const s = {
   card: (extra?: React.CSSProperties): React.CSSProperties => ({
     border: "1px solid #e0e0e0", borderRadius: 14, background: "#fff", padding: "20px 24px", ...extra,
   }),
-  input: {
-    border: "1px solid #d4d4d4", borderRadius: 10, padding: "10px 14px",
-    fontSize: 14, outline: "none", background: "#fff", width: "100%",
-  } as React.CSSProperties,
-  btn: (opts?: { color?: string; disabled?: boolean; outline?: boolean }): React.CSSProperties => {
-    const { color = "#000", disabled, outline } = opts ?? {};
+  btn: (opts?: { color?: string; disabled?: boolean; outline?: boolean; size?: "sm" | "lg" }): React.CSSProperties => {
+    const { color = "#000", disabled, outline, size = "sm" } = opts ?? {};
     return {
-      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
       border: `1.5px solid ${color}`, background: outline ? "#fff" : color,
-      color: outline ? color : "#fff", borderRadius: 10, padding: "9px 18px",
-      fontSize: 13, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer",
-      opacity: disabled ? 0.4 : 1, whiteSpace: "nowrap" as const,
+      color: outline ? color : "#fff", borderRadius: size === "lg" ? 12 : 8,
+      padding: size === "lg" ? "11px 22px" : "7px 14px",
+      fontSize: size === "lg" ? 14 : 13, fontWeight: 700,
+      cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.4 : 1,
     };
   },
 };
 
-function TranslationDiff({ before, after }: { before: Translations; after: Translations }) {
+// ── Translation diff table ────────────────────────────────────────────────────
+
+function DiffTable({ before, after, compact }: { before: Translations; after: Translations; compact?: boolean }) {
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: compact ? 12 : 13 }}>
         <thead>
           <tr style={{ background: "#f7f7f7" }}>
-            <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#555", width: 50 }}>Яз</th>
-            <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#888" }}>До</th>
-            <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#1a6b1a" }}>После</th>
-            <th style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: "#555", width: 60 }}>Синонимов</th>
+            <th style={{ padding: "7px 10px", textAlign: "left", color: "#555", width: 48, fontWeight: 700 }}>Яз</th>
+            <th style={{ padding: "7px 10px", textAlign: "left", color: "#888", fontWeight: 700 }}>До</th>
+            <th style={{ padding: "7px 10px", textAlign: "left", color: "#1a6b1a", fontWeight: 700 }}>После</th>
+            <th style={{ padding: "7px 10px", textAlign: "center", color: "#555", width: 52, fontWeight: 700 }}>Syn</th>
           </tr>
         </thead>
         <tbody>
@@ -63,47 +61,27 @@ function TranslationDiff({ before, after }: { before: Translations; after: Trans
             const b = before[lang];
             const a = after[lang];
             const changed = b?.name !== a?.name;
-            const wasError = b && LATIN.includes(lang) && hasCyrillic(b.name);
-            const stillError = a && LATIN.includes(lang) && hasCyrillic(a.name);
+            const wasErr = b && LATIN.includes(lang) && hasCyrillic(b.name);
+            const stillErr = a && LATIN.includes(lang) && hasCyrillic(a.name);
+            const synOk = (a?.synonyms?.length ?? 0) >= 3;
 
             return (
-              <tr key={lang} style={{ borderBottom: "1px solid #f0f0f0", background: wasError ? "#fff8f7" : "transparent" }}>
-                <td style={{ padding: "9px 12px", fontWeight: 700 }}>
-                  {LANG_FLAGS[lang]} <span style={{ fontSize: 11, color: "#aaa" }}>{lang}</span>
+              <tr key={lang} style={{ borderBottom: "1px solid #f0f0f0", background: wasErr ? "#fff9f8" : "transparent" }}>
+                <td style={{ padding: "8px 10px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                  {LANG_FLAGS[lang]} <span style={{ fontSize: 10, color: "#bbb" }}>{lang}</span>
                 </td>
-                <td style={{ padding: "9px 12px" }}>
-                  {b ? (
-                    <span style={{ color: wasError ? "#c22b10" : "#555" }}>
-                      {wasError && "⚠ "}{b.name}
-                      {b.synonyms?.length > 0 && (
-                        <span style={{ fontSize: 11, color: "#aaa", marginLeft: 6 }}>
-                          ({b.synonyms.slice(0, 2).join(", ")}{b.synonyms.length > 2 ? "…" : ""})
-                        </span>
-                      )}
+                <td style={{ padding: "8px 10px", color: wasErr ? "#c22b10" : "#888", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {b ? <>{wasErr && "⚠ "}{b.name}</> : <span style={{ color: "#ddd" }}>—</span>}
+                </td>
+                <td style={{ padding: "8px 10px", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {a ? (
+                    <span style={{ color: stillErr ? "#c22b10" : changed ? "#1a6b1a" : "#111", fontWeight: changed ? 600 : 400 }}>
+                      {stillErr ? "⚠ " : changed ? "✓ " : ""}{a.name}
                     </span>
                   ) : <span style={{ color: "#ddd" }}>—</span>}
                 </td>
-                <td style={{ padding: "9px 12px" }}>
-                  {a ? (
-                    <span style={{ color: stillError ? "#c22b10" : changed ? "#1a6b1a" : "#111", fontWeight: changed ? 600 : 400 }}>
-                      {stillError && "⚠ "}{changed && !stillError && "✓ "}{a.name}
-                      {a.synonyms?.length > 0 && (
-                        <span style={{ fontSize: 11, color: "#888", marginLeft: 6 }}>
-                          ({a.synonyms.slice(0, 2).join(", ")}{a.synonyms.length > 2 ? "…" : ""})
-                        </span>
-                      )}
-                    </span>
-                  ) : <span style={{ color: "#ddd" }}>—</span>}
-                </td>
-                <td style={{ padding: "9px 12px", textAlign: "center" }}>
-                  {a ? (
-                    <span style={{
-                      fontSize: 12, fontWeight: 700,
-                      color: (a.synonyms?.length ?? 0) >= 3 ? "#22c55e" : "#c22b10",
-                    }}>
-                      {a.synonyms?.length ?? 0}
-                    </span>
-                  ) : "—"}
+                <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 700, fontSize: 12, color: a ? (synOk ? "#22c55e" : "#c22b10") : "#ddd" }}>
+                  {a ? (a.synonyms?.length ?? 0) : "—"}
                 </td>
               </tr>
             );
@@ -114,227 +92,314 @@ function TranslationDiff({ before, after }: { before: Translations; after: Trans
   );
 }
 
-function ResultCard({
-  provider,
-  result,
-  running,
-  onTest,
-  onApply,
-  selectedProductId,
+// ── Result column ─────────────────────────────────────────────────────────────
+
+function ResultCol({
+  provider, result, running, canTest, onTest, onApply,
 }: {
   provider: "openai" | "nvidia";
   result: TestResult | null;
   running: boolean;
+  canTest: boolean;
   onTest: () => void;
   onApply: () => void;
-  selectedProductId: string | null;
 }) {
   const isNvidia = provider === "nvidia";
   const color = isNvidia ? "#1a6b1a" : "#000";
-  const label = isNvidia ? "Gemma 3N (NVIDIA)" : "GPT-4o-mini";
+  const label = isNvidia ? "Gemma 3N" : "GPT-4o-mini";
 
   return (
     <div style={s.card({ flex: 1, minWidth: 0 })}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ background: color, color: "#fff", borderRadius: 7, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>
-            {label}
-          </span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
+        <span style={{ background: color, color: "#fff", borderRadius: 7, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{label}</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {result && (
-            <span style={{ fontSize: 12, color: "#aaa" }}>
-              {result.timeTaken}ms · {(result.inputTokens + result.outputTokens).toLocaleString()} токенов · ${result.costUsd.toFixed(5)}
+            <span style={{ fontSize: 11, color: "#aaa" }}>
+              {result.timeTaken}ms · {(result.inputTokens + result.outputTokens).toLocaleString()} tok · ${result.costUsd.toFixed(5)}
             </span>
           )}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            style={s.btn({ color, disabled: running || !selectedProductId })}
-            disabled={running || !selectedProductId}
-            onClick={onTest}
-          >
-            {running ? "Тестирую…" : "Тест"}
+          <button type="button" style={s.btn({ color, disabled: running || !canTest })} disabled={running || !canTest} onClick={onTest}>
+            {running ? "…" : "Тест"}
           </button>
           {result && !result.applied && (
-            <button
-              type="button"
-              style={s.btn({ color, outline: true, disabled: running })}
-              disabled={running}
-              onClick={onApply}
-            >
-              Применить
+            <button type="button" style={s.btn({ color, outline: true, disabled: running })} disabled={running} onClick={onApply}>
+              Применить ✓
             </button>
           )}
-          {result?.applied && (
-            <span style={{ fontSize: 13, color: "#22c55e", fontWeight: 700 }}>✓ Сохранено</span>
-          )}
+          {result?.applied && <span style={{ fontSize: 13, color: "#22c55e", fontWeight: 700 }}>✓ Сохранено</span>}
         </div>
       </div>
-
-      {result ? (
-        <>
-          {result.issues.length > 0 && (
-            <div style={{ marginBottom: 10, fontSize: 12, color: "#c22b10", background: "#fff5f2", padding: "6px 10px", borderRadius: 8 }}>
-              Найдено: {result.issues.join(" · ")}
-            </div>
-          )}
-          <TranslationDiff before={result.before} after={result.after} />
-        </>
-      ) : (
-        <div style={{ padding: "24px 0", textAlign: "center", color: "#ccc", fontSize: 13 }}>
-          {selectedProductId ? "Нажми «Тест» чтобы увидеть результат" : "Сначала выбери продукт"}
-        </div>
-      )}
+      {result
+        ? <div />
+        : <div style={{ padding: "20px 0", textAlign: "center", color: "#ccc", fontSize: 13 }}>
+            {canTest ? "Нажми «Тест»" : "Выбери продукт"}
+          </div>
+      }
     </div>
   );
 }
 
-export default function SingleProductTestPanel() {
-  const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<SearchProduct[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<SearchProduct | null>(null);
-  const [beforeTranslations, setBeforeTranslations] = useState<Translations>({});
+// ── Main panel ────────────────────────────────────────────────────────────────
 
+export default function SingleProductTestPanel() {
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [index, setIndex] = useState(0);
+
+  const [before, setBefore] = useState<Translations>({});
   const [gptResult, setGptResult] = useState<TestResult | null>(null);
   const [nvidiaResult, setNvidiaResult] = useState<TestResult | null>(null);
   const [runningGpt, setRunningGpt] = useState(false);
   const [runningNvidia, setRunningNvidia] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [sharedDiff, setSharedDiff] = useState<{ before: Translations; after: Translations; provider: string } | null>(null);
 
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const searchProducts = (q: string) => {
-    setQuery(q);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    if (!q.trim()) { setSuggestions([]); return; }
-    searchTimer.current = setTimeout(async () => {
-      setSearchLoading(true);
-      try {
-        const r = await fetch(`/api/admin/products/test-single?q=${encodeURIComponent(q)}`);
+  // Load the issue queue on mount
+  useEffect(() => {
+    (async () => {
+      setQueueLoading(true);
+      const modes = ["fix-translations", "fill-languages", "enrich-synonyms"];
+      const seen = new Set<string>();
+      const result: QueueItem[] = [];
+      await Promise.all(modes.map(async (mode) => {
+        const r = await fetch(`/api/admin/products/smart-process?preview=${mode}`);
         const d = await r.json();
-        setSuggestions(d.products ?? []);
-      } finally {
-        setSearchLoading(false);
-      }
-    }, 300);
-  };
+        for (const p of d.products ?? []) {
+          if (!seen.has(p.id)) {
+            seen.add(p.id);
+            result.push({ ...p, issue: mode });
+          }
+        }
+      }));
+      // Sort by priority
+      const order = ["fix-translations", "fill-languages", "enrich-synonyms"];
+      result.sort((a, b) => order.indexOf(a.issue) - order.indexOf(b.issue));
+      setQueue(result);
+      setQueueLoading(false);
+    })();
+  }, []);
 
-  const selectProduct = async (p: SearchProduct) => {
-    setSelectedProduct(p);
-    setQuery(p.canonical_name);
-    setSuggestions([]);
+  const current = queue[index] ?? null;
+
+  // Load translations when current product changes
+  useEffect(() => {
+    if (!current) return;
     setGptResult(null);
     setNvidiaResult(null);
+    setSharedDiff(null);
+    setBefore({});
+    (async () => {
+      const r = await fetch(`/api/admin/products/test-single?productId=${current.id}`);
+      const d = await r.json();
+      if (d.before) setBefore(d.before);
+    })();
+  }, [current?.id]);
 
-    const r = await fetch(`/api/admin/products/test-single?productId=${p.id}`);
-    const d = await r.json();
-    if (d.before) setBeforeTranslations(d.before);
-  };
-
-  const runTest = async (provider: "openai" | "nvidia", apply = false) => {
-    if (!selectedProduct) return;
+  const runTest = useCallback(async (provider: "openai" | "nvidia", apply = false) => {
+    if (!current) return;
     const setRunning = provider === "openai" ? setRunningGpt : setRunningNvidia;
     const setResult = provider === "openai" ? setGptResult : setNvidiaResult;
-    const current = provider === "openai" ? gptResult : nvidiaResult;
+    const prevResult = provider === "openai" ? gptResult : nvidiaResult;
 
     setRunning(true);
     try {
       const r = await fetch("/api/admin/products/test-single", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId: selectedProduct.id, provider, apply }),
+        body: JSON.stringify({ productId: current.id, provider, apply }),
       });
       const d = await r.json();
       if (d.error) { alert(d.error); return; }
-      setResult({ ...d, before: apply ? (current?.before ?? beforeTranslations) : beforeTranslations });
-      if (apply) setBeforeTranslations(d.after);
+      const result: TestResult = {
+        after: d.after,
+        inputTokens: d.inputTokens,
+        outputTokens: d.outputTokens,
+        costUsd: d.costUsd,
+        timeTaken: d.timeTaken,
+        applied: apply,
+      };
+      setResult(result);
+      setSharedDiff({ before: apply ? (prevResult?.after ?? before) : before, after: d.after, provider });
+      if (apply) {
+        setBefore(d.after);
+        // Remove from queue after applying
+        setQueue(q => q.filter(item => item.id !== current.id));
+        setIndex(i => Math.min(i, queue.length - 2));
+      }
     } finally {
       setRunning(false);
     }
+  }, [current, before, gptResult, nvidiaResult, queue.length]);
+
+  const skip = () => {
+    setIndex(i => Math.min(i + 1, queue.length - 1));
   };
 
-  const hasIssues = Object.entries(beforeTranslations).some(([lang, t]) =>
-    LATIN.includes(lang) && hasCyrillic(t.name)
-  ) || LANGUAGES.some(l => !beforeTranslations[l]);
+  const prev = () => setIndex(i => Math.max(i - 1, 0));
+
+  const isRunning = runningGpt || runningNvidia;
+
+  if (queueLoading) {
+    return (
+      <div style={{ padding: "40px 0", textAlign: "center", color: "#aaa", fontSize: 14 }}>
+        Загружаю список проблемных продуктов…
+      </div>
+    );
+  }
+
+  if (queue.length === 0) {
+    return (
+      <div style={s.card({ textAlign: "center", padding: "48px 24px" })}>
+        <div style={{ fontSize: 32 }}>🎉</div>
+        <div style={{ fontSize: 18, fontWeight: 700, marginTop: 12 }}>Нет продуктов с проблемами!</div>
+        <div style={{ fontSize: 13, color: "#aaa", marginTop: 6 }}>База в идеальном состоянии</div>
+      </div>
+    );
+  }
+
+  const issueMeta = ISSUE_META[current?.issue ?? ""] ?? { label: current?.issue, color: "#555" };
 
   return (
     <div style={{ display: "grid", gap: 20, maxWidth: 1200 }}>
 
-      {/* Search */}
-      <div style={s.card()}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-          Выбери продукт для теста
-        </div>
-        <div style={{ position: "relative" }}>
-          <input
-            value={query}
-            onChange={e => searchProducts(e.target.value)}
-            placeholder="Начни вводить название продукта…"
-            style={s.input}
-          />
-          {(suggestions.length > 0 || searchLoading) && (
-            <div style={{
-              position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
-              background: "#fff", border: "1px solid #e0e0e0", borderRadius: 10,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.10)", marginTop: 4, overflow: "hidden",
+      {/* Navigation bar */}
+      <div style={s.card({ padding: "16px 20px" })}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+
+          {/* Prev / Next */}
+          <button type="button" style={s.btn({ disabled: index === 0 || isRunning })} disabled={index === 0 || isRunning} onClick={prev}>
+            ← Назад
+          </button>
+          <button type="button" style={s.btn({ disabled: index >= queue.length - 1 || isRunning })} disabled={index >= queue.length - 1 || isRunning} onClick={skip}>
+            Пропустить →
+          </button>
+
+          {/* Counter */}
+          <span style={{ fontSize: 13, color: "#888" }}>
+            <b style={{ color: "#111" }}>{index + 1}</b> из <b style={{ color: "#111" }}>{queue.length}</b> проблемных продуктов
+          </span>
+
+          {/* Issue badge */}
+          {current && (
+            <span style={{
+              background: issueMeta.color + "15", color: issueMeta.color,
+              border: `1px solid ${issueMeta.color}40`, borderRadius: 7,
+              padding: "3px 10px", fontSize: 12, fontWeight: 700,
             }}>
-              {searchLoading ? (
-                <div style={{ padding: "12px 14px", color: "#aaa", fontSize: 13 }}>Ищу…</div>
-              ) : suggestions.map(p => (
-                <div
-                  key={p.id}
-                  style={{ padding: "10px 14px", cursor: "pointer", fontSize: 14, display: "flex", gap: 10, alignItems: "center" }}
-                  onMouseDown={() => selectProduct(p)}
-                >
-                  <span style={{ fontSize: 18 }}>{p.icon ?? "📦"}</span>
-                  <span style={{ fontWeight: 500 }}>{p.canonical_name}</span>
-                  <span style={{ fontSize: 12, color: "#aaa", marginLeft: "auto" }}>{p.category ?? "—"}</span>
-                </div>
-              ))}
+              {issueMeta.label}
+            </span>
+          )}
+
+          {/* Product name */}
+          {current && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+              <span style={{ fontSize: 22 }}>{current.icon ?? "📦"}</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{current.canonical_name}</div>
+                <div style={{ fontSize: 11, color: "#aaa" }}>{current.category ?? "—"}</div>
+              </div>
             </div>
           )}
         </div>
+      </div>
 
-        {selectedProduct && (
-          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 28 }}>{selectedProduct.icon ?? "📦"}</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedProduct.canonical_name}</div>
-              <div style={{ fontSize: 12, color: "#aaa" }}>{selectedProduct.category ?? "—"} · {selectedProduct.id.slice(0, 8)}…</div>
-            </div>
-            {hasIssues && (
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "#c22b10", background: "#fff5f2", border: "1px solid #fac5bb", borderRadius: 7, padding: "3px 10px", fontWeight: 700 }}>
-                Есть проблемы
-              </span>
+      {/* Test buttons row */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <button type="button" style={s.btn({ size: "lg", disabled: isRunning || !current })} disabled={isRunning || !current} onClick={() => runTest("openai")}>
+          {runningGpt ? "GPT тестирует…" : "🤖 Тест GPT-4o-mini"}
+        </button>
+        <button type="button" style={s.btn({ size: "lg", color: "#1a6b1a", disabled: isRunning || !current })} disabled={isRunning || !current} onClick={() => runTest("nvidia")}>
+          {runningNvidia ? "Gemma тестирует…" : "🧪 Тест Gemma (NVIDIA)"}
+        </button>
+        {(gptResult || nvidiaResult) && !gptResult?.applied && !nvidiaResult?.applied && (
+          <>
+            {gptResult && (
+              <button type="button" style={s.btn({ size: "lg", outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => runTest("openai", true)}>
+                Применить GPT ✓
+              </button>
             )}
-            {!hasIssues && Object.keys(beforeTranslations).length > 0 && (
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "#22c55e", background: "#dcfce7", border: "1px solid #86efac", borderRadius: 7, padding: "3px 10px", fontWeight: 700 }}>
-                Переводы ОК
-              </span>
+            {nvidiaResult && (
+              <button type="button" style={s.btn({ size: "lg", color: "#1a6b1a", outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => runTest("nvidia", true)}>
+                Применить Gemma ✓
+              </button>
             )}
-          </div>
+          </>
         )}
       </div>
 
-      {/* Side by side results */}
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <ResultCard
-          provider="openai"
-          result={gptResult}
-          running={runningGpt}
-          selectedProductId={selectedProduct?.id ?? null}
-          onTest={() => runTest("openai")}
-          onApply={() => runTest("openai", true)}
-        />
-        <ResultCard
-          provider="nvidia"
-          result={nvidiaResult}
-          running={runningNvidia}
-          selectedProductId={selectedProduct?.id ?? null}
-          onTest={() => runTest("nvidia")}
-          onApply={() => runTest("nvidia", true)}
-        />
-      </div>
+      {/* Diff table — shared, shows whichever model ran last */}
+      {sharedDiff ? (
+        <div style={s.card()}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Сравнение до / после
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {gptResult && (
+                <span style={{ fontSize: 12, color: "#555" }}>
+                  GPT: {(gptResult.inputTokens + gptResult.outputTokens).toLocaleString()} tok · ${gptResult.costUsd.toFixed(5)} · {gptResult.timeTaken}ms
+                  {gptResult.applied && <span style={{ color: "#22c55e", fontWeight: 700 }}> ✓ применено</span>}
+                </span>
+              )}
+              {nvidiaResult && (
+                <span style={{ fontSize: 12, color: "#1a6b1a" }}>
+                  Gemma: {(nvidiaResult.inputTokens + nvidiaResult.outputTokens).toLocaleString()} tok · ${nvidiaResult.costUsd.toFixed(5)} · {nvidiaResult.timeTaken}ms
+                  {nvidiaResult.applied && <span style={{ fontWeight: 700 }}> ✓ применено</span>}
+                </span>
+              )}
+            </div>
+          </div>
+          <DiffTable before={sharedDiff.before} after={sharedDiff.after} />
+
+          {/* If both ran, show quick name comparison */}
+          {gptResult && nvidiaResult && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f0f0f0" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                Сравнение названий (GPT vs Gemma)
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr", gap: 6, fontSize: 13 }}>
+                {LANGUAGES.map(lang => {
+                  const g = gptResult.after[lang]?.name;
+                  const n = nvidiaResult.after[lang]?.name;
+                  const differ = g !== n;
+                  return (
+                    <div key={lang} style={{ display: "contents" }}>
+                      <span style={{ fontWeight: 700, color: "#888" }}>{LANG_FLAGS[lang]} {lang}</span>
+                      <span style={{ color: hasCyrillic(g ?? "") && LATIN.includes(lang) ? "#c22b10" : "#111" }}>{g ?? "—"}</span>
+                      <span style={{ color: hasCyrillic(n ?? "") && LATIN.includes(lang) ? "#c22b10" : differ ? "#1a6b1a" : "#111" }}>{n ?? "—"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : current && Object.keys(before).length > 0 ? (
+        <div style={s.card()}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 14 }}>
+            Текущие переводы
+          </div>
+          <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
+            {LANGUAGES.map(lang => {
+              const t = before[lang];
+              const hasErr = t && LATIN.includes(lang) && hasCyrillic(t.name);
+              const missing = !t;
+              return (
+                <div key={lang} style={{ display: "flex", gap: 12, alignItems: "center", padding: "6px 0", borderBottom: "1px solid #f7f7f7" }}>
+                  <span style={{ fontWeight: 700, minWidth: 60 }}>{LANG_FLAGS[lang]} {lang}</span>
+                  {missing
+                    ? <span style={{ color: "#e0a000", fontSize: 12 }}>— нет перевода</span>
+                    : <span style={{ color: hasErr ? "#c22b10" : "#555" }}>{hasErr && "⚠ "}{t.name}</span>
+                  }
+                  {t && <span style={{ fontSize: 11, color: "#bbb", marginLeft: "auto" }}>{t.synonyms?.length ?? 0} syn</span>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 14, fontSize: 13, color: "#aaa" }}>
+            Нажми «Тест GPT» или «Тест Gemma» чтобы увидеть предлагаемые исправления
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
