@@ -1,19 +1,19 @@
 "use client";
 
-import { Cpu, Package, Sparkles } from "lucide-react";
+import { FlaskConical, Package, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProductsManager from "./ProductsManager";
 import ProductBrainPanel from "./ProductBrainPanel";
-import NvidiaModelPanel from "./NvidiaModelPanel";
+import SingleProductTestPanel from "./SingleProductTestPanel";
 import styles from "../catalogs/catalogs-blueprint.module.css";
 
-type View = "products" | "brain" | "nvidia";
+type View = "products" | "brain" | "test";
 
 export default function ProductsWorkspacePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const viewParam = searchParams.get("view");
-  const activeView: View = viewParam === "brain" || viewParam === "nvidia" ? viewParam : "products";
+  const activeView: View = viewParam === "brain" ? "brain" : viewParam === "test" ? "test" : "products";
 
   const setView = (view: View) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -50,9 +50,9 @@ export default function ProductsWorkspacePage() {
 
           <div style={{ display: "flex", background: "#f2f2f2", borderRadius: 9999, padding: 3, gap: 2 }}>
             {([
-              { id: "products", icon: Package, label: "База продуктов" },
-              { id: "brain",    icon: Sparkles, label: "Обработка" },
-              { id: "nvidia",   icon: Cpu, label: "NVIDIA тест" },
+              { id: "products", icon: Package,       label: "База продуктов" },
+              { id: "brain",    icon: Sparkles,      label: "Обработка" },
+              { id: "test",     icon: FlaskConical,  label: "Тест" },
             ] as const).map(({ id, icon: Icon, label }) => (
               <button
                 key={id}
@@ -83,12 +83,7 @@ export default function ProductsWorkspacePage() {
 
       {activeView === "products" && <ProductsManager />}
       {activeView === "brain" && <ProductBrainPanel />}
-      {activeView === "nvidia" && (
-        <div style={{ display: "grid", gap: 32 }}>
-          <ProductBrainPanel provider="nvidia" />
-          <NvidiaModelPanel />
-        </div>
-      )}
+      {activeView === "test" && <SingleProductTestPanel />}
     </div>
   );
 }
