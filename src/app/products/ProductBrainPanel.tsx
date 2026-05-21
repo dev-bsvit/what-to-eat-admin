@@ -255,6 +255,7 @@ export default function ProductBrainPanel({ provider = "openai" }: { provider?: 
   const [totalTokensOut, setTotalTokensOut] = useState(0);
   const [totalCost, setTotalCost] = useState(0);
   const stopRef = useRef(false);
+  const processedIdsRef = useRef(new Set<string>());
 
   const loadStats = async () => {
     setLoadingStats(true);
@@ -272,6 +273,7 @@ export default function ProductBrainPanel({ provider = "openai" }: { provider?: 
   const runLoop = async (mode: string) => {
     if (running) return;
     stopRef.current = false;
+    processedIdsRef.current = new Set();
     setRunning(true);
     setActiveMode(mode);
     setLog([]);
@@ -310,6 +312,15 @@ export default function ProductBrainPanel({ provider = "openai" }: { provider?: 
           remaining = data.remaining;
           break;
         }
+
+        // Detect stuck loop: all products in this batch were already processed
+        const batchIds = data.results.map(r => r.productId);
+        const allSeen = batchIds.every(id => processedIdsRef.current.has(id));
+        if (allSeen) {
+          setStatus("⚠ Продукты не поддаются исправлению — пропускаю.");
+          break;
+        }
+        batchIds.forEach(id => processedIdsRef.current.add(id));
 
         processed += data.processed;
         remaining = data.remaining;

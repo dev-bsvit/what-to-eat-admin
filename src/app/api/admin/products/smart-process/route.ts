@@ -237,13 +237,17 @@ type GPTResult = {
   outputTokens: number;
 };
 
-async function callGPTTranslate(product: ProductRow, provider: "openai" | "nvidia" = "openai"): Promise<GPTResult> {
+async function callGPTTranslate(product: ProductRow, provider: "openai" | "nvidia" = "openai", mode = "auto"): Promise<GPTResult> {
   const isNvidia = provider === "nvidia";
   const apiKey = isNvidia ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error(`${isNvidia ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} is not set`);
 
-  const prompt = `Ты нормализуешь и переводишь продукты для кулинарного приложения.
+  const fixTranslationsWarning = mode === "fix-translations"
+    ? `\n⚠️ КРИТИЧЕСКИ ВАЖНО: Переводы на EN, DE, IT, FR, ES, PT-BR содержат кириллицу — это ОШИБКА. Исправь их.\nПравило: EN/DE/IT/FR/ES/PT-BR ОБЯЗАТЕЛЬНО должны использовать ТОЛЬКО латинские буквы (a-z, A-Z).\nЕсли не знаешь точный перевод — используй описательный аналог или транслитерацию латиницей. НИКОГДА не оставляй кириллицу в этих языках.\n`
+    : "";
 
+  const prompt = `Ты нормализуешь и переводишь продукты для кулинарного приложения.
+${fixTranslationsWarning}
 Продукт: "${product.canonical_name}"
 Категория: ${product.category ?? "неизвестна"}
 
@@ -253,6 +257,7 @@ async function callGPTTranslate(product: ProductRow, provider: "openai" | "nvidi
 ЗАДАЧА 2 — Категория из: ${CATEGORIES.join(", ")}. Иконка-эмодзи. Единица: g/kg/ml/l/pcs/null.
 
 ЗАДАЧА 3 — Переводы на 8 языков (en, ru, de, it, fr, es, pt-BR, uk).
+ВАЖНО: EN, DE, IT, FR, ES, PT-BR — ТОЛЬКО латиница! ru и uk — кириллица.
 Для каждого языка:
 • name: нативное название на ЭТОМ языке (en → English, de → Deutsch, etc.)
 • synonyms: 5-8 синонимов включая: множественное число, региональные варианты, рыночные названия, разговорные формы, варианты нарезки/подачи
@@ -415,7 +420,7 @@ async function applyFull(productId: string, data: Awaited<ReturnType<typeof call
 // ── Process one product ───────────────────────────────────────────────────────
 
 async function processOne(product: ProductRow, mode: string, provider: "openai" | "nvidia" = "openai"): Promise<ProcessResult> {
-  const gpt = await callGPTTranslate(product, provider);
+  const gpt = await callGPTTranslate(product, provider, mode);
   const changed = normalize(gpt.canonical_name) !== normalize(product.canonical_name);
 
   if (mode === "fix-translations" || mode === "fill-languages" || mode === "enrich-synonyms") {
