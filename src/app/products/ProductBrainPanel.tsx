@@ -415,10 +415,12 @@ export default function ProductBrainPanel() {
     setStatus("Запускаю…");
 
     let processed = 0;
-    let modeRemaining = stats?.totalIssues ?? 999;
+    const isAutoLoop = mode === "auto";
+    // For auto: track totalIssues; for specific mode: track modeRemaining
+    let remaining = stats?.totalIssues ?? 999;
 
-    while (modeRemaining > 0 && !stopRef.current) {
-      setStatus(`${MODE_META[mode]?.label ?? "Авто"}… осталось ~${modeRemaining}`);
+    while (remaining > 0 && !stopRef.current) {
+      setStatus(`${isAutoLoop ? "Авто" : (MODE_META[mode]?.label ?? mode)}… осталось ~${remaining}`);
       try {
         const res = await fetch("/api/admin/products/smart-process", {
           method: "POST",
@@ -428,7 +430,19 @@ export default function ProductBrainPanel() {
         if (!res.ok) { const e = await res.json(); setStatus(`Ошибка: ${e.error ?? "неизвестная"}`); break; }
 
         const data: SmartResponse = await res.json();
-        if (data.processed === 0) { modeRemaining = data.modeRemaining ?? 0; break; }
+
+        // Nothing to process in this mode/cycle
+        if (data.processed === 0) {
+          if (isAutoLoop) {
+            remaining = data.remaining; // totalIssues — auto tries all modes
+            if (remaining === 0) break;
+            // backend may have switched to a mode with no items; try once more
+            // but break if we've already made progress and got 0
+            break;
+          } else {
+            break;
+          }
+        }
 
         const batchIds = data.results.map(r => r.productId);
         const allSeen = batchIds.every(id => processedIdsRef.current.has(id));
@@ -436,7 +450,7 @@ export default function ProductBrainPanel() {
         batchIds.forEach(id => processedIdsRef.current.add(id));
 
         processed = applyBatchResult(data, processed);
-        modeRemaining = data.modeRemaining ?? 0;
+        remaining = isAutoLoop ? data.remaining : (data.modeRemaining ?? 0);
       } catch {
         setStatus("Ошибка сети — остановлено");
         break;
@@ -448,11 +462,12 @@ export default function ProductBrainPanel() {
     setCurrentItem(null);
     if (stopRef.current) {
       setStatus("Остановлено.");
-    } else if (modeRemaining === 0) {
-      setStatus("✓ Категория обработана!");
+    } else if (remaining === 0) {
+      setStatus("✓ База в идеальном состоянии!");
       await loadStats();
     } else {
-      setStatus(`Готово. Обработано: ${processed}`);
+      setStatus(`Готово. Обработано: ${processed}, осталось: ${remaining}`);
+      await loadStats();
     }
   };
 

@@ -555,14 +555,67 @@ async function applyFull(productId: string, data: Awaited<ReturnType<typeof call
   console.log(`[applyFull] ${productId} translations saved: ${saved} rows`);
 }
 
+// ── Fix-names: regex clean + duplicate check (no GPT needed) ─────────────────
+
+function cleanName(name: string): string {
+  return name
+    .replace(/\p{Emoji_Presentation}/gu, "")
+    .replace(/[—–-]\s*\d[\d,.]*/g, "")
+    .replace(/\d[\d,.]*\s*(кг|г\b|мл|л\b|килограмм|грамм|кило|kg\b|g\b|ml\b|l\b)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function processFixName(product: ProductRow): Promise<ProcessResult> {
+  const cleaned = cleanName(product.canonical_name);
+  console.log(`[fix-names] "${product.canonical_name}" → "${cleaned}"`);
+
+  if (cleaned === product.canonical_name) {
+    return { productId: product.id, name: product.canonical_name, action: "fix-names", changed: false, inputTokens: 0, outputTokens: 0, error: "Имя уже чистое" };
+  }
+
+  // Check for duplicate
+  const { data: dup } = await supabaseAdmin
+    .from("product_dictionary")
+    .select("id, canonical_name")
+    .eq("canonical_name", cleaned)
+    .neq("id", product.id)
+    .maybeSingle();
+
+  if (dup) {
+    console.log(`[fix-names] DUPLICATE: "${cleaned}" already exists (${dup.id})`);
+    return { productId: product.id, name: product.canonical_name, action: "fix-names", changed: false, inputTokens: 0, outputTokens: 0, error: `Дубликат: "${cleaned}" уже есть в базе` };
+  }
+
+  // Update canonical_name
+  const { error: updErr } = await supabaseAdmin
+    .from("product_dictionary")
+    .update({ canonical_name: cleaned, updated_at: new Date().toISOString() })
+    .eq("id", product.id);
+  if (updErr) throw new Error(`Name update failed: ${updErr.message}`);
+
+  // Regenerate translations with cleaned name via DeepL
+  const updated = { ...product, canonical_name: cleaned };
+  const { translations, inputTokens, outputTokens } = await callDeepLBatch(updated, "openai");
+  const savedRows = await applyTranslations(product.id, translations);
+  const translationNames = Object.fromEntries(Object.entries(translations).map(([l, t]) => [l, t.name]));
+  console.log(`[fix-names] OK "${cleaned}" saved=${savedRows} EN="${translations.en?.name}"`);
+
+  return { productId: product.id, name: cleaned, action: "fix-names", changed: true, inputTokens, outputTokens, savedRows, translations: translationNames };
+}
+
 // ── Process one product ───────────────────────────────────────────────────────
 
 async function processOne(product: ProductRow, mode: string, provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia" = "openai"): Promise<ProcessResult> {
   console.log(`[processOne] START "${product.canonical_name}" mode=${mode} provider=${provider}`);
 
-  // fix-names must use GPT: DeepL can't normalize canonical names
+  // fix-names: deterministic regex clean, no GPT, with duplicate detection
+  if (mode === "fix-names") {
+    return await processFixName(product);
+  }
+
   // DeepL hybrid: accurate names via DeepL + AI for synonyms only
-  if ((provider === "deepl" || provider === "deepl-nvidia") && mode !== "fix-names") {
+  if (provider === "deepl" || provider === "deepl-nvidia") {
     const synonymsProvider = provider === "deepl-nvidia" ? "nvidia" : "openai";
     const { translations, inputTokens, outputTokens } = await callDeepLBatch(product, synonymsProvider);
     const savedRows = await applyTranslations(product.id, translations);
@@ -571,8 +624,7 @@ async function processOne(product: ProductRow, mode: string, provider: "openai" 
     return { productId: product.id, name: product.canonical_name, action: mode, changed: false, inputTokens, outputTokens, savedRows, translations: translationNames };
   }
 
-  const gptProvider = mode === "fix-names" ? "openai" : (provider === "deepl" || provider === "deepl-nvidia" ? "openai" : provider);
-  const gpt = await callGPTTranslate(product, gptProvider, mode);
+  const gpt = await callGPTTranslate(product, provider, mode);
   const changed = normalize(gpt.canonical_name) !== normalize(product.canonical_name);
   const translationNames = Object.fromEntries(Object.entries(gpt.translations).map(([l, t]) => [l, t.name]));
 
@@ -580,7 +632,6 @@ async function processOne(product: ProductRow, mode: string, provider: "openai" 
   if (mode === "fix-translations" || mode === "fill-languages" || mode === "enrich-synonyms") {
     savedRows = await applyTranslations(product.id, gpt.translations);
   } else {
-    // "pending" and "fix-names" use applyFull to update canonical_name + all fields
     await applyFull(product.id, gpt);
     savedRows = 8;
   }
