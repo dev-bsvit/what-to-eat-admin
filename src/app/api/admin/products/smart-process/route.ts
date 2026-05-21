@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { APP_LANGUAGES } from "@/lib/translate";
+import { APP_LANGUAGES, translateBatch } from "@/lib/translate";
 import { normalize } from "@/lib/stringUtils";
 
 export const maxDuration = 300;
@@ -227,6 +227,92 @@ async function getAutoMode(): Promise<string | null> {
   return null;
 }
 
+// ── DeepL + AI hybrid batch ───────────────────────────────────────────────────
+
+async function callDeepLBatch(
+  product: ProductRow,
+  synonymsProvider: "openai" | "nvidia" = "openai"
+): Promise<{
+  translations: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>;
+  inputTokens: number; outputTokens: number;
+}> {
+  const isNv = synonymsProvider === "nvidia";
+  const apiKey = isNv ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} not set`);
+
+  // Step 1: DeepL — 8 language names in parallel
+  const names = await Promise.all(
+    APP_LANGUAGES.map(lang =>
+      translateBatch([product.canonical_name], lang, "RU")
+        .then(r => {
+          const raw = r[0] ?? product.canonical_name;
+          return { lang, name: raw.charAt(0).toUpperCase() + raw.slice(1) };
+        })
+        .catch(() => ({ lang, name: product.canonical_name }))
+    )
+  );
+  const nameMap: Record<string, string> = Object.fromEntries(names.map(n => [n.lang, n.name]));
+
+  // Step 2: AI — synonyms + description + storage_tips (short prompt)
+  const translationsList = APP_LANGUAGES.map(l => `${l}: "${nameMap[l]}"`).join(", ");
+  const prompt = `Ты генерируешь синонимы для продуктов кулинарного приложения.
+
+Продукт: "${product.canonical_name}"
+Переводы: ${translationsList}
+
+Для каждого из 8 языков верни 5-8 синонимов: множественное число, региональные варианты, рыночные названия, разговорные формы.
+Также добавь: description (1 предложение) и storage_tips (1 предложение) для каждого языка.
+
+Верни ТОЛЬКО валидный JSON:
+{
+  "en": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "ru": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "de": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "it": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "fr": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "es": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "pt-BR": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "uk": {"synonyms":["..."],"description":"...","storage_tips":"..."}
+}`;
+
+  const res = await fetch(isNv ? NVIDIA_URL : OPENAI_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: isNv ? NVIDIA_MODEL : "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: isNv ? 0.2 : 0.1,
+      ...(isNv ? { max_tokens: 2048, top_p: 0.7 } : {}),
+    }),
+  });
+
+  if (!res.ok) throw new Error(`${isNv ? "NVIDIA" : "OpenAI"} ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const content: string = data?.choices?.[0]?.message?.content ?? "";
+  const inputTokens: number = data?.usage?.prompt_tokens ?? 0;
+  const outputTokens: number = data?.usage?.completion_tokens ?? 0;
+
+  let cleaned = content.trim();
+  if (cleaned.startsWith("```json")) cleaned = cleaned.slice(7);
+  else if (cleaned.startsWith("```")) cleaned = cleaned.slice(3);
+  if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3);
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+
+  const translations: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }> = {};
+  for (const lang of APP_LANGUAGES) {
+    const g = parsed[lang] ?? {};
+    translations[lang] = {
+      name: nameMap[lang],
+      synonyms: Array.isArray(g.synonyms) ? g.synonyms.filter(Boolean) : [],
+      description: g.description ?? null,
+      storage_tips: g.storage_tips ?? null,
+    };
+  }
+
+  return { translations, inputTokens, outputTokens };
+}
+
 // ── GPT: full translate + normalize ──────────────────────────────────────────
 
 type GPTResult = {
@@ -440,7 +526,15 @@ async function applyFull(productId: string, data: Awaited<ReturnType<typeof call
 
 // ── Process one product ───────────────────────────────────────────────────────
 
-async function processOne(product: ProductRow, mode: string, provider: "openai" | "nvidia" = "openai"): Promise<ProcessResult> {
+async function processOne(product: ProductRow, mode: string, provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia" = "openai"): Promise<ProcessResult> {
+  // DeepL hybrid: accurate names via DeepL + AI for synonyms only
+  if (provider === "deepl" || provider === "deepl-nvidia") {
+    const synonymsProvider = provider === "deepl-nvidia" ? "nvidia" : "openai";
+    const { translations, inputTokens, outputTokens } = await callDeepLBatch(product, synonymsProvider);
+    await applyTranslations(product.id, translations);
+    return { productId: product.id, name: product.canonical_name, action: mode, changed: false, inputTokens, outputTokens };
+  }
+
   const gpt = await callGPTTranslate(product, provider, mode);
   const changed = normalize(gpt.canonical_name) !== normalize(product.canonical_name);
 
@@ -450,14 +544,7 @@ async function processOne(product: ProductRow, mode: string, provider: "openai" 
     await applyFull(product.id, gpt);
   }
 
-  return {
-    productId: product.id,
-    name: product.canonical_name,
-    action: mode,
-    changed,
-    inputTokens: gpt.inputTokens,
-    outputTokens: gpt.outputTokens,
-  };
+  return { productId: product.id, name: product.canonical_name, action: mode, changed, inputTokens: gpt.inputTokens, outputTokens: gpt.outputTokens };
 }
 
 // ── Route handlers ─────────────────────────────────────────────────────────────
@@ -492,7 +579,10 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const limit = Math.min(Math.max(body.limit ?? 5, 1), 20);
     const dryRun = body.dryRun === true;
-    const provider: "openai" | "nvidia" = body.provider === "nvidia" ? "nvidia" : "openai";
+    const provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia" =
+      body.provider === "nvidia" ? "nvidia" :
+      body.provider === "deepl" ? "deepl" :
+      body.provider === "deepl-nvidia" ? "deepl-nvidia" : "openai";
     let mode: string = body.mode ?? "auto";
 
     // Resolve auto mode

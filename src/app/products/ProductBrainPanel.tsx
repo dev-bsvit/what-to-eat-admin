@@ -237,12 +237,42 @@ function IssueRow({
   );
 }
 
+// ── Provider config ───────────────────────────────────────────────────────────
+
+type ProviderType = "deepl" | "deepl-nvidia" | "openai" | "nvidia";
+
+const PROVIDER_META: Record<ProviderType, {
+  label: string; emoji: string; color: string;
+  badge?: string; badgeColor?: string;
+  desc: string; costPer: number | null;
+}> = {
+  "deepl": {
+    label: "DeepL + GPT-mini", emoji: "🔤", color: "#1746a2",
+    badge: "Рекомендовано", badgeColor: "#1746a2",
+    desc: "Точные переводы DeepL · синонимы GPT", costPer: 0.00053,
+  },
+  "deepl-nvidia": {
+    label: "DeepL + Gemma", emoji: "🔤", color: "#7c3aed",
+    badge: "Бесплатно", badgeColor: "#7c3aed",
+    desc: "DeepL названия · синонимы Gemma · медленно", costPer: 0,
+  },
+  "openai": {
+    label: "GPT-4o-mini", emoji: "🤖", color: "#111",
+    desc: "Всё через GPT · быстро", costPer: 0.00086,
+  },
+  "nvidia": {
+    label: "NVIDIA Gemma", emoji: "🧪", color: "#1a6b1a",
+    badge: "Бесплатно", badgeColor: "#1a6b1a",
+    desc: "Всё через Gemma · очень медленно", costPer: 0,
+  },
+};
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-export default function ProductBrainPanel({ provider = "openai" }: { provider?: "openai" | "nvidia" }) {
-  const isNvidia = provider === "nvidia";
-  const modelLabel = isNvidia ? "Gemma 3N (NVIDIA)" : "GPT-4o-mini";
-  const accentColor = isNvidia ? "#1a6b1a" : "#000";
+export default function ProductBrainPanel() {
+  const [provider, setProvider] = useState<ProviderType>("deepl");
+  const meta = PROVIDER_META[provider];
+  const accentColor = meta.color;
   const [stats, setStats] = useState<SmartStats | null>(null);
   const [translationRows, setTranslationRows] = useState<number | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
@@ -380,53 +410,95 @@ export default function ProductBrainPanel({ provider = "openai" }: { provider?: 
         background: allDone ? "#f0fdf4" : "#fafafa",
         borderColor: allDone ? "#86efac" : "#e0e0e0",
       })}>
-        <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-              <span style={{
-                background: accentColor, color: "#fff", borderRadius: 8,
-                padding: "3px 10px", fontSize: 12, fontWeight: 700,
-              }}>{modelLabel}</span>
-              {isNvidia && (
-                <span style={{ background: "#e6f4ea", color: "#1a6b1a", border: "1px solid #b7dfbc", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>
-                  Тест
-                </span>
-              )}
-              {stats && (
-                <span style={s.badge(allDone ? "#22c55e" : "#8a4b00")}>
-                  {allDone ? "База чистая" : `${stats.totalIssues} проблем`}
-                </span>
-              )}
-            </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+          <div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px", lineHeight: 1.2 }}>
-              {allDone ? "🎉 База в идеальном состоянии" : isNvidia ? "Тест: обработка через Gemma" : "Запустить полную обработку"}
+              {allDone ? "🎉 База в идеальном состоянии" : "Обработка продуктов"}
             </div>
-            <div style={{ fontSize: 13, color: "#737373", marginTop: 6, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 13, color: "#737373", marginTop: 4 }}>
               {allDone
-                ? `Все ${total} продуктов имеют полные переводы, синонимы и КБЖУ`
-                : isNvidia
-                  ? "То же самое что основной режим, но через google/gemma-3n-e2b-it (NVIDIA API)"
-                  : "Авто-режим: исправляет по приоритету — сначала переводы, потом недостающие языки, потом синонимы"
+                ? `Все ${total} продуктов имеют полные переводы и синонимы`
+                : "Авто-режим: переводы → языки → синонимы. Выберите модель и запустите."
               }
             </div>
           </div>
+          {stats && (
+            <span style={s.badge(allDone ? "#22c55e" : "#8a4b00")}>
+              {allDone ? "База чистая" : `${stats.totalIssues} проблем`}
+            </span>
+          )}
+        </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-            {!running ? (
-              <button
-                type="button"
-                style={s.btn({ primary: true, color: accentColor, disabled: loadingStats || allDone, size: "lg" })}
-                disabled={loadingStats || allDone}
-                onClick={() => runLoop("auto")}
-              >
-                {allDone ? "✓ Готово" : isNvidia ? "🧪 Запустить тест" : "🪄 Запустить всё"}
-              </button>
-            ) : (
-              <button type="button" style={s.btn({ size: "lg" })} onClick={stop}>
-                Остановить
-              </button>
-            )}
+        {/* Provider selector */}
+        {!allDone && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+              Модель обработки
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+              {(Object.entries(PROVIDER_META) as [ProviderType, typeof PROVIDER_META[ProviderType]][]).map(([id, m]) => {
+                const selected = provider === id;
+                const estCost = m.costPer != null && stats
+                  ? m.costPer === 0 ? "Бесплатно" : `~$${(m.costPer * stats.totalIssues).toFixed(2)}`
+                  : null;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={running}
+                    onClick={() => setProvider(id)}
+                    style={{
+                      padding: "10px 12px", borderRadius: 10, textAlign: "left", cursor: running ? "not-allowed" : "pointer",
+                      border: `2px solid ${selected ? m.color : "#e5e5e5"}`,
+                      background: selected ? m.color + "12" : "#fff",
+                      transition: "border-color 0.15s, background 0.15s",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <span style={{ fontSize: 15 }}>{m.emoji}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: selected ? m.color : "#111" }}>{m.label}</span>
+                      {m.badge && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, color: m.badgeColor ?? m.color,
+                          background: (m.badgeColor ?? m.color) + "18",
+                          border: `1px solid ${(m.badgeColor ?? m.color)}40`,
+                          borderRadius: 4, padding: "1px 5px", marginLeft: "auto",
+                        }}>{m.badge}</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#888" }}>{m.desc}</div>
+                    {estCost && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: m.costPer === 0 ? "#22c55e" : "#555", marginTop: 3 }}>
+                        {estCost}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
+          {!running ? (
+            <button
+              type="button"
+              style={s.btn({ primary: true, color: accentColor, disabled: loadingStats || allDone, size: "lg" })}
+              disabled={loadingStats || allDone}
+              onClick={() => runLoop("auto")}
+            >
+              {allDone ? "✓ Готово" : `${meta.emoji} Запустить всё`}
+            </button>
+          ) : (
+            <button type="button" style={s.btn({ size: "lg" })} onClick={stop}>
+              Остановить
+            </button>
+          )}
+          {running && (
+            <span style={{ fontSize: 13, color: accentColor, fontWeight: 600 }}>
+              {meta.emoji} {meta.label}
+            </span>
+          )}
         </div>
 
         {/* Progress / metrics block */}
