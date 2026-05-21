@@ -491,7 +491,7 @@ export default function ProductBrainPanel() {
               </div>
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-1px", color: stats.totalIssues === 0 ? "#22c55e" : "#111" }}>
-                  {stats.total - Math.min(stats.totalIssues, stats.total)}
+                  {stats.total - stats.totalIssues}
                 </div>
                 <div style={{ fontSize: 11, color: "#888" }}>без проблем</div>
               </div>
@@ -499,7 +499,7 @@ export default function ProductBrainPanel() {
                 <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-1px", color: stats.totalIssues > 0 ? "#c22b10" : "#22c55e" }}>
                   {stats.totalIssues}
                 </div>
-                <div style={{ fontSize: 11, color: "#888" }}>проблем</div>
+                <div style={{ fontSize: 11, color: "#888" }}>уник. с проблемой</div>
               </div>
               <button
                 type="button"

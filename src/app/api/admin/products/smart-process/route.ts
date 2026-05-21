@@ -78,13 +78,13 @@ async function getSmartStats(): Promise<SmartStats> {
   const [
     { count: total },
     allTranslationsRaw,
-    pendingRes,
+    pendingIdsRes,
+    allIdsRes,
   ] = await Promise.all([
     supabaseAdmin.from("product_dictionary").select("*", { count: "exact", head: true }),
     supabaseAdmin.from("product_translations").select("product_id, language_code, name, synonyms").limit(10000),
-    supabaseAdmin.from("product_dictionary")
-      .select("id", { count: "exact", head: true })
-      .or("needs_moderation.eq.true,moderation_status.eq.pending"),
+    supabaseAdmin.from("product_dictionary").select("id").or("needs_moderation.eq.true,moderation_status.eq.pending"),
+    supabaseAdmin.from("product_dictionary").select("id").limit(5000),
   ]);
 
   const translations = allTranslationsRaw.data ?? [];
@@ -101,21 +101,27 @@ async function getSmartStats(): Promise<SmartStats> {
     productLangs[t.product_id].add(t.language_code);
   }
   const allRequired = new Set(APP_LANGUAGES as readonly string[]);
-  const { data: allIds } = await supabaseAdmin.from("product_dictionary").select("id").limit(5000);
-  const missingLanguages = (allIds ?? []).filter(p => {
-    const has = productLangs[p.id] ?? new Set();
-    return [...allRequired].some(l => !has.has(l));
-  }).length;
+  const missingLangIds = new Set(
+    (allIdsRes.data ?? []).filter(p => {
+      const has = productLangs[p.id] ?? new Set();
+      return [...allRequired].some(l => !has.has(l));
+    }).map(p => p.id)
+  );
 
   // Poor synonyms: any language translation with < 3 synonyms
-  const productPoorSynonyms = new Set(
+  const poorSynonymIds = new Set(
     translations.filter(t => !t.synonyms || t.synonyms.length < 3).map(t => t.product_id)
   );
 
+  const pendingIds = new Set((pendingIdsRes.data ?? []).map(p => p.id));
+
   const badTranslations = badTranslationIds.size;
-  const poorSynonyms = productPoorSynonyms.size;
-  const pendingModeration = pendingRes.count ?? 0;
-  const totalIssues = badTranslations + missingLanguages + poorSynonyms + pendingModeration;
+  const missingLanguages = missingLangIds.size;
+  const poorSynonyms = poorSynonymIds.size;
+  const pendingModeration = pendingIds.size;
+
+  // Unique products with at least one issue (avoids double-counting)
+  const uniqueAffected = new Set([...badTranslationIds, ...missingLangIds, ...poorSynonymIds, ...pendingIds]);
 
   return {
     total: total ?? 0,
@@ -123,8 +129,8 @@ async function getSmartStats(): Promise<SmartStats> {
     missingLanguages,
     poorSynonyms,
     pendingModeration,
-    totalIssues,
-    isClean: totalIssues === 0,
+    totalIssues: uniqueAffected.size,
+    isClean: uniqueAffected.size === 0,
   };
 }
 
