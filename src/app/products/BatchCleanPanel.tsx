@@ -143,7 +143,10 @@ export default function BatchCleanPanel() {
 
         const data: BatchResponse = await res.json();
 
-        if (data.processed === 0) break;
+        if (data.processed === 0) {
+          remaining = data.remaining;
+          break;
+        }
 
         totalProcessed += data.processed;
         totalChanged += data.changed;
@@ -166,11 +169,14 @@ export default function BatchCleanPanel() {
     if (stopRef.current) {
       setStopped(true);
       setStatus("Остановлено вручную.");
+    } else if (remaining === 0) {
+      setStatus("✓ Все продукты обработаны!");
+      await loadStats();
+    } else if (totalProcessed === 0) {
+      setStatus(`⚠ Не удалось обработать ${remaining} продуктов — нажмите «Запустить» ещё раз`);
+      await loadStats();
     } else {
-      setStatus(remaining === 0
-        ? "✓ Все продукты обработаны!"
-        : `Завершено. Обработано: ${totalProcessed}, осталось: ${remaining}`
-      );
+      setStatus(`Завершено. Обработано: ${totalProcessed}, осталось: ${remaining} — нажмите «Запустить» для продолжения`);
       await loadStats();
     }
   };

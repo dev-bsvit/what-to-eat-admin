@@ -12,6 +12,7 @@ const CATEGORIES = [
 ] as const;
 
 // Words that indicate a dirty product name — not part of the product identity
+// NOTE: no `g` flag — module-level regexes with `g` retain lastIndex between calls
 const DIRTY_PATTERNS = [
   /для\s+подачи/i,
   /для\s+жарки/i,
@@ -21,8 +22,8 @@ const DIRTY_PATTERNS = [
   /по\s+желанию/i,
   /необязательно/i,
   /по\s+необходимости/i,
-  /\(.*?\)/g,           // anything in parentheses
-  /\d+\s*(г|кг|мл|л|шт|штук|грамм|граммов)\b/gi,
+  /\(.*?\)/,
+  /\d+\s*(г|кг|мл|л|шт|штук|грамм|граммов)\b/i,
 ];
 
 function isDirty(name: string): boolean {
@@ -98,24 +99,23 @@ async function getStats() {
 // ── Fetch batch to process ────────────────────────────────────────────────────
 
 async function fetchBatch(limit: number): Promise<ProductRow[]> {
-  // First priority: dirty names (need normalization regardless of translations)
   const { data: allProducts } = await supabaseAdmin
     .from("product_dictionary")
     .select("*")
     .order("usage_count", { ascending: false, nullsFirst: false })
-    .limit(2000);
+    .limit(5000);
 
   if (!allProducts?.length) return [];
 
+  // Fetch without .in() filter — avoids URL length limits with large product sets
   const { data: translated } = await supabaseAdmin
     .from("product_translations")
     .select("product_id")
     .eq("language_code", "en")
-    .in("product_id", allProducts.map((p) => p.id));
+    .limit(5000);
 
   const translatedIds = new Set((translated ?? []).map((r) => r.product_id));
 
-  // Products that need work: dirty name OR missing English translation
   const needsWork = (allProducts as ProductRow[]).filter(
     (p) => isDirty(p.canonical_name) || !translatedIds.has(p.id)
   );
@@ -342,7 +342,7 @@ export async function POST(request: Request) {
 
     if (products.length === 0) {
       const stats = await getStats();
-      return NextResponse.json({ success: true, processed: 0, remaining: 0, results: [], stats });
+      return NextResponse.json({ success: true, processed: 0, remaining: stats.needsProcessing, results: [], stats });
     }
 
     const results: CleanResult[] = [];
