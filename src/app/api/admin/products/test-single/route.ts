@@ -74,7 +74,11 @@ async function callDeepLHybrid(
   const names = await Promise.all(
     APP_LANGUAGES.map(lang =>
       translateBatch([canonicalName], lang, "RU")
-        .then(r => ({ lang, name: r[0] ?? canonicalName }))
+        .then(r => {
+          const raw = r[0] ?? canonicalName;
+          const name = raw.charAt(0).toUpperCase() + raw.slice(1);
+          return { lang, name };
+        })
         .catch(() => ({ lang, name: existingTranslations[lang]?.name ?? canonicalName }))
     )
   );
