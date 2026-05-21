@@ -51,6 +51,7 @@ type ProductRow = {
   description?: string | null;
   storage_tips?: string | null;
   needs_moderation?: boolean | null;
+  moderation_status?: string | null;
 };
 
 type CleanResult = {
@@ -78,7 +79,7 @@ async function getStats() {
 
   const { data: allProducts } = await supabaseAdmin
     .from("product_dictionary")
-    .select("id, canonical_name");
+    .select("id, canonical_name, moderation_status");
 
   const needsTranslation = (allProducts ?? []).filter(
     (p) => !translatedIds.has(p.id)
@@ -92,9 +93,11 @@ async function getStats() {
     total: total ?? 0,
     needsTranslation,
     needsNormalization,
-    needsProcessing: (allProducts ?? []).filter(
-      (p) => !translatedIds.has(p.id) || isDirty(p.canonical_name)
-    ).length,
+    needsProcessing: (allProducts ?? []).filter((p) => {
+      const hasTranslation = translatedIds.has(p.id);
+      if (hasTranslation && p.moderation_status === "manually_approved") return false;
+      return !hasTranslation || isDirty(p.canonical_name);
+    }).length,
   };
 }
 
@@ -118,9 +121,12 @@ async function fetchBatch(limit: number): Promise<ProductRow[]> {
 
   const translatedIds = new Set((translated ?? []).map((r) => r.product_id));
 
-  const needsWork = (allProducts as ProductRow[]).filter(
-    (p) => isDirty(p.canonical_name) || !translatedIds.has(p.id)
-  );
+  const needsWork = (allProducts as ProductRow[]).filter((p) => {
+    const hasTranslation = translatedIds.has(p.id);
+    // Already processed (approved + has translations) — skip even if name is still dirty
+    if (hasTranslation && p.moderation_status === "manually_approved") return false;
+    return isDirty(p.canonical_name) || !hasTranslation;
+  });
 
   return needsWork.slice(0, limit);
 }
@@ -277,32 +283,44 @@ async function cleanAndTranslate(product: ProductRow): Promise<{
 // ── Apply clean data to DB ────────────────────────────────────────────────────
 
 async function applyCleanData(productId: string, data: Awaited<ReturnType<typeof cleanAndTranslate>>) {
+  const basePayload = {
+    category: data.category,
+    icon: data.icon,
+    preferred_unit: data.preferred_unit,
+    calories: data.calories,
+    protein: data.protein,
+    fat: data.fat,
+    carbohydrates: data.carbohydrates,
+    fiber: data.fiber,
+    typical_serving: data.typical_serving,
+    requires_expiry: data.requires_expiry,
+    default_shelf_life_days: data.default_shelf_life_days,
+    seasonal_months: data.seasonal_months,
+    description: data.description,
+    storage_tips: data.storage_tips,
+    synonyms: data.synonyms,
+    moderation_status: "manually_approved",
+    needs_moderation: false,
+    updated_at: new Date().toISOString(),
+  };
+
   const { error: dictErr } = await supabaseAdmin
     .from("product_dictionary")
-    .update({
-      canonical_name: data.canonical_name,
-      category: data.category,
-      icon: data.icon,
-      preferred_unit: data.preferred_unit,
-      calories: data.calories,
-      protein: data.protein,
-      fat: data.fat,
-      carbohydrates: data.carbohydrates,
-      fiber: data.fiber,
-      typical_serving: data.typical_serving,
-      requires_expiry: data.requires_expiry,
-      default_shelf_life_days: data.default_shelf_life_days,
-      seasonal_months: data.seasonal_months,
-      description: data.description,
-      storage_tips: data.storage_tips,
-      synonyms: data.synonyms,
-      moderation_status: "manually_approved",
-      needs_moderation: false,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ canonical_name: data.canonical_name, ...basePayload })
     .eq("id", productId);
 
-  if (dictErr) throw new Error(dictErr.message);
+  if (dictErr) {
+    if (dictErr.message.includes("product_dictionary_canonical_name_key")) {
+      // Clean name already exists as another product — save everything except canonical_name
+      const { error: retryErr } = await supabaseAdmin
+        .from("product_dictionary")
+        .update(basePayload)
+        .eq("id", productId);
+      if (retryErr) throw new Error(retryErr.message);
+    } else {
+      throw new Error(dictErr.message);
+    }
+  }
 
   const rows = Object.entries(data.translations).map(([language_code, t]) => ({
     product_id: productId,
