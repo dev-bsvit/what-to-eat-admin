@@ -35,6 +35,8 @@ type SmartResponse = {
   error?: string;
 };
 
+type PreviewProduct = { id: string; name: string; category: string | null; icon: string };
+
 // ── Mode metadata ─────────────────────────────────────────────────────────────
 
 const MODE_META: Record<string, { label: string; description: string; color: string; priority: number }> = {
@@ -124,46 +126,108 @@ function IssueRow({
   const meta = MODE_META[modeKey];
   const isActive = activeMode === modeKey;
   const done = count === 0;
+  const [expanded, setExpanded] = useState(false);
+  const [preview, setPreview] = useState<PreviewProduct[] | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  const togglePreview = async () => {
+    if (expanded) { setExpanded(false); return; }
+    setExpanded(true);
+    if (preview) return;
+    setLoadingPreview(true);
+    try {
+      const r = await fetch(`/api/admin/products/smart-process?preview=${modeKey}`);
+      const d = await r.json();
+      setPreview(d.products ?? []);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
 
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 16,
-      padding: "14px 0",
-      borderBottom: "1px solid #f0f0f0",
-      opacity: done ? 0.5 : 1,
-    }}>
+    <div style={{ borderBottom: "1px solid #f0f0f0" }}>
       <div style={{
-        width: 10, height: 10, borderRadius: "50%",
-        background: done ? "#22c55e" : meta.color,
-        flexShrink: 0,
-      }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: done ? "#888" : "#111" }}>
-          {meta.label}
-        </div>
-        <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>{meta.description}</div>
-      </div>
-      <div style={{
-        fontSize: 22,
-        fontWeight: 800,
-        color: done ? "#22c55e" : meta.color,
-        minWidth: 40,
-        textAlign: "right",
-        letterSpacing: "-1px",
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "14px 0",
+        opacity: done ? 0.5 : 1,
       }}>
-        {done ? "✓" : count}
+        <div style={{
+          width: 10, height: 10, borderRadius: "50%",
+          background: done ? "#22c55e" : meta.color,
+          flexShrink: 0,
+        }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: done ? "#888" : "#111" }}>
+            {meta.label}
+          </div>
+          <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>{meta.description}</div>
+        </div>
+        <div style={{
+          fontSize: 22,
+          fontWeight: 800,
+          color: done ? "#22c55e" : meta.color,
+          minWidth: 40,
+          textAlign: "right",
+          letterSpacing: "-1px",
+        }}>
+          {done ? "✓" : count}
+        </div>
+        {!done && (
+          <>
+            <button
+              type="button"
+              style={{ ...s.btn(), color: expanded ? meta.color : "#888", borderColor: expanded ? meta.color + "60" : "#d4d4d4" }}
+              onClick={togglePreview}
+              title="Посмотреть список"
+            >
+              {expanded ? "▲ Скрыть" : "▼ Список"}
+            </button>
+            <button
+              type="button"
+              style={s.btn({ disabled: running })}
+              disabled={running}
+              onClick={() => onRun(modeKey)}
+            >
+              {isActive ? "Работает…" : "Запустить"}
+            </button>
+          </>
+        )}
       </div>
-      {!done && (
-        <button
-          type="button"
-          style={s.btn({ disabled: running })}
-          disabled={running}
-          onClick={() => onRun(modeKey)}
-        >
-          {isActive ? "Работает…" : "Запустить"}
-        </button>
+
+      {/* Inline product preview */}
+      {expanded && !done && (
+        <div style={{
+          margin: "0 0 12px 26px",
+          background: "#fafafa",
+          borderRadius: 10,
+          border: "1px solid #f0f0f0",
+          overflow: "hidden",
+        }}>
+          {loadingPreview ? (
+            <div style={{ padding: "12px 16px", fontSize: 13, color: "#aaa" }}>Загружаю список…</div>
+          ) : preview && preview.length > 0 ? (
+            <div style={{ maxHeight: 280, overflowY: "auto" }}>
+              {preview.map((p, i) => (
+                <div key={p.id} style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "7px 14px",
+                  borderBottom: i < preview.length - 1 ? "1px solid #f0f0f0" : "none",
+                  fontSize: 13,
+                }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{p.icon}</span>
+                  <span style={{ flex: 1, color: "#111", fontWeight: 500 }}>{p.name}</span>
+                  <span style={{ fontSize: 11, color: "#bbb" }}>{p.category ?? "—"}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: "12px 16px", fontSize: 13, color: "#aaa" }}>Список пуст</div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -224,7 +288,7 @@ export default function ProductBrainPanel() {
         const res = await fetch("/api/admin/products/smart-process", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode, limit: 5 }),
+          body: JSON.stringify({ mode, limit: 10 }),
         });
 
         if (!res.ok) {

@@ -5,7 +5,7 @@ import { normalize } from "@/lib/stringUtils";
 
 export const maxDuration = 300;
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
 const CATEGORIES = [
   "grains", "meat", "dairy", "vegetables", "fruits",
@@ -45,8 +45,14 @@ type ProcessResult = {
   name: string;
   action: string;
   changed: boolean;
+  inputTokens: number;
+  outputTokens: number;
   error?: string;
 };
+
+// GPT-4o-mini pricing per token
+const PRICE_IN  = 0.15  / 1_000_000; // $0.15 per 1M input tokens
+const PRICE_OUT = 0.60  / 1_000_000; // $0.60 per 1M output tokens
 
 type SmartStats = {
   total: number;
@@ -201,7 +207,7 @@ async function getAutoMode(): Promise<string | null> {
 
 // ── GPT: full translate + normalize ──────────────────────────────────────────
 
-async function callGPTTranslate(product: ProductRow): Promise<{
+type GPTResult = {
   canonical_name: string;
   category: string;
   icon: string;
@@ -219,7 +225,11 @@ async function callGPTTranslate(product: ProductRow): Promise<{
   storage_tips: string | null;
   synonyms: string[];
   translations: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>;
-}> {
+  inputTokens: number;
+  outputTokens: number;
+};
+
+async function callGPTTranslate(product: ProductRow): Promise<GPTResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
 
@@ -272,14 +282,20 @@ async function callGPTTranslate(product: ProductRow): Promise<{
   const response = await fetch(OPENAI_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "gpt-4o-mini", input: prompt, temperature: 0.1 }),
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.1,
+    }),
   });
 
   if (!response.ok) throw new Error(`OpenAI ${response.status}: ${await response.text()}`);
 
   const data = await response.json();
-  const content = data?.output?.[0]?.content?.[0]?.text;
+  const content = data?.choices?.[0]?.message?.content;
   if (!content) throw new Error("Empty response from AI");
+  const inputTokens: number = data?.usage?.prompt_tokens ?? 0;
+  const outputTokens: number = data?.usage?.completion_tokens ?? 0;
 
   let cleaned = content.trim();
   if (cleaned.startsWith("```json")) cleaned = cleaned.slice(7);
@@ -320,6 +336,8 @@ async function callGPTTranslate(product: ProductRow): Promise<{
     storage_tips: parsed.storage_tips ?? null,
     synonyms: Array.isArray(parsed.synonyms) ? parsed.synonyms.filter(Boolean) : [],
     translations,
+    inputTokens,
+    outputTokens,
   };
 }
 
@@ -392,17 +410,36 @@ async function processOne(product: ProductRow, mode: string): Promise<ProcessRes
   if (mode === "fix-translations" || mode === "fill-languages" || mode === "enrich-synonyms") {
     await applyTranslations(product.id, gpt.translations);
   } else {
-    // pending, auto → full update
     await applyFull(product.id, gpt);
   }
 
-  return { productId: product.id, name: product.canonical_name, action: mode, changed };
+  return {
+    productId: product.id,
+    name: product.canonical_name,
+    action: mode,
+    changed,
+    inputTokens: gpt.inputTokens,
+    outputTokens: gpt.outputTokens,
+  };
 }
 
 // ── Route handlers ─────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const previewMode = searchParams.get("preview");
+
+    if (previewMode) {
+      const products = await fetchBatch(previewMode, 200);
+      return NextResponse.json({
+        success: true,
+        mode: previewMode,
+        count: products.length,
+        products: products.map(p => ({ id: p.id, name: p.canonical_name, category: p.category, icon: p.icon ?? "📦" })),
+      });
+    }
+
     const stats = await getSmartStats();
     return NextResponse.json({ success: true, stats });
   } catch (error) {
@@ -434,26 +471,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, mode, processed: 0, remaining: 0, results: [], stats });
     }
 
-    const results: ProcessResult[] = [];
-
-    for (const product of products) {
-      try {
-        if (!dryRun) {
-          const result = await processOne(product, mode);
-          results.push(result);
-        } else {
-          results.push({ productId: product.id, name: product.canonical_name, action: mode, changed: false });
+    const results = await Promise.all(
+      products.map(async (product) => {
+        try {
+          if (!dryRun) return await processOne(product, mode);
+          return { productId: product.id, name: product.canonical_name, action: mode, changed: false, inputTokens: 0, outputTokens: 0 };
+        } catch (err) {
+          return {
+            productId: product.id,
+            name: product.canonical_name,
+            action: mode,
+            changed: false,
+            inputTokens: 0,
+            outputTokens: 0,
+            error: err instanceof Error ? err.message : "Unknown error",
+          };
         }
-      } catch (err) {
-        results.push({
-          productId: product.id,
-          name: product.canonical_name,
-          action: mode,
-          changed: false,
-          error: err instanceof Error ? err.message : "Unknown error",
-        });
-      }
-    }
+      })
+    );
+
+    const totalIn  = results.reduce((s, r) => s + r.inputTokens, 0);
+    const totalOut = results.reduce((s, r) => s + r.outputTokens, 0);
+    const costUsd  = totalIn * PRICE_IN + totalOut * PRICE_OUT;
 
     const stats = await getSmartStats();
 
@@ -467,6 +506,7 @@ export async function POST(request: Request) {
       resolvedMode: mode,
       results,
       stats,
+      usage: { inputTokens: totalIn, outputTokens: totalOut, costUsd },
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
