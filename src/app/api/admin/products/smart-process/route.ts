@@ -74,22 +74,40 @@ function hasCyrillic(s: string): boolean {
 
 const asNum = (v: unknown) => (typeof v === "number" && isFinite(v) ? v : null);
 
+// Fetch ALL translation rows using pagination (Supabase default max_rows=1000)
+type TranslationRow = { product_id: string; language_code: string; name: string; synonyms: string[] | null };
+
+async function fetchAllTranslations(): Promise<TranslationRow[]> {
+  const PAGE = 1000;
+  let from = 0;
+  const all: TranslationRow[] = [];
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from("product_translations")
+      .select("product_id, language_code, name, synonyms")
+      .range(from, from + PAGE - 1);
+    if (error || !data?.length) break;
+    all.push(...(data as TranslationRow[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 async function getSmartStats(): Promise<SmartStats> {
   const [
     { count: total },
-    allTranslationsRaw,
+    translations,
     pendingIdsRes,
     allIdsRes,
   ] = await Promise.all([
     supabaseAdmin.from("product_dictionary").select("*", { count: "exact", head: true }),
-    supabaseAdmin.from("product_translations").select("product_id, language_code, name, synonyms").limit(50000),
+    fetchAllTranslations(),
     supabaseAdmin.from("product_dictionary").select("id").or("needs_moderation.eq.true,moderation_status.eq.pending"),
     supabaseAdmin.from("product_dictionary").select("id").limit(5000),
   ]);
-
-  const translations = allTranslationsRaw.data ?? [];
 
   // Bad translations: Cyrillic in Latin languages
   const badTranslationIds = new Set(
@@ -146,11 +164,7 @@ async function fetchBatch(mode: string, limit: number): Promise<ProductRow[]> {
     .limit(5000);
   if (!allProducts?.length) return [];
 
-  const { data: allTranslations } = await supabaseAdmin
-    .from("product_translations")
-    .select("product_id, language_code, name, synonyms")
-    .limit(50000);
-  const translations = allTranslations ?? [];
+  const translations = await fetchAllTranslations();
 
   if (mode === "fix-translations") {
     const badIds = new Set(
