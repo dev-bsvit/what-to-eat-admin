@@ -2,6 +2,24 @@
 
 import { useState, useEffect, useRef } from "react";
 
+// ── Design tokens ─────────────────────────────────────────────────────────────
+
+const C = {
+  white: "#ffffff",
+  ghost: "#f2f2f2",
+  ash: "#e5e5e5",
+  muted: "#737373",
+  rich: "#0a0a0a",
+  black: "#000000",
+  red: "#c22b10",
+  green: "#10c22b",
+};
+const CARD_SHADOW = "oklab(0.145 -0.00000143796 0.00000340492 / 0.1) 0px 0px 0px 1px";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type ProviderType = "deepl" | "deepl-nvidia" | "openai" | "nvidia";
+
 type SmartStats = {
   total: number;
   badTranslations: number;
@@ -37,102 +55,76 @@ type SmartResponse = {
 
 type PreviewProduct = { id: string; name: string; category: string | null; icon: string };
 
+// ── Provider metadata ─────────────────────────────────────────────────────────
+
+const PROVIDERS: { id: ProviderType; label: string; sub: string; badge?: string; costPer: number | null }[] = [
+  { id: "deepl",        label: "DeepL + GPT",   sub: "Точные переводы",    badge: "Рекомендовано", costPer: 0.00053 },
+  { id: "deepl-nvidia", label: "DeepL + Gemma", sub: "Бесплатно · медленно", badge: "Free",         costPer: 0 },
+  { id: "openai",       label: "GPT-4o-mini",   sub: "Быстро",                                      costPer: 0.00086 },
+  { id: "nvidia",       label: "NVIDIA Gemma",  sub: "Бесплатно · очень медленно", badge: "Free",   costPer: 0 },
+];
+
+const BATCH_SIZES = [5, 10, 20] as const;
+
 // ── Mode metadata ─────────────────────────────────────────────────────────────
 
-const MODE_META: Record<string, { label: string; description: string; color: string; priority: number }> = {
-  "fix-translations": {
-    label: "Плохие переводы",
-    description: "Кириллица в EN/DE/IT/FR/ES/PT полях",
-    color: "#c22b10",
-    priority: 1,
-  },
-  "fill-languages": {
-    label: "Неполные языки",
-    description: "Продукты без всех 8 переводов",
-    color: "#8a4b00",
-    priority: 2,
-  },
-  "pending": {
-    label: "Новые продукты",
-    description: "Пользовательские добавления на модерации",
-    color: "#1a3fd4",
-    priority: 3,
-  },
-  "enrich-synonyms": {
-    label: "Бедные синонимы",
-    description: "Меньше 3 синонимов — поиск работает хуже",
-    color: "#555",
-    priority: 4,
-  },
+const MODE_META: Record<string, { label: string; description: string; priority: number }> = {
+  "fix-translations": { label: "Плохие переводы",  description: "Кириллица в EN / DE / IT / FR / ES / PT",   priority: 1 },
+  "fill-languages":   { label: "Неполные языки",   description: "Продукты без всех 8 переводов",             priority: 2 },
+  "pending":          { label: "Новые продукты",   description: "Пользовательские добавления на модерации",  priority: 3 },
+  "enrich-synonyms":  { label: "Бедные синонимы",  description: "Меньше 3 синонимов — поиск работает хуже", priority: 4 },
 };
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Small helpers ─────────────────────────────────────────────────────────────
 
-const s = {
-  card: (extra?: React.CSSProperties): React.CSSProperties => ({
-    border: "1px solid #e0e0e0",
-    borderRadius: 14,
-    background: "#fff",
-    padding: "20px 24px",
-    ...extra,
-  }),
-  btn: (opts?: { primary?: boolean; color?: string; disabled?: boolean; size?: "sm" | "lg" }): React.CSSProperties => {
-    const { primary, color = "#000", disabled, size = "sm" } = opts ?? {};
-    return {
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      border: primary ? `1.5px solid ${color}` : "1.5px solid #d4d4d4",
-      background: primary ? color : "#fff",
-      color: primary ? "#fff" : "#0a0a0a",
-      borderRadius: size === "lg" ? 12 : 8,
-      padding: size === "lg" ? "14px 28px" : "8px 16px",
-      fontSize: size === "lg" ? 15 : 13,
-      fontWeight: 700,
-      cursor: disabled ? "not-allowed" : "pointer",
-      opacity: disabled ? 0.4 : 1,
-      letterSpacing: size === "lg" ? "-0.3px" : 0,
-      transition: "opacity 0.15s",
-    };
-  },
-  badge: (color: string): React.CSSProperties => ({
-    display: "inline-block",
-    borderRadius: 999,
-    padding: "2px 10px",
-    fontSize: 12,
-    fontWeight: 700,
-    background: color + "18",
-    color,
-    border: `1px solid ${color}40`,
-  }),
-};
+function Badge({ children, variant = "neutral" }: { children: React.ReactNode; variant?: "neutral" | "inverse" | "outline" | "red" | "green" }) {
+  const styles: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center",
+    borderRadius: 26, padding: "2px 8px",
+    fontSize: 12, fontWeight: 500, lineHeight: 1.5, whiteSpace: "nowrap",
+    ...(variant === "inverse"  && { background: C.black,  color: C.white }),
+    ...(variant === "neutral"  && { background: C.ghost,  color: C.rich }),
+    ...(variant === "outline"  && { background: "transparent", color: C.rich, border: `1px solid #a1a1a1` }),
+    ...(variant === "red"      && { background: C.red + "14",  color: C.red,  border: `1px solid ${C.red}30` }),
+    ...(variant === "green"    && { background: C.green + "14", color: "#0a7a1c", border: `1px solid ${C.green}40` }),
+  };
+  return <span style={styles}>{children}</span>;
+}
 
-// ── Issue row component ───────────────────────────────────────────────────────
+function GhostBtn({ children, onClick, disabled, size = "sm" }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; size?: "sm" | "md" }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 4,
+        background: "transparent", border: `1px solid ${C.ash}`,
+        borderRadius: 9999, cursor: disabled ? "not-allowed" : "pointer",
+        padding: size === "md" ? "6px 16px" : "4px 12px",
+        fontSize: 13, fontWeight: 500, color: C.rich,
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
-function IssueRow({
-  modeKey,
-  count,
-  onRun,
-  running,
-  activeMode,
-}: {
-  modeKey: string;
-  count: number;
-  onRun: (mode: string) => void;
-  running: boolean;
-  activeMode: string | null;
+// ── Issue row ─────────────────────────────────────────────────────────────────
+
+function IssueRow({ modeKey, count, onRun, running, activeMode }: {
+  modeKey: string; count: number;
+  onRun: (mode: string) => void; running: boolean; activeMode: string | null;
 }) {
   const meta = MODE_META[modeKey];
-  const isActive = activeMode === modeKey;
   const done = count === 0;
+  const isActive = activeMode === modeKey;
   const [expanded, setExpanded] = useState(false);
   const [preview, setPreview] = useState<PreviewProduct[] | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
-  useEffect(() => {
-    setPreview(null);
-  }, [count]);
+  useEffect(() => { setPreview(null); }, [count]);
 
   const togglePreview = async () => {
     if (expanded) { setExpanded(false); return; }
@@ -149,133 +141,84 @@ function IssueRow({
   };
 
   return (
-    <div style={{ borderBottom: "1px solid #f0f0f0" }}>
+    <div style={{ borderBottom: `1px solid ${C.ash}` }}>
       <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
-        padding: "14px 0",
-        opacity: done ? 0.5 : 1,
+        display: "flex", alignItems: "center", gap: 12, padding: "12px 0",
+        opacity: done ? 0.45 : 1,
       }}>
-        <div style={{
-          width: 10, height: 10, borderRadius: "50%",
-          background: done ? "#22c55e" : meta.color,
-          flexShrink: 0,
+        {/* Status dot */}
+        <span style={{
+          width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+          background: done ? C.green : isActive ? C.black : C.ash,
+          border: done ? "none" : `1.5px solid ${isActive ? C.black : "#bbb"}`,
         }} />
+
+        {/* Label */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: done ? "#888" : "#111" }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: C.rich, lineHeight: 1.43 }}>
             {meta.label}
           </div>
-          <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>{meta.description}</div>
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
+            {meta.description}
+          </div>
         </div>
-        <div style={{
-          fontSize: 22,
-          fontWeight: 800,
-          color: done ? "#22c55e" : meta.color,
-          minWidth: 40,
-          textAlign: "right",
-          letterSpacing: "-1px",
-        }}>
-          {done ? "✓" : count}
+
+        {/* Count + actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {done
+            ? <Badge variant="green">✓ Готово</Badge>
+            : <Badge variant="neutral">{count}</Badge>
+          }
+          {!done && (
+            <>
+              <GhostBtn onClick={togglePreview} disabled={running || loadingPreview}>
+                {loadingPreview ? "…" : expanded ? "Скрыть ▲" : "Список ▼"}
+              </GhostBtn>
+              <GhostBtn onClick={() => onRun(modeKey)} disabled={running}>
+                {isActive ? "Обработка…" : "Запустить"}
+              </GhostBtn>
+            </>
+          )}
         </div>
-        {!done && (
-          <>
-            <button
-              type="button"
-              style={{ ...s.btn(), color: expanded ? meta.color : "#888", borderColor: expanded ? meta.color + "60" : "#d4d4d4" }}
-              onClick={togglePreview}
-              title="Посмотреть список"
-            >
-              {expanded ? "▲ Скрыть" : "▼ Список"}
-            </button>
-            <button
-              type="button"
-              style={s.btn({ disabled: running })}
-              disabled={running}
-              onClick={() => onRun(modeKey)}
-            >
-              {isActive ? "Работает…" : "Запустить"}
-            </button>
-          </>
-        )}
       </div>
 
-      {/* Inline product preview */}
-      {expanded && !done && (
+      {/* Preview list */}
+      {expanded && preview && (
         <div style={{
-          margin: "0 0 12px 26px",
-          background: "#fafafa",
-          borderRadius: 10,
-          border: "1px solid #f0f0f0",
-          overflow: "hidden",
+          margin: "0 0 12px 20px",
+          background: C.ghost, borderRadius: 10, padding: "10px 12px",
+          maxHeight: 220, overflowY: "auto",
         }}>
-          {loadingPreview ? (
-            <div style={{ padding: "12px 16px", fontSize: 13, color: "#aaa" }}>Загружаю список…</div>
-          ) : preview && preview.length > 0 ? (
-            <div style={{ maxHeight: 280, overflowY: "auto" }}>
-              {preview.map((p, i) => (
+          {preview.length === 0
+            ? <span style={{ fontSize: 13, color: C.muted }}>Список пуст</span>
+            : preview.map(p => (
                 <div key={p.id} style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "7px 14px",
-                  borderBottom: i < preview.length - 1 ? "1px solid #f0f0f0" : "none",
-                  fontSize: 13,
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "5px 0", borderBottom: `1px solid ${C.ash}`,
+                  fontSize: 13, color: C.rich,
                 }}>
-                  <span style={{ fontSize: 16, flexShrink: 0 }}>{p.icon}</span>
-                  <span style={{ flex: 1, color: "#111", fontWeight: 500 }}>{p.name}</span>
-                  <span style={{ fontSize: 11, color: "#bbb" }}>{p.category ?? "—"}</span>
+                  <span style={{ fontSize: 16 }}>{p.icon}</span>
+                  <span style={{ flex: 1 }}>{p.name}</span>
+                  {p.category && <span style={{ fontSize: 11, color: C.muted }}>{p.category}</span>}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ padding: "12px 16px", fontSize: 13, color: "#aaa" }}>Список пуст</div>
-          )}
+              ))
+          }
         </div>
       )}
     </div>
   );
 }
 
-// ── Provider config ───────────────────────────────────────────────────────────
-
-type ProviderType = "deepl" | "deepl-nvidia" | "openai" | "nvidia";
-
-const PROVIDER_META: Record<ProviderType, {
-  label: string; emoji: string; color: string;
-  badge?: string; badgeColor?: string;
-  desc: string; costPer: number | null;
-}> = {
-  "deepl": {
-    label: "DeepL + GPT-mini", emoji: "🔤", color: "#1746a2",
-    badge: "Рекомендовано", badgeColor: "#1746a2",
-    desc: "Точные переводы DeepL · синонимы GPT", costPer: 0.00053,
-  },
-  "deepl-nvidia": {
-    label: "DeepL + Gemma", emoji: "🔤", color: "#7c3aed",
-    badge: "Бесплатно", badgeColor: "#7c3aed",
-    desc: "DeepL названия · синонимы Gemma · медленно", costPer: 0,
-  },
-  "openai": {
-    label: "GPT-4o-mini", emoji: "🤖", color: "#111",
-    desc: "Всё через GPT · быстро", costPer: 0.00086,
-  },
-  "nvidia": {
-    label: "NVIDIA Gemma", emoji: "🧪", color: "#1a6b1a",
-    badge: "Бесплатно", badgeColor: "#1a6b1a",
-    desc: "Всё через Gemma · очень медленно", costPer: 0,
-  },
-};
-
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export default function ProductBrainPanel() {
   const [provider, setProvider] = useState<ProviderType>("deepl");
-  const meta = PROVIDER_META[provider];
-  const accentColor = meta.color;
+  const [batchSize, setBatchSize] = useState<5 | 10 | 20>(10);
+
   const [stats, setStats] = useState<SmartStats | null>(null);
   const [translationRows, setTranslationRows] = useState<number | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+
   const [running, setRunning] = useState(false);
   const [activeMode, setActiveMode] = useState<string | null>(null);
   const [log, setLog] = useState<ProcessResult[]>([]);
@@ -320,55 +263,35 @@ export default function ProductBrainPanel() {
     let remaining = stats?.totalIssues ?? 999;
 
     while (remaining > 0 && !stopRef.current) {
-      setStatus(mode === "auto"
-        ? `Обрабатываю… осталось задач: ~${remaining}`
-        : `${MODE_META[mode]?.label ?? mode}… осталось: ~${remaining}`
-      );
-
+      setStatus(`${MODE_META[mode]?.label ?? "Авто"}… осталось ~${remaining}`);
       try {
         const res = await fetch("/api/admin/products/smart-process", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode, limit: 10, provider }),
+          body: JSON.stringify({ mode, limit: batchSize, provider }),
         });
-
-        if (!res.ok) {
-          const e = await res.json();
-          setStatus(`Ошибка: ${e.error ?? "неизвестная"}`);
-          break;
-        }
+        if (!res.ok) { const e = await res.json(); setStatus(`Ошибка: ${e.error ?? "неизвестная"}`); break; }
 
         const data: SmartResponse = await res.json();
+        if (data.processed === 0) { remaining = data.remaining; break; }
 
-        if (data.processed === 0) {
-          remaining = data.remaining;
-          break;
-        }
-
-        // Detect stuck loop: all products in this batch were already processed
         const batchIds = data.results.map(r => r.productId);
         const allSeen = batchIds.every(id => processedIdsRef.current.has(id));
-        if (allSeen) {
-          setStatus("⚠ Продукты не поддаются исправлению — пропускаю.");
-          break;
-        }
+        if (allSeen) { setStatus("⚠ Продукты не поддаются исправлению — пропускаю."); break; }
         batchIds.forEach(id => processedIdsRef.current.add(id));
 
         processed += data.processed;
         remaining = data.remaining;
         setTotalProcessed(processed);
 
-        // Update token/cost counters
         if (data.usage) {
           setTotalTokensIn(prev => prev + data.usage!.inputTokens);
           setTotalTokensOut(prev => prev + data.usage!.outputTokens);
           setTotalCost(prev => prev + data.usage!.costUsd);
         }
 
-        // Show last processed item
         const last = data.results[data.results.length - 1];
         if (last) setCurrentItem(last.name);
-
         setLog(prev => [...data.results, ...prev].slice(0, 300));
         if (data.stats) setStats(data.stats);
       } catch {
@@ -380,336 +303,363 @@ export default function ProductBrainPanel() {
     setRunning(false);
     setActiveMode(null);
     setCurrentItem(null);
-
     if (stopRef.current) {
       setStatus("Остановлено.");
     } else if (remaining === 0) {
       setStatus("✓ База в идеальном состоянии!");
-      await loadStats();
-    } else if (processed === 0) {
-      setStatus("⚠ Нет задач или все задачи уже выполнены");
       await loadStats();
     } else {
       setStatus(`Пакет готов. Обработано: ${processed}, осталось: ${remaining}`);
     }
   };
 
-  const stop = () => {
-    stopRef.current = true;
-    setStatus("Останавливаю…");
-  };
+  const stop = () => { stopRef.current = true; setStatus("Останавливаю…"); };
 
   const allDone = stats?.isClean ?? false;
-  const total = stats?.total ?? 0;
+  const selectedProvider = PROVIDERS.find(p => p.id === provider)!;
+  const estCost = selectedProvider.costPer != null && stats
+    ? selectedProvider.costPer === 0
+      ? "Бесплатно"
+      : `~$${(selectedProvider.costPer * stats.totalIssues).toFixed(2)}`
+    : null;
 
   return (
-    <div style={{ display: "grid", gap: 20, maxWidth: 800 }}>
+    <div style={{ display: "grid", gap: 12, maxWidth: 780 }}>
+      <style>{`@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }`}</style>
 
-      {/* Magic button card */}
-      <div style={s.card({
-        background: allDone ? "#f0fdf4" : "#fafafa",
-        borderColor: allDone ? "#86efac" : "#e0e0e0",
-      })}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+      {/* ── Control card ──────────────────────────────────────────────────── */}
+      <div style={{
+        background: C.white, borderRadius: 14,
+        boxShadow: CARD_SHADOW, padding: 20,
+      }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 20 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.5px", lineHeight: 1.2 }}>
-              {allDone ? "🎉 База в идеальном состоянии" : "Обработка продуктов"}
-            </div>
-            <div style={{ fontSize: 13, color: "#737373", marginTop: 4 }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: "-0.45px", color: C.black, lineHeight: 1.33 }}>
+              {allDone ? "🎉 База в порядке" : "Обработка продуктов"}
+            </h2>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: C.muted, lineHeight: 1.5 }}>
               {allDone
-                ? `Все ${total} продуктов имеют полные переводы и синонимы`
-                : "Авто-режим: переводы → языки → синонимы. Выберите модель и запустите."
+                ? `Все ${stats?.total} продуктов имеют полные переводы и синонимы`
+                : "Авто-режим: переводы → языки → синонимы"
               }
-            </div>
+            </p>
           </div>
-          {stats && (
-            <span style={s.badge(allDone ? "#22c55e" : "#8a4b00")}>
-              {allDone ? "База чистая" : `${stats.totalIssues} проблем`}
-            </span>
+          {stats && !allDone && (
+            <Badge variant="neutral">{stats.totalIssues} задач</Badge>
           )}
         </div>
 
-        {/* Provider selector */}
         {!allDone && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-              Модель обработки
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
-              {(Object.entries(PROVIDER_META) as [ProviderType, typeof PROVIDER_META[ProviderType]][]).map(([id, m]) => {
-                const selected = provider === id;
-                const estCost = m.costPer != null && stats
-                  ? m.costPer === 0 ? "Бесплатно" : `~$${(m.costPer * stats.totalIssues).toFixed(2)}`
-                  : null;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    disabled={running}
-                    onClick={() => setProvider(id)}
-                    style={{
-                      padding: "10px 12px", borderRadius: 10, textAlign: "left", cursor: running ? "not-allowed" : "pointer",
-                      border: `2px solid ${selected ? m.color : "#e5e5e5"}`,
-                      background: selected ? m.color + "12" : "#fff",
-                      transition: "border-color 0.15s, background 0.15s",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                      <span style={{ fontSize: 15 }}>{m.emoji}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: selected ? m.color : "#111" }}>{m.label}</span>
-                      {m.badge && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, color: m.badgeColor ?? m.color,
-                          background: (m.badgeColor ?? m.color) + "18",
-                          border: `1px solid ${(m.badgeColor ?? m.color)}40`,
-                          borderRadius: 4, padding: "1px 5px", marginLeft: "auto",
-                        }}>{m.badge}</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 11, color: "#888" }}>{m.desc}</div>
-                    {estCost && (
-                      <div style={{ fontSize: 11, fontWeight: 700, color: m.costPer === 0 ? "#22c55e" : "#555", marginTop: 3 }}>
-                        {estCost}
+          <>
+            {/* Model selector */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: C.muted, letterSpacing: "0.3px", textTransform: "uppercase", marginBottom: 8 }}>
+                Модель
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+                {PROVIDERS.map(p => {
+                  const sel = provider === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      disabled={running}
+                      onClick={() => setProvider(p.id)}
+                      style={{
+                        display: "flex", flexDirection: "column", alignItems: "flex-start",
+                        gap: 2, padding: "10px 12px",
+                        borderRadius: 10, border: `1px solid ${sel ? C.black : C.ash}`,
+                        background: sel ? C.black : C.white,
+                        cursor: running ? "not-allowed" : "pointer",
+                        transition: "border-color 0.12s, background 0.12s",
+                        textAlign: "left",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%" }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: sel ? C.white : C.rich }}>
+                          {p.label}
+                        </span>
+                        {p.badge && (
+                          <span style={{
+                            marginLeft: "auto", fontSize: 10, fontWeight: 600, borderRadius: 26,
+                            padding: "1px 6px",
+                            background: sel ? "rgba(255,255,255,0.2)" : C.ghost,
+                            color: sel ? C.white : C.muted,
+                          }}>
+                            {p.badge}
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </button>
-                );
-              })}
+                      <span style={{ fontSize: 11, color: sel ? "rgba(255,255,255,0.6)" : C.muted }}>
+                        {p.sub}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+
+            {/* Batch size + cost */}
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 500, color: C.muted, letterSpacing: "0.3px", textTransform: "uppercase", marginBottom: 6 }}>
+                  Продуктов за раз
+                </div>
+                <div style={{ display: "flex" }}>
+                  {BATCH_SIZES.map((n, i) => (
+                    <button
+                      key={n}
+                      type="button"
+                      disabled={running}
+                      onClick={() => setBatchSize(n)}
+                      style={{
+                        padding: "5px 16px", fontSize: 13, fontWeight: 500, cursor: running ? "not-allowed" : "pointer",
+                        background: batchSize === n ? C.black : C.white,
+                        color: batchSize === n ? C.white : C.rich,
+                        border: `1px solid ${C.ash}`,
+                        borderLeft: i === 0 ? `1px solid ${C.ash}` : "none",
+                        borderRadius: i === 0 ? "10px 0 0 10px" : i === BATCH_SIZES.length - 1 ? "0 10px 10px 0" : "0",
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {estCost && (
+                <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 2 }}>
+                    Оценка стоимости
+                  </div>
+                  <div style={{
+                    fontSize: 22, fontWeight: 600, letterSpacing: "-0.45px",
+                    color: estCost === "Бесплатно" ? "#0a7a1c" : C.black,
+                  }}>
+                    {estCost}
+                  </div>
+                  {estCost !== "Бесплатно" && stats && (
+                    <div style={{ fontSize: 11, color: C.muted }}>за {stats.totalIssues} продуктов</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
         )}
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
+        {/* Action buttons */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {!running ? (
+            <>
+              <button
+                type="button"
+                disabled={loadingStats || allDone}
+                onClick={() => runLoop("auto")}
+                style={{
+                  padding: "9px 24px", fontSize: 14, fontWeight: 600, borderRadius: 10, border: "none",
+                  background: allDone ? C.ghost : C.black, color: allDone ? C.muted : C.white,
+                  cursor: loadingStats || allDone ? "not-allowed" : "pointer",
+                }}
+              >
+                {allDone ? "✓ Всё готово" : "🪄 Запустить всё"}
+              </button>
+              {!allDone && (
+                <GhostBtn size="md" disabled={loadingStats} onClick={() => {
+                  // Single batch - not a loop
+                  if (running) return;
+                  fetch("/api/admin/products/smart-process", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ mode: "auto", limit: batchSize, provider }),
+                  }).then(r => r.json()).then(d => {
+                    if (d.stats) setStats(d.stats);
+                    if (d.results) setLog(prev => [...d.results, ...prev].slice(0, 300));
+                  });
+                }}>
+                  Один пакет
+                </GhostBtn>
+              )}
+            </>
+          ) : (
             <button
               type="button"
-              style={s.btn({ primary: true, color: accentColor, disabled: loadingStats || allDone, size: "lg" })}
-              disabled={loadingStats || allDone}
-              onClick={() => runLoop("auto")}
+              onClick={stop}
+              style={{
+                padding: "9px 24px", fontSize: 14, fontWeight: 600, borderRadius: 10,
+                border: `1px solid ${C.ash}`, background: C.white, color: C.rich, cursor: "pointer",
+              }}
             >
-              {allDone ? "✓ Готово" : `${meta.emoji} Запустить всё`}
-            </button>
-          ) : (
-            <button type="button" style={s.btn({ size: "lg" })} onClick={stop}>
               Остановить
             </button>
           )}
-          {running && (
-            <span style={{ fontSize: 13, color: accentColor, fontWeight: 600 }}>
-              {meta.emoji} {meta.label}
-            </span>
+
+          {running && currentItem && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 8 }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: "50%", background: C.black, flexShrink: 0,
+                animation: "blink 1s infinite",
+              }} />
+              <span style={{ fontSize: 13, color: C.muted }}>{currentItem}</span>
+            </div>
           )}
         </div>
 
-        {/* Progress / metrics block */}
+        {/* Progress metrics */}
         {(running || totalProcessed > 0) && (
           <div style={{
-            marginTop: 14,
-            padding: "12px 14px",
-            borderRadius: 10,
-            background: "#f5f5f5",
-            display: "grid",
-            gap: 8,
+            marginTop: 14, padding: "12px 14px",
+            background: C.ghost, borderRadius: 10,
+            display: "flex", gap: 24, flexWrap: "wrap",
           }}>
-            {currentItem && running && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#444" }}>
-                <span style={{
-                  display: "inline-block",
-                  width: 8, height: 8, borderRadius: "50%",
-                  background: "#000",
-                  animation: "pulse 1s infinite",
-                  flexShrink: 0,
-                }} />
-                <span style={{ color: "#888" }}>Обрабатываю:</span>
-                <span style={{ fontWeight: 600, color: "#111" }}>{currentItem}</span>
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <div>
-                <span style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.3px" }}>Обработано</span>
-                <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px" }}>{totalProcessed}</div>
-              </div>
-              {totalTokensIn + totalTokensOut > 0 && (
-                <>
-                  <div>
-                    <span style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.3px" }}>Токены</span>
-                    <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px" }}>
-                      {(totalTokensIn + totalTokensOut).toLocaleString()}
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.3px" }}>Стоимость</span>
-                    <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px", color: totalCost > 0.05 ? "#c22b10" : "#111" }}>
-                      ${totalCost.toFixed(4)}
-                    </div>
-                  </div>
-                </>
-              )}
+            <div>
+              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.3px" }}>Обработано</div>
+              <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.45px", color: C.black }}>{totalProcessed}</div>
             </div>
+            {totalTokensIn + totalTokensOut > 0 && (
+              <>
+                <div>
+                  <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.3px" }}>Токены</div>
+                  <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.45px", color: C.black }}>
+                    {(totalTokensIn + totalTokensOut).toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.3px" }}>Стоимость</div>
+                  <div style={{
+                    fontSize: 22, fontWeight: 600, letterSpacing: "-0.45px",
+                    color: totalCost > 0.05 ? C.red : C.black,
+                  }}>
+                    ${totalCost.toFixed(4)}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
+        {/* Status */}
         {status && (
           <div style={{
-            marginTop: 10,
-            padding: "10px 14px",
-            borderRadius: 10,
-            fontSize: 13,
-            background: status.startsWith("✓") ? "#dcfce7" : status.startsWith("Ошибка") ? "#fff5f2" : "#f5f5f5",
-            color: status.startsWith("✓") ? "#166534" : status.startsWith("Ошибка") ? "#c22b10" : "#444",
+            marginTop: 10, padding: "8px 12px", borderRadius: 10, fontSize: 13,
+            background: status.startsWith("✓") ? "#f0fdf4"
+              : status.startsWith("Ошибка") || status.startsWith("⚠") ? "#fff5f2"
+              : C.ghost,
+            color: status.startsWith("✓") ? "#166534"
+              : status.startsWith("Ошибка") || status.startsWith("⚠") ? C.red
+              : C.muted,
           }}>
             {status}
           </div>
         )}
-        <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
       </div>
 
-      {/* Issues breakdown */}
-      <div style={s.card()}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
+      {/* ── Issues card ───────────────────────────────────────────────────── */}
+      <div style={{ background: C.white, borderRadius: 14, boxShadow: CARD_SHADOW, padding: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: C.muted, textTransform: "uppercase", letterSpacing: "0.3px", marginBottom: 4 }}>
           Что нужно исправить
         </div>
 
         {loadingStats ? (
-          <div style={{ padding: "20px 0", color: "#aaa", fontSize: 13 }}>Загружаю статистику…</div>
+          <div style={{ padding: "20px 0", color: C.muted, fontSize: 13 }}>Загружаю статистику…</div>
         ) : stats ? (
-          <div>
-            <IssueRow modeKey="fix-translations" count={stats.badTranslations} onRun={runLoop} running={running} activeMode={activeMode} />
-            <IssueRow modeKey="fill-languages" count={stats.missingLanguages} onRun={runLoop} running={running} activeMode={activeMode} />
-            <IssueRow modeKey="pending" count={stats.pendingModeration} onRun={runLoop} running={running} activeMode={activeMode} />
-            <IssueRow modeKey="enrich-synonyms" count={stats.poorSynonyms} onRun={runLoop} running={running} activeMode={activeMode} />
+          <>
+            <IssueRow modeKey="fix-translations" count={stats.badTranslations}   onRun={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="fill-languages"   count={stats.missingLanguages}  onRun={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="pending"          count={stats.pendingModeration} onRun={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="enrich-synonyms"  count={stats.poorSynonyms}      onRun={runLoop} running={running} activeMode={activeMode} />
 
-            <div style={{ display: "flex", gap: 24, marginTop: 16, paddingTop: 16, borderTop: "1px solid #f0f0f0", flexWrap: "wrap" }}>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-1px" }}>{stats.total}</div>
-                <div style={{ fontSize: 11, color: "#888" }}>всего продуктов</div>
-              </div>
-              {translationRows != null && (
-                <div style={{ textAlign: "center" }}>
+            {/* Bottom stats row */}
+            <div style={{
+              display: "flex", gap: 20, marginTop: 16, paddingTop: 14,
+              borderTop: `1px solid ${C.ash}`, flexWrap: "wrap", alignItems: "center",
+            }}>
+              {[
+                { value: stats.total,                    label: "продуктов" },
+                { value: translationRows?.toLocaleString() ?? "—", label: "строк переводов", warn: translationRows != null && stats.total > 0 && translationRows > stats.total * 8 },
+                { value: stats.total - stats.totalIssues, label: "без проблем",  green: true },
+                { value: stats.totalIssues,               label: "с проблемами", red: stats.totalIssues > 0 },
+              ].map((s, i) => (
+                <div key={i} style={{ textAlign: "center" }}>
                   <div style={{
-                    fontSize: 28, fontWeight: 800, letterSpacing: "-1px",
-                    color: translationRows > 10000 ? "#c22b10" : translationRows > stats.total * 8 ? "#e0a000" : "#22c55e",
+                    fontSize: 22, fontWeight: 600, letterSpacing: "-0.45px",
+                    color: s.red ? C.red : s.green && stats.totalIssues === 0 ? "#0a7a1c" : C.black,
                   }}>
-                    {translationRows.toLocaleString()}
+                    {typeof s.value === "number" ? s.value.toLocaleString() : s.value}
+                    {(s as { warn?: boolean }).warn && <span style={{ fontSize: 12, color: C.red, marginLeft: 4 }}>⚠ дубли</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: "#888" }}>
-                    строк переводов
-                    {translationRows > stats.total * 8 && <span style={{ color: "#c22b10" }}> ⚠ дубли</span>}
-                  </div>
+                  <div style={{ fontSize: 12, color: C.muted }}>{s.label}</div>
                 </div>
-              )}
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-1px", color: stats.totalIssues === 0 ? "#22c55e" : "#111" }}>
-                  {stats.total - stats.totalIssues}
-                </div>
-                <div style={{ fontSize: 11, color: "#888" }}>без проблем</div>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-1px", color: stats.totalIssues > 0 ? "#c22b10" : "#22c55e" }}>
-                  {stats.totalIssues}
-                </div>
-                <div style={{ fontSize: 11, color: "#888" }}>уник. с проблемой</div>
-              </div>
+              ))}
               <button
                 type="button"
-                style={{ ...s.btn(), marginLeft: "auto", alignSelf: "center" }}
                 onClick={loadStats}
                 disabled={loadingStats}
+                style={{
+                  marginLeft: "auto", padding: "5px 14px", fontSize: 13, fontWeight: 500, borderRadius: 9999,
+                  border: `1px solid ${C.ash}`, background: C.white, color: C.rich, cursor: loadingStats ? "not-allowed" : "pointer",
+                }}
               >
                 Обновить
               </button>
             </div>
-          </div>
+          </>
         ) : null}
       </div>
 
-      {/* Log */}
+      {/* ── Log card ──────────────────────────────────────────────────────── */}
       {log.length > 0 && (
-        <div style={s.card()}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              Обработано продуктов
-            </div>
-            <div style={{ fontSize: 12, color: "#aaa" }}>{log.length} шт.</div>
-            {/* mini summary by action */}
+        <div style={{ background: C.white, borderRadius: 14, boxShadow: CARD_SHADOW, padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 500, color: C.muted, textTransform: "uppercase", letterSpacing: "0.3px" }}>
+              Лог обработки
+            </span>
+            <Badge variant="neutral">{log.length} шт</Badge>
             <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
               {Object.keys(MODE_META).map(key => {
                 const cnt = log.filter(l => l.action === key && !l.error).length;
-                if (cnt === 0) return null;
-                return (
-                  <span key={key} style={s.badge(MODE_META[key].color)}>
-                    {MODE_META[key].label}: {cnt}
-                  </span>
-                );
+                if (!cnt) return null;
+                return <Badge key={key} variant="neutral">{MODE_META[key].label}: {cnt}</Badge>;
               })}
               {log.filter(l => l.error).length > 0 && (
-                <span style={s.badge("#c22b10")}>
-                  Ошибок: {log.filter(l => l.error).length}
-                </span>
+                <Badge variant="red">Ошибки: {log.filter(l => l.error).length}</Badge>
               )}
             </div>
           </div>
 
-          {/* Table header */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 140px 100px",
-            gap: 8,
-            padding: "6px 10px",
-            fontSize: 11,
-            fontWeight: 700,
-            color: "#aaa",
-            textTransform: "uppercase",
-            letterSpacing: "0.3px",
-            borderBottom: "1px solid #f0f0f0",
-          }}>
-            <span>Продукт</span>
-            <span>Действие</span>
-            <span style={{ textAlign: "right" }}>Токены</span>
-          </div>
-
-          <div style={{ maxHeight: 460, overflowY: "auto" }}>
-            {log.map((item, i) => (
-              <div key={`${item.productId}-${i}`} style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 140px 100px",
-                gap: 8,
-                alignItems: "center",
-                padding: "8px 10px",
-                borderBottom: "1px solid #f7f7f7",
-                background: item.error ? "#fff5f2" : "transparent",
-                fontSize: 13,
-              }}>
-                {item.error ? (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                      <span style={{ color: "#c22b10", fontWeight: 700, flexShrink: 0 }}>✗</span>
-                      <span style={{ color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
-                    </div>
-                    <span style={{ color: "#c22b10", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.error.slice(0, 40)}
-                    </span>
-                    <span />
-                  </>
-                ) : (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                      <span style={{ color: "#22c55e", fontWeight: 700, flexShrink: 0 }}>✓</span>
-                      <span style={{ color: "#111", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
-                    </div>
-                    <span style={s.badge(MODE_META[item.action]?.color ?? "#555")}>
-                      {MODE_META[item.action]?.label ?? item.action}
-                    </span>
-                    <span style={{ fontSize: 12, color: "#aaa", textAlign: "right" }}>
-                      {item.inputTokens + item.outputTokens > 0
-                        ? `${(item.inputTokens + item.outputTokens).toLocaleString()}`
-                        : "—"}
-                    </span>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.ash}` }}>
+                {["Продукт", "Действие", "Токены"].map(h => (
+                  <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 11, fontWeight: 500, color: C.muted, textTransform: "uppercase", letterSpacing: "0.3px" }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {log.slice(0, 50).map((r, i) => (
+                <tr key={i} style={{ borderBottom: `1px solid ${C.ghost}` }}>
+                  <td style={{ padding: "7px 8px", color: r.error ? C.red : C.rich, fontWeight: 500 }}>
+                    {r.name}
+                    {r.error && <span style={{ fontSize: 11, color: C.red, display: "block" }}>{r.error.slice(0, 60)}</span>}
+                  </td>
+                  <td style={{ padding: "7px 8px" }}>
+                    <Badge variant="neutral">{MODE_META[r.action]?.label ?? r.action}</Badge>
+                  </td>
+                  <td style={{ padding: "7px 8px", color: C.muted, fontFamily: "monospace", fontSize: 12 }}>
+                    {r.error ? "—" : (r.inputTokens + r.outputTokens).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {log.length > 50 && (
+            <div style={{ fontSize: 12, color: C.muted, textAlign: "center", marginTop: 10 }}>
+              Показано 50 из {log.length}
+            </div>
+          )}
         </div>
       )}
     </div>
