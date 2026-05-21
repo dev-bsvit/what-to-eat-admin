@@ -50,6 +50,8 @@ type ProcessResult = {
   inputTokens: number;
   outputTokens: number;
   error?: string;
+  savedRows?: number;
+  translations?: Record<string, string>; // lang → name, for verification
 };
 
 // GPT-4o-mini pricing per token
@@ -479,13 +481,17 @@ ${fixTranslationsWarning}
 
 // ── Apply: translations (delete + insert — avoids upsert constraint issues) ───
 
-async function applyTranslations(productId: string, translations: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>) {
-  const { error: delError } = await supabaseAdmin
+async function applyTranslations(
+  productId: string,
+  translations: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>
+): Promise<number> {
+  const { error: delError, count: delCount } = await supabaseAdmin
     .from("product_translations")
     .delete()
     .eq("product_id", productId);
 
-  if (delError) throw new Error(`Delete translations failed: ${delError.message}`);
+  if (delError) throw new Error(`Delete failed: ${delError.message}`);
+  console.log(`[translations] DELETE ${productId}: removed ${delCount ?? "?"} rows`);
 
   const rows = Object.entries(translations).map(([language_code, t]) => ({
     product_id: productId,
@@ -496,11 +502,15 @@ async function applyTranslations(productId: string, translations: Record<string,
     storage_tips: t.storage_tips,
   }));
 
-  const { error } = await supabaseAdmin
+  const { error, data } = await supabaseAdmin
     .from("product_translations")
-    .insert(rows);
+    .insert(rows)
+    .select("language_code, name");
 
-  if (error) throw new Error(`Insert translations failed: ${error.message}`);
+  if (error) throw new Error(`Insert failed: ${error.message}`);
+  const saved = data?.length ?? rows.length;
+  console.log(`[translations] INSERT ${productId}: saved ${saved} rows — EN="${translations.en?.name}" DE="${translations.de?.name}"`);
+  return saved;
 }
 
 // ── Apply: full update (for pending/new products) ─────────────────────────────
@@ -541,33 +551,42 @@ async function applyFull(productId: string, data: Awaited<ReturnType<typeof call
     }
   }
 
-  await applyTranslations(productId, data.translations);
+  const saved = await applyTranslations(productId, data.translations);
+  console.log(`[applyFull] ${productId} translations saved: ${saved} rows`);
 }
 
 // ── Process one product ───────────────────────────────────────────────────────
 
 async function processOne(product: ProductRow, mode: string, provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia" = "openai"): Promise<ProcessResult> {
+  console.log(`[processOne] START "${product.canonical_name}" mode=${mode} provider=${provider}`);
+
   // fix-names must use GPT: DeepL can't normalize canonical names
   // DeepL hybrid: accurate names via DeepL + AI for synonyms only
   if ((provider === "deepl" || provider === "deepl-nvidia") && mode !== "fix-names") {
     const synonymsProvider = provider === "deepl-nvidia" ? "nvidia" : "openai";
     const { translations, inputTokens, outputTokens } = await callDeepLBatch(product, synonymsProvider);
-    await applyTranslations(product.id, translations);
-    return { productId: product.id, name: product.canonical_name, action: mode, changed: false, inputTokens, outputTokens };
+    const savedRows = await applyTranslations(product.id, translations);
+    const translationNames = Object.fromEntries(Object.entries(translations).map(([l, t]) => [l, t.name]));
+    console.log(`[processOne] DONE DeepL "${product.canonical_name}" saved=${savedRows} EN="${translations.en?.name}" DE="${translations.de?.name}"`);
+    return { productId: product.id, name: product.canonical_name, action: mode, changed: false, inputTokens, outputTokens, savedRows, translations: translationNames };
   }
 
   const gptProvider = mode === "fix-names" ? "openai" : (provider === "deepl" || provider === "deepl-nvidia" ? "openai" : provider);
   const gpt = await callGPTTranslate(product, gptProvider, mode);
   const changed = normalize(gpt.canonical_name) !== normalize(product.canonical_name);
+  const translationNames = Object.fromEntries(Object.entries(gpt.translations).map(([l, t]) => [l, t.name]));
 
+  let savedRows = 0;
   if (mode === "fix-translations" || mode === "fill-languages" || mode === "enrich-synonyms") {
-    await applyTranslations(product.id, gpt.translations);
+    savedRows = await applyTranslations(product.id, gpt.translations);
   } else {
     // "pending" and "fix-names" use applyFull to update canonical_name + all fields
     await applyFull(product.id, gpt);
+    savedRows = 8;
   }
 
-  return { productId: product.id, name: product.canonical_name, action: mode, changed, inputTokens: gpt.inputTokens, outputTokens: gpt.outputTokens };
+  console.log(`[processOne] DONE GPT "${product.canonical_name}" → "${gpt.canonical_name}" saved=${savedRows} EN="${translationNames.en}" DE="${translationNames.de}"`);
+  return { productId: product.id, name: product.canonical_name, action: mode, changed, inputTokens: gpt.inputTokens, outputTokens: gpt.outputTokens, savedRows, translations: translationNames };
 }
 
 function getModeRemaining(mode: string, stats: SmartStats): number {

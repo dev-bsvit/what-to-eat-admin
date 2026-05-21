@@ -39,6 +39,8 @@ type ProcessResult = {
   inputTokens: number;
   outputTokens: number;
   error?: string;
+  savedRows?: number;
+  translations?: Record<string, string>;
 };
 
 type SmartResponse = {
@@ -214,6 +216,107 @@ function IssueRow({ modeKey, count, onRunBatch, onRunAll, running, activeMode }:
         </div>
       )}
     </div>
+  );
+}
+
+// ── Log table ─────────────────────────────────────────────────────────────────
+
+const LATIN_LANGS = ["en", "de", "it", "fr", "es", "pt-BR"];
+const ALL_LANGS   = ["en", "ru", "de", "it", "fr", "es", "pt-BR", "uk"];
+
+function hasCyrillicStr(s: string) { return /[Ѐ-ӿ]/.test(s); }
+
+function LogRow({ r }: { r: ProcessResult }) {
+  const [open, setOpen] = useState(false);
+  const hasError = !!r.error;
+  const hasCyrillicIssue = !hasError && r.translations
+    ? LATIN_LANGS.some(l => r.translations![l] && hasCyrillicStr(r.translations![l]))
+    : false;
+
+  const statusColor = hasError ? C.red : hasCyrillicIssue ? "#d97706" : "#0a7a1c";
+  const statusIcon  = hasError ? "✗" : hasCyrillicIssue ? "⚠" : "✓";
+
+  return (
+    <>
+      <tr
+        onClick={() => setOpen(o => !o)}
+        style={{
+          borderBottom: `1px solid ${C.ghost}`,
+          cursor: "pointer",
+          background: open ? C.ghost : "transparent",
+        }}
+      >
+        <td style={{ padding: "7px 8px", width: 24 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: statusColor }}>{statusIcon}</span>
+        </td>
+        <td style={{ padding: "7px 8px", color: hasError ? C.red : C.rich, fontWeight: 500 }}>
+          {r.name}
+          {hasError && <span style={{ fontSize: 11, color: C.red, display: "block", fontWeight: 400 }}>{r.error!.slice(0, 80)}</span>}
+          {hasCyrillicIssue && <span style={{ fontSize: 11, color: "#d97706", display: "block", fontWeight: 400 }}>Кириллица в латинских языках после сохранения</span>}
+        </td>
+        <td style={{ padding: "7px 8px", whiteSpace: "nowrap" }}>
+          <Badge variant={hasError ? "red" : "neutral"}>{MODE_META[r.action]?.label ?? r.action}</Badge>
+        </td>
+        <td style={{ padding: "7px 8px", color: C.muted, fontFamily: "monospace", fontSize: 12, whiteSpace: "nowrap" }}>
+          {r.savedRows != null ? `${r.savedRows} строк` : "—"}
+        </td>
+        <td style={{ padding: "7px 8px", color: C.muted, fontFamily: "monospace", fontSize: 12, whiteSpace: "nowrap" }}>
+          {!hasError && (r.inputTokens + r.outputTokens) > 0 ? (r.inputTokens + r.outputTokens).toLocaleString() : "—"}
+        </td>
+      </tr>
+      {open && (
+        <tr style={{ background: C.ghost }}>
+          <td colSpan={5} style={{ padding: "8px 12px 12px 36px" }}>
+            {r.error ? (
+              <div style={{ fontSize: 12, color: C.red, fontFamily: "monospace" }}>{r.error}</div>
+            ) : r.translations ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                {ALL_LANGS.map(l => {
+                  const val = r.translations![l] ?? "—";
+                  const bad = LATIN_LANGS.includes(l) && hasCyrillicStr(val);
+                  return (
+                    <div key={l} style={{ fontSize: 12, minWidth: 120 }}>
+                      <span style={{ color: C.muted, fontWeight: 600, textTransform: "uppercase", fontSize: 10 }}>{l} </span>
+                      <span style={{ color: bad ? C.red : C.rich, fontWeight: bad ? 600 : 400 }}>{val}</span>
+                      {bad && <span style={{ color: C.red }}> ⚠</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <span style={{ fontSize: 12, color: C.muted }}>Нет данных</span>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function LogTable({ log }: { log: ProcessResult[] }) {
+  const shown = log.slice(0, 100);
+  return (
+    <>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: `1px solid ${C.ash}` }}>
+            {["", "Продукт", "Действие", "Сохранено", "Токены"].map((h, i) => (
+              <th key={i} style={{ padding: "6px 8px", textAlign: "left", fontSize: 10, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((r, i) => <LogRow key={i} r={r} />)}
+        </tbody>
+      </table>
+      {log.length > 100 && (
+        <div style={{ fontSize: 12, color: C.muted, textAlign: "center", marginTop: 10 }}>
+          Показано 100 из {log.length}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -656,38 +759,7 @@ export default function ProductBrainPanel() {
             </div>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${C.ash}` }}>
-                {["Продукт", "Действие", "Токены"].map(h => (
-                  <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 11, fontWeight: 500, color: C.muted, textTransform: "uppercase", letterSpacing: "0.3px" }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {log.slice(0, 50).map((r, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${C.ghost}` }}>
-                  <td style={{ padding: "7px 8px", color: r.error ? C.red : C.rich, fontWeight: 500 }}>
-                    {r.name}
-                    {r.error && <span style={{ fontSize: 11, color: C.red, display: "block" }}>{r.error.slice(0, 60)}</span>}
-                  </td>
-                  <td style={{ padding: "7px 8px" }}>
-                    <Badge variant="neutral">{MODE_META[r.action]?.label ?? r.action}</Badge>
-                  </td>
-                  <td style={{ padding: "7px 8px", color: C.muted, fontFamily: "monospace", fontSize: 12 }}>
-                    {r.error ? "—" : (r.inputTokens + r.outputTokens).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {log.length > 50 && (
-            <div style={{ fontSize: 12, color: C.muted, textAlign: "center", marginTop: 10 }}>
-              Показано 50 из {log.length}
-            </div>
-          )}
+          <LogTable log={log} />
         </div>
       )}
     </div>
