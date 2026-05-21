@@ -244,6 +244,7 @@ export default function ProductBrainPanel({ provider = "openai" }: { provider?: 
   const modelLabel = isNvidia ? "Gemma 3N (NVIDIA)" : "GPT-4o-mini";
   const accentColor = isNvidia ? "#1a6b1a" : "#000";
   const [stats, setStats] = useState<SmartStats | null>(null);
+  const [translationRows, setTranslationRows] = useState<number | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [running, setRunning] = useState(false);
   const [activeMode, setActiveMode] = useState<string | null>(null);
@@ -263,6 +264,7 @@ export default function ProductBrainPanel({ provider = "openai" }: { provider?: 
       const r = await fetch("/api/admin/products/smart-process");
       const d = await r.json();
       if (d.stats) setStats(d.stats);
+      if (d.debug?.translationRows != null) setTranslationRows(d.debug.translationRows);
     } finally {
       setLoadingStats(false);
     }
@@ -510,6 +512,20 @@ export default function ProductBrainPanel({ provider = "openai" }: { provider?: 
                 <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-1px" }}>{stats.total}</div>
                 <div style={{ fontSize: 11, color: "#888" }}>всего продуктов</div>
               </div>
+              {translationRows != null && (
+                <div style={{ textAlign: "center" }}>
+                  <div style={{
+                    fontSize: 28, fontWeight: 800, letterSpacing: "-1px",
+                    color: translationRows > 10000 ? "#c22b10" : translationRows > stats.total * 8 ? "#e0a000" : "#22c55e",
+                  }}>
+                    {translationRows.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#888" }}>
+                    строк переводов
+                    {translationRows > stats.total * 8 && <span style={{ color: "#c22b10" }}> ⚠ дубли</span>}
+                  </div>
+                </div>
+              )}
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-1px", color: stats.totalIssues === 0 ? "#22c55e" : "#111" }}>
                   {stats.total - stats.totalIssues}
