@@ -17,6 +17,8 @@ type ProcessResult = {
   name: string;
   action: string;
   changed: boolean;
+  inputTokens: number;
+  outputTokens: number;
   error?: string;
 };
 
@@ -29,6 +31,7 @@ type SmartResponse = {
   remaining: number;
   results: ProcessResult[];
   stats: SmartStats;
+  usage?: { inputTokens: number; outputTokens: number; costUsd: number };
   error?: string;
 };
 
@@ -175,7 +178,11 @@ export default function ProductBrainPanel() {
   const [activeMode, setActiveMode] = useState<string | null>(null);
   const [log, setLog] = useState<ProcessResult[]>([]);
   const [status, setStatus] = useState("");
+  const [currentItem, setCurrentItem] = useState<string | null>(null);
   const [totalProcessed, setTotalProcessed] = useState(0);
+  const [totalTokensIn, setTotalTokensIn] = useState(0);
+  const [totalTokensOut, setTotalTokensOut] = useState(0);
+  const [totalCost, setTotalCost] = useState(0);
   const stopRef = useRef(false);
 
   const loadStats = async () => {
@@ -198,6 +205,10 @@ export default function ProductBrainPanel() {
     setActiveMode(mode);
     setLog([]);
     setTotalProcessed(0);
+    setTotalTokensIn(0);
+    setTotalTokensOut(0);
+    setTotalCost(0);
+    setCurrentItem(null);
     setStatus("Запускаю…");
 
     let processed = 0;
@@ -232,6 +243,18 @@ export default function ProductBrainPanel() {
         processed += data.processed;
         remaining = data.remaining;
         setTotalProcessed(processed);
+
+        // Update token/cost counters
+        if (data.usage) {
+          setTotalTokensIn(prev => prev + data.usage!.inputTokens);
+          setTotalTokensOut(prev => prev + data.usage!.outputTokens);
+          setTotalCost(prev => prev + data.usage!.costUsd);
+        }
+
+        // Show last processed item
+        const last = data.results[data.results.length - 1];
+        if (last) setCurrentItem(last.name);
+
         setLog(prev => [...data.results, ...prev].slice(0, 300));
         if (data.stats) setStats(data.stats);
       } catch {
@@ -242,6 +265,7 @@ export default function ProductBrainPanel() {
 
     setRunning(false);
     setActiveMode(null);
+    setCurrentItem(null);
 
     if (stopRef.current) {
       setStatus("Остановлено.");
@@ -311,17 +335,60 @@ export default function ProductBrainPanel() {
                 Остановить
               </button>
             )}
-            {running && totalProcessed > 0 && (
-              <div style={{ fontSize: 13, color: "#555", textAlign: "right" }}>
-                Обработано: {totalProcessed}
-              </div>
-            )}
           </div>
         </div>
 
-        {status && (
+        {/* Progress / metrics block */}
+        {(running || totalProcessed > 0) && (
           <div style={{
             marginTop: 14,
+            padding: "12px 14px",
+            borderRadius: 10,
+            background: "#f5f5f5",
+            display: "grid",
+            gap: 8,
+          }}>
+            {currentItem && running && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#444" }}>
+                <span style={{
+                  display: "inline-block",
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: "#000",
+                  animation: "pulse 1s infinite",
+                  flexShrink: 0,
+                }} />
+                <span style={{ color: "#888" }}>Обрабатываю:</span>
+                <span style={{ fontWeight: 600, color: "#111" }}>{currentItem}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+              <div>
+                <span style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.3px" }}>Обработано</span>
+                <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px" }}>{totalProcessed}</div>
+              </div>
+              {totalTokensIn + totalTokensOut > 0 && (
+                <>
+                  <div>
+                    <span style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.3px" }}>Токены</span>
+                    <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px" }}>
+                      {(totalTokensIn + totalTokensOut).toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.3px" }}>Стоимость</span>
+                    <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.5px", color: totalCost > 0.05 ? "#c22b10" : "#111" }}>
+                      ${totalCost.toFixed(4)}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {status && (
+          <div style={{
+            marginTop: 10,
             padding: "10px 14px",
             borderRadius: 10,
             fontSize: 13,
@@ -331,6 +398,7 @@ export default function ProductBrainPanel() {
             {status}
           </div>
         )}
+        <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
       </div>
 
       {/* Issues breakdown */}
@@ -381,32 +449,84 @@ export default function ProductBrainPanel() {
       {/* Log */}
       {log.length > 0 && (
         <div style={s.card()}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
-            Лог обработки
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Обработано продуктов
+            </div>
+            <div style={{ fontSize: 12, color: "#aaa" }}>{log.length} шт.</div>
+            {/* mini summary by action */}
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {Object.keys(MODE_META).map(key => {
+                const cnt = log.filter(l => l.action === key && !l.error).length;
+                if (cnt === 0) return null;
+                return (
+                  <span key={key} style={s.badge(MODE_META[key].color)}>
+                    {MODE_META[key].label}: {cnt}
+                  </span>
+                );
+              })}
+              {log.filter(l => l.error).length > 0 && (
+                <span style={s.badge("#c22b10")}>
+                  Ошибок: {log.filter(l => l.error).length}
+                </span>
+              )}
+            </div>
           </div>
-          <div style={{ display: "grid", gap: 5, maxHeight: 420, overflowY: "auto" }}>
+
+          {/* Table header */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 140px 100px",
+            gap: 8,
+            padding: "6px 10px",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "#aaa",
+            textTransform: "uppercase",
+            letterSpacing: "0.3px",
+            borderBottom: "1px solid #f0f0f0",
+          }}>
+            <span>Продукт</span>
+            <span>Действие</span>
+            <span style={{ textAlign: "right" }}>Токены</span>
+          </div>
+
+          <div style={{ maxHeight: 460, overflowY: "auto" }}>
             {log.map((item, i) => (
               <div key={`${item.productId}-${i}`} style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "baseline",
-                padding: "6px 10px",
-                borderRadius: 8,
-                background: item.error ? "#fff5f2" : "#fafafa",
+                display: "grid",
+                gridTemplateColumns: "1fr 140px 100px",
+                gap: 8,
+                alignItems: "center",
+                padding: "8px 10px",
+                borderBottom: "1px solid #f7f7f7",
+                background: item.error ? "#fff5f2" : "transparent",
                 fontSize: 13,
               }}>
                 {item.error ? (
                   <>
-                    <span style={{ color: "#c22b10", fontWeight: 700, whiteSpace: "nowrap" }}>✗</span>
-                    <span style={{ color: "#666" }}>{item.name}</span>
-                    <span style={{ color: "#c22b10", fontSize: 12, marginLeft: "auto" }}>{item.error.slice(0, 60)}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <span style={{ color: "#c22b10", fontWeight: 700, flexShrink: 0 }}>✗</span>
+                      <span style={{ color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                    </div>
+                    <span style={{ color: "#c22b10", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.error.slice(0, 40)}
+                    </span>
+                    <span />
                   </>
                 ) : (
                   <>
-                    <span style={{ color: "#22c55e", fontWeight: 700 }}>✓</span>
-                    <span style={{ color: "#111", fontWeight: 500 }}>{item.name}</span>
-                    <span style={{ ...s.badge(MODE_META[item.action]?.color ?? "#555"), marginLeft: "auto", flexShrink: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <span style={{ color: "#22c55e", fontWeight: 700, flexShrink: 0 }}>✓</span>
+                      <span style={{ color: "#111", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                    </div>
+                    <span style={s.badge(MODE_META[item.action]?.color ?? "#555")}>
                       {MODE_META[item.action]?.label ?? item.action}
+                    </span>
+                    <span style={{ fontSize: 12, color: "#aaa", textAlign: "right" }}>
+                      {item.inputTokens + item.outputTokens > 0
+                        ? `${(item.inputTokens + item.outputTokens).toLocaleString()}`
+                        : "—"}
                     </span>
                   </>
                 )}
