@@ -570,6 +570,17 @@ async function processOne(product: ProductRow, mode: string, provider: "openai" 
   return { productId: product.id, name: product.canonical_name, action: mode, changed, inputTokens: gpt.inputTokens, outputTokens: gpt.outputTokens };
 }
 
+function getModeRemaining(mode: string, stats: SmartStats): number {
+  switch (mode) {
+    case "fix-names":       return stats.badNames;
+    case "fix-translations": return stats.badTranslations;
+    case "fill-languages":  return stats.missingLanguages;
+    case "pending":         return stats.pendingModeration;
+    case "enrich-synonyms": return stats.poorSynonyms;
+    default:                return stats.totalIssues;
+  }
+}
+
 // ── Route handlers ─────────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
@@ -657,6 +668,7 @@ export async function POST(request: Request) {
       processed: results.length,
       errors: results.filter(r => r.error).length,
       remaining: stats.totalIssues,
+      modeRemaining: getModeRemaining(mode, stats),
       resolvedMode: mode,
       results,
       stats,

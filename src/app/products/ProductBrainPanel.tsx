@@ -48,6 +48,7 @@ type SmartResponse = {
   processed: number;
   errors: number;
   remaining: number;
+  modeRemaining: number;
   results: ProcessResult[];
   stats: SmartStats;
   usage?: { inputTokens: number; outputTokens: number; costUsd: number };
@@ -115,9 +116,11 @@ function GhostBtn({ children, onClick, disabled, size = "sm" }: { children: Reac
 
 // ── Issue row ─────────────────────────────────────────────────────────────────
 
-function IssueRow({ modeKey, count, onRun, running, activeMode }: {
+function IssueRow({ modeKey, count, onRunBatch, onRunAll, running, activeMode }: {
   modeKey: string; count: number;
-  onRun: (mode: string) => void; running: boolean; activeMode: string | null;
+  onRunBatch: (mode: string) => void;
+  onRunAll: (mode: string) => void;
+  running: boolean; activeMode: string | null;
 }) {
   const meta = MODE_META[modeKey];
   const done = count === 0;
@@ -176,8 +179,11 @@ function IssueRow({ modeKey, count, onRun, running, activeMode }: {
               <GhostBtn onClick={togglePreview} disabled={running || loadingPreview}>
                 {loadingPreview ? "…" : expanded ? "Скрыть ▲" : "Список ▼"}
               </GhostBtn>
-              <GhostBtn onClick={() => onRun(modeKey)} disabled={running}>
-                {isActive ? "Обработка…" : "Запустить"}
+              <GhostBtn onClick={() => onRunBatch(modeKey)} disabled={running}>
+                {isActive ? "Обработка…" : "Пакет"}
+              </GhostBtn>
+              <GhostBtn onClick={() => onRunAll(modeKey)} disabled={running}>
+                Всё
               </GhostBtn>
             </>
           )}
@@ -247,6 +253,50 @@ export default function ProductBrainPanel() {
 
   useEffect(() => { loadStats(); }, []);
 
+  const applyBatchResult = (data: SmartResponse, accProcessed: number) => {
+    const next = accProcessed + data.processed;
+    setTotalProcessed(next);
+    if (data.usage) {
+      setTotalTokensIn(prev => prev + data.usage!.inputTokens);
+      setTotalTokensOut(prev => prev + data.usage!.outputTokens);
+      setTotalCost(prev => prev + data.usage!.costUsd);
+    }
+    const last = data.results[data.results.length - 1];
+    if (last) setCurrentItem(last.name);
+    setLog(prev => [...data.results, ...prev].slice(0, 300));
+    if (data.stats) setStats(data.stats);
+    return next;
+  };
+
+  // Single batch — run exactly batchSize items, then stop
+  const runBatch = async (mode: string) => {
+    if (running) return;
+    setRunning(true);
+    setActiveMode(mode);
+    setCurrentItem(null);
+    setStatus("Запускаю…");
+    try {
+      const res = await fetch("/api/admin/products/smart-process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, limit: batchSize, provider }),
+      });
+      if (!res.ok) { const e = await res.json(); setStatus(`Ошибка: ${e.error ?? "неизвестная"}`); return; }
+      const data: SmartResponse = await res.json();
+      applyBatchResult(data, totalProcessed);
+      setStatus(data.processed === 0
+        ? "Нечего обрабатывать в этой категории"
+        : `Готово: ${data.processed} продуктов. Осталось в категории: ${data.modeRemaining}`);
+    } catch {
+      setStatus("Ошибка сети");
+    } finally {
+      setRunning(false);
+      setActiveMode(null);
+      setCurrentItem(null);
+    }
+  };
+
+  // Full loop — run until this mode's queue is empty
   const runLoop = async (mode: string) => {
     if (running) return;
     stopRef.current = false;
@@ -262,10 +312,10 @@ export default function ProductBrainPanel() {
     setStatus("Запускаю…");
 
     let processed = 0;
-    let remaining = stats?.totalIssues ?? 999;
+    let modeRemaining = stats?.totalIssues ?? 999;
 
-    while (remaining > 0 && !stopRef.current) {
-      setStatus(`${MODE_META[mode]?.label ?? "Авто"}… осталось ~${remaining}`);
+    while (modeRemaining > 0 && !stopRef.current) {
+      setStatus(`${MODE_META[mode]?.label ?? "Авто"}… осталось ~${modeRemaining}`);
       try {
         const res = await fetch("/api/admin/products/smart-process", {
           method: "POST",
@@ -275,27 +325,15 @@ export default function ProductBrainPanel() {
         if (!res.ok) { const e = await res.json(); setStatus(`Ошибка: ${e.error ?? "неизвестная"}`); break; }
 
         const data: SmartResponse = await res.json();
-        if (data.processed === 0) { remaining = data.remaining; break; }
+        if (data.processed === 0) { modeRemaining = data.modeRemaining ?? 0; break; }
 
         const batchIds = data.results.map(r => r.productId);
         const allSeen = batchIds.every(id => processedIdsRef.current.has(id));
-        if (allSeen) { setStatus("⚠ Продукты не поддаются исправлению — пропускаю."); break; }
+        if (allSeen) { setStatus("⚠ Продукты не поддаются исправлению — остановлено."); break; }
         batchIds.forEach(id => processedIdsRef.current.add(id));
 
-        processed += data.processed;
-        remaining = data.remaining;
-        setTotalProcessed(processed);
-
-        if (data.usage) {
-          setTotalTokensIn(prev => prev + data.usage!.inputTokens);
-          setTotalTokensOut(prev => prev + data.usage!.outputTokens);
-          setTotalCost(prev => prev + data.usage!.costUsd);
-        }
-
-        const last = data.results[data.results.length - 1];
-        if (last) setCurrentItem(last.name);
-        setLog(prev => [...data.results, ...prev].slice(0, 300));
-        if (data.stats) setStats(data.stats);
+        processed = applyBatchResult(data, processed);
+        modeRemaining = data.modeRemaining ?? 0;
       } catch {
         setStatus("Ошибка сети — остановлено");
         break;
@@ -307,11 +345,11 @@ export default function ProductBrainPanel() {
     setCurrentItem(null);
     if (stopRef.current) {
       setStatus("Остановлено.");
-    } else if (remaining === 0) {
-      setStatus("✓ База в идеальном состоянии!");
+    } else if (modeRemaining === 0) {
+      setStatus("✓ Категория обработана!");
       await loadStats();
     } else {
-      setStatus(`Пакет готов. Обработано: ${processed}, осталось: ${remaining}`);
+      setStatus(`Готово. Обработано: ${processed}`);
     }
   };
 
@@ -455,6 +493,9 @@ export default function ProductBrainPanel() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {!running ? (
             <>
+              <GhostBtn size="md" disabled={loadingStats || allDone} onClick={() => runBatch("auto")}>
+                Пакет · {batchSize}
+              </GhostBtn>
               <button
                 type="button"
                 disabled={loadingStats || allDone}
@@ -467,22 +508,6 @@ export default function ProductBrainPanel() {
               >
                 {allDone ? "✓ Всё готово" : "🪄 Запустить всё"}
               </button>
-              {!allDone && (
-                <GhostBtn size="md" disabled={loadingStats} onClick={() => {
-                  // Single batch - not a loop
-                  if (running) return;
-                  fetch("/api/admin/products/smart-process", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ mode: "auto", limit: batchSize, provider }),
-                  }).then(r => r.json()).then(d => {
-                    if (d.stats) setStats(d.stats);
-                    if (d.results) setLog(prev => [...d.results, ...prev].slice(0, 300));
-                  });
-                }}>
-                  Один пакет
-                </GhostBtn>
-              )}
             </>
           ) : (
             <button
@@ -567,11 +592,11 @@ export default function ProductBrainPanel() {
           <div style={{ padding: "20px 0", color: C.muted, fontSize: 13 }}>Загружаю статистику…</div>
         ) : stats ? (
           <>
-            <IssueRow modeKey="fix-names"        count={stats.badNames}          onRun={runLoop} running={running} activeMode={activeMode} />
-            <IssueRow modeKey="fix-translations" count={stats.badTranslations}   onRun={runLoop} running={running} activeMode={activeMode} />
-            <IssueRow modeKey="fill-languages"   count={stats.missingLanguages}  onRun={runLoop} running={running} activeMode={activeMode} />
-            <IssueRow modeKey="pending"          count={stats.pendingModeration} onRun={runLoop} running={running} activeMode={activeMode} />
-            <IssueRow modeKey="enrich-synonyms"  count={stats.poorSynonyms}      onRun={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="fix-names"        count={stats.badNames}          onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="fix-translations" count={stats.badTranslations}   onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="fill-languages"   count={stats.missingLanguages}  onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="pending"          count={stats.pendingModeration} onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="enrich-synonyms"  count={stats.poorSynonyms}      onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
 
             {/* Bottom stats row */}
             <div style={{
