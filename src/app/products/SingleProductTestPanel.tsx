@@ -150,9 +150,11 @@ export default function SingleProductTestPanel() {
   const [gptResult, setGptResult] = useState<TestResult | null>(null);
   const [nvidiaResult, setNvidiaResult] = useState<TestResult | null>(null);
   const [deeplResult, setDeeplResult] = useState<TestResult | null>(null);
+  const [deeplNvResult, setDeeplNvResult] = useState<TestResult | null>(null);
   const [runningGpt, setRunningGpt] = useState(false);
   const [runningNvidia, setRunningNvidia] = useState(false);
   const [runningDeepl, setRunningDeepl] = useState(false);
+  const [runningDeeplNv, setRunningDeeplNv] = useState(false);
   const [sharedDiff, setSharedDiff] = useState<{ before: Translations; after: Translations; provider: string } | null>(null);
 
   // Load the issue queue on mount
@@ -188,6 +190,7 @@ export default function SingleProductTestPanel() {
     setGptResult(null);
     setNvidiaResult(null);
     setDeeplResult(null);
+    setDeeplNvResult(null);
     setSharedDiff(null);
     setBefore({});
     (async () => {
@@ -197,41 +200,61 @@ export default function SingleProductTestPanel() {
     })();
   }, [current?.id]);
 
-  const runTest = useCallback(async (provider: "openai" | "nvidia" | "deepl", apply = false) => {
+  type Provider = "openai" | "nvidia" | "deepl" | "deepl-nvidia";
+
+  const getRunning = (p: Provider) => ({ openai: setRunningGpt, nvidia: setRunningNvidia, deepl: setRunningDeepl, "deepl-nvidia": setRunningDeeplNv }[p]);
+  const getResult  = (p: Provider) => ({ openai: setGptResult,     nvidia: setNvidiaResult,  deepl: setDeeplResult,  "deepl-nvidia": setDeeplNvResult }[p]);
+
+  const runTest = useCallback(async (provider: Provider) => {
     if (!current) return;
-    const setRunning = provider === "openai" ? setRunningGpt : provider === "nvidia" ? setRunningNvidia : setRunningDeepl;
-    const setResult = provider === "openai" ? setGptResult : provider === "nvidia" ? setNvidiaResult : setDeeplResult;
-    const prevResult = provider === "openai" ? gptResult : provider === "nvidia" ? nvidiaResult : deeplResult;
+    const setRunning = getRunning(provider);
+    const setResult  = getResult(provider);
 
     setRunning(true);
     try {
       const r = await fetch("/api/admin/products/test-single", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId: current.id, provider, apply }),
+        body: JSON.stringify({ productId: current.id, provider }),
       });
       const d = await r.json();
       if (d.error) { alert(d.error); return; }
       const result: TestResult = {
-        after: d.after,
-        inputTokens: d.inputTokens,
-        outputTokens: d.outputTokens,
-        costUsd: d.costUsd,
-        timeTaken: d.timeTaken,
-        applied: apply,
+        after: d.after, inputTokens: d.inputTokens, outputTokens: d.outputTokens,
+        costUsd: d.costUsd, timeTaken: d.timeTaken, applied: false,
       };
       setResult(result);
-      setSharedDiff({ before: apply ? (prevResult?.after ?? before) : before, after: d.after, provider });
-      if (apply) {
-        setBefore(d.after);
-        // Remove from queue after applying
-        setQueue(q => q.filter(item => item.id !== current.id));
-        setIndex(i => Math.min(i, queue.length - 2));
-      }
+      setSharedDiff({ before, after: d.after, provider });
     } finally {
       setRunning(false);
     }
-  }, [current, before, gptResult, nvidiaResult, deeplResult, queue.length]);
+  }, [current, before]);
+
+  // Fast apply: sends pre-computed translations, no model re-run
+  const applyExisting = useCallback(async (provider: Provider) => {
+    if (!current) return;
+    const existing = { openai: gptResult, nvidia: nvidiaResult, deepl: deeplResult, "deepl-nvidia": deeplNvResult }[provider];
+    if (!existing) return;
+    const setRunning = getRunning(provider);
+    const setResult  = getResult(provider);
+
+    setRunning(true);
+    try {
+      const r = await fetch("/api/admin/products/test-single", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: current.id, apply: true, translations: existing.after }),
+      });
+      const d = await r.json();
+      if (d.error) { alert(d.error); return; }
+      setResult({ ...existing, applied: true });
+      setBefore(existing.after);
+      setQueue(q => q.filter(item => item.id !== current.id));
+      setIndex(i => Math.min(i, queue.length - 2));
+    } finally {
+      setRunning(false);
+    }
+  }, [current, gptResult, nvidiaResult, deeplResult, deeplNvResult, queue.length]);
 
   const skip = () => {
     setIndex(i => Math.min(i + 1, queue.length - 1));
@@ -239,7 +262,7 @@ export default function SingleProductTestPanel() {
 
   const prev = () => setIndex(i => Math.max(i - 1, 0));
 
-  const isRunning = runningGpt || runningNvidia || runningDeepl;
+  const isRunning = runningGpt || runningNvidia || runningDeepl || runningDeeplNv;
 
   if (queueLoading) {
     return (
@@ -308,34 +331,48 @@ export default function SingleProductTestPanel() {
       {/* Test buttons row */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button type="button" style={s.btn({ size: "lg", disabled: isRunning || !current })} disabled={isRunning || !current} onClick={() => runTest("openai")}>
-          {runningGpt ? "GPT тестирует…" : "🤖 Тест GPT-4o-mini"}
+          {runningGpt ? "GPT тестирует…" : "🤖 GPT-4o-mini"}
         </button>
         <button type="button" style={s.btn({ size: "lg", color: "#1a6b1a", disabled: isRunning || !current })} disabled={isRunning || !current} onClick={() => runTest("nvidia")}>
-          {runningNvidia ? "Gemma тестирует…" : "🧪 Тест Gemma (NVIDIA)"}
+          {runningNvidia ? "Gemma тестирует…" : "🧪 Gemma (NVIDIA)"}
         </button>
         <button type="button" style={s.btn({ size: "lg", color: "#1746a2", disabled: isRunning || !current })} disabled={isRunning || !current} onClick={() => runTest("deepl")}>
-          {runningDeepl ? "DeepL тестирует…" : "🔤 Тест DeepL+GPT"}
+          {runningDeepl ? "DeepL тестирует…" : "🔤 DeepL+GPT"}
         </button>
-        {(gptResult || nvidiaResult || deeplResult) && !gptResult?.applied && !nvidiaResult?.applied && !deeplResult?.applied && (
-          <>
-            {gptResult && (
-              <button type="button" style={s.btn({ size: "lg", outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => runTest("openai", true)}>
-                Применить GPT ✓
-              </button>
-            )}
-            {nvidiaResult && (
-              <button type="button" style={s.btn({ size: "lg", color: "#1a6b1a", outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => runTest("nvidia", true)}>
-                Применить Gemma ✓
-              </button>
-            )}
-            {deeplResult && (
-              <button type="button" style={s.btn({ size: "lg", color: "#1746a2", outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => runTest("deepl", true)}>
-                Применить DeepL ✓
-              </button>
-            )}
-          </>
-        )}
+        <button type="button" style={s.btn({ size: "lg", color: "#7c3aed", disabled: isRunning || !current })} disabled={isRunning || !current} onClick={() => runTest("deepl-nvidia")}>
+          {runningDeeplNv ? "DeepL+Gemma тестирует…" : "🔤 DeepL+Gemma"}
+        </button>
       </div>
+
+      {/* Apply buttons row — only show when we have untested results */}
+      {(gptResult || nvidiaResult || deeplResult || deeplNvResult) && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {gptResult && !gptResult.applied && (
+            <button type="button" style={s.btn({ outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => applyExisting("openai")}>
+              {runningGpt ? "…" : "Применить GPT ✓"}
+            </button>
+          )}
+          {nvidiaResult && !nvidiaResult.applied && (
+            <button type="button" style={s.btn({ color: "#1a6b1a", outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => applyExisting("nvidia")}>
+              {runningNvidia ? "…" : "Применить Gemma ✓"}
+            </button>
+          )}
+          {deeplResult && !deeplResult.applied && (
+            <button type="button" style={s.btn({ color: "#1746a2", outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => applyExisting("deepl")}>
+              {runningDeepl ? "…" : "Применить DeepL+GPT ✓"}
+            </button>
+          )}
+          {deeplNvResult && !deeplNvResult.applied && (
+            <button type="button" style={s.btn({ color: "#7c3aed", outline: true, disabled: isRunning })} disabled={isRunning} onClick={() => applyExisting("deepl-nvidia")}>
+              {runningDeeplNv ? "…" : "Применить DeepL+Gemma ✓"}
+            </button>
+          )}
+          {gptResult?.applied && <span style={{ fontSize: 13, color: "#22c55e", fontWeight: 700, alignSelf: "center" }}>GPT ✓ сохранено</span>}
+          {nvidiaResult?.applied && <span style={{ fontSize: 13, color: "#1a6b1a", fontWeight: 700, alignSelf: "center" }}>Gemma ✓ сохранено</span>}
+          {deeplResult?.applied && <span style={{ fontSize: 13, color: "#1746a2", fontWeight: 700, alignSelf: "center" }}>DeepL+GPT ✓ сохранено</span>}
+          {deeplNvResult?.applied && <span style={{ fontSize: 13, color: "#7c3aed", fontWeight: 700, alignSelf: "center" }}>DeepL+Gemma ✓ сохранено</span>}
+        </div>
+      )}
 
       {/* Diff table — shared, shows whichever model ran last */}
       {sharedDiff ? (
@@ -359,8 +396,14 @@ export default function SingleProductTestPanel() {
               )}
               {deeplResult && (
                 <span style={{ fontSize: 12, color: "#1746a2" }}>
-                  DeepL: {(deeplResult.inputTokens + deeplResult.outputTokens).toLocaleString()} tok · ${deeplResult.costUsd.toFixed(5)} · {deeplResult.timeTaken}ms
+                  DeepL+GPT: {(deeplResult.inputTokens + deeplResult.outputTokens).toLocaleString()} tok · ${deeplResult.costUsd.toFixed(5)} · {deeplResult.timeTaken}ms
                   {deeplResult.applied && <span style={{ fontWeight: 700 }}> ✓ применено</span>}
+                </span>
+              )}
+              {deeplNvResult && (
+                <span style={{ fontSize: 12, color: "#7c3aed" }}>
+                  DeepL+Gemma: {(deeplNvResult.inputTokens + deeplNvResult.outputTokens).toLocaleString()} tok · ${deeplNvResult.costUsd.toFixed(5)} · {deeplNvResult.timeTaken}ms
+                  {deeplNvResult.applied && <span style={{ fontWeight: 700 }}> ✓ применено</span>}
                 </span>
               )}
             </div>
@@ -368,35 +411,43 @@ export default function SingleProductTestPanel() {
           <DiffTable before={sharedDiff.before} after={sharedDiff.after} />
 
           {/* Multi-model name comparison */}
-          {[gptResult, nvidiaResult, deeplResult].filter(Boolean).length >= 2 && (
+          {[gptResult, nvidiaResult, deeplResult, deeplNvResult].filter(Boolean).length >= 2 && (
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #f0f0f0" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
                 Сравнение названий по моделям
               </div>
-              {/* Header row */}
-              <div style={{ display: "grid", gridTemplateColumns: `80px ${[gptResult, nvidiaResult, deeplResult].filter(Boolean).map(() => "1fr").join(" ")}`, gap: 6, fontSize: 12, marginBottom: 6 }}>
-                <span />
-                {gptResult && <span style={{ fontWeight: 700, color: "#555" }}>🤖 GPT</span>}
-                {nvidiaResult && <span style={{ fontWeight: 700, color: "#1a6b1a" }}>🧪 Gemma</span>}
-                {deeplResult && <span style={{ fontWeight: 700, color: "#1746a2" }}>🔤 DeepL</span>}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: `80px ${[gptResult, nvidiaResult, deeplResult].filter(Boolean).map(() => "1fr").join(" ")}`, gap: 6, fontSize: 13 }}>
-                {LANGUAGES.map(lang => {
-                  const g = gptResult?.after[lang]?.name;
-                  const n = nvidiaResult?.after[lang]?.name;
-                  const d = deeplResult?.after[lang]?.name;
-                  const isLatin = LATIN.includes(lang);
-                  const errColor = (v: string | undefined) => v && isLatin && hasCyrillic(v) ? "#c22b10" : "#111";
-                  return (
-                    <div key={lang} style={{ display: "contents" }}>
-                      <span style={{ fontWeight: 700, color: "#888" }}>{LANG_FLAGS[lang]} {lang}</span>
-                      {gptResult && <span style={{ color: errColor(g) }}>{g ?? "—"}</span>}
-                      {nvidiaResult && <span style={{ color: errColor(n) }}>{n ?? "—"}</span>}
-                      {deeplResult && <span style={{ color: errColor(d) }}>{d ?? "—"}</span>}
+              {(() => {
+                const cols = [
+                  gptResult    && { key: "gpt",   label: "🤖 GPT",          color: "#555",    data: gptResult.after },
+                  nvidiaResult && { key: "nv",    label: "🧪 Gemma",         color: "#1a6b1a", data: nvidiaResult.after },
+                  deeplResult  && { key: "deepl", label: "🔤 DeepL+GPT",    color: "#1746a2", data: deeplResult.after },
+                  deeplNvResult && { key: "dnv",  label: "🔤 DeepL+Gemma",  color: "#7c3aed", data: deeplNvResult.after },
+                ].filter(Boolean) as { key: string; label: string; color: string; data: Translations }[];
+                const grid = `80px ${cols.map(() => "1fr").join(" ")}`;
+                return (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: grid, gap: 6, fontSize: 12, marginBottom: 6 }}>
+                      <span />
+                      {cols.map(c => <span key={c.key} style={{ fontWeight: 700, color: c.color }}>{c.label}</span>)}
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{ display: "grid", gridTemplateColumns: grid, gap: 6, fontSize: 13 }}>
+                      {LANGUAGES.map(lang => {
+                        const isLatin = LATIN.includes(lang);
+                        const errColor = (v: string | undefined) => v && isLatin && hasCyrillic(v) ? "#c22b10" : "#111";
+                        return (
+                          <div key={lang} style={{ display: "contents" }}>
+                            <span style={{ fontWeight: 700, color: "#888" }}>{LANG_FLAGS[lang]} {lang}</span>
+                            {cols.map(c => {
+                              const v = c.data[lang]?.name;
+                              return <span key={c.key} style={{ color: errColor(v) }}>{v ?? "—"}</span>;
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>

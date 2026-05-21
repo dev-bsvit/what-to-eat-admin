@@ -56,33 +56,32 @@ export async function GET(request: Request) {
   return NextResponse.json({ error: "Provide ?q= or ?productId=" }, { status: 400 });
 }
 
-// ── DeepL + GPT hybrid ────────────────────────────────────────────────────────
+// ── DeepL + AI hybrid (GPT or NVIDIA for synonyms) ───────────────────────────
 
 type TranslationMap = Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>;
 
 async function callDeepLHybrid(
   canonicalName: string,
-  existingTranslations: TranslationMap
+  existingTranslations: TranslationMap,
+  synonymsProvider: "openai" | "nvidia" = "openai"
 ): Promise<{ translations: TranslationMap; inputTokens: number; outputTokens: number; timeTaken: number }> {
   const startMs = Date.now();
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+  const isNv = synonymsProvider === "nvidia";
+  const apiKey = isNv ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} is not set`);
 
   // Step 1: DeepL — translate name to all 8 languages in parallel
-  const sourceLang = "RU";
   const names = await Promise.all(
     APP_LANGUAGES.map(lang =>
-      translateBatch([canonicalName], lang, sourceLang)
+      translateBatch([canonicalName], lang, "RU")
         .then(r => ({ lang, name: r[0] ?? canonicalName }))
         .catch(() => ({ lang, name: existingTranslations[lang]?.name ?? canonicalName }))
     )
   );
   const nameMap: Record<string, string> = Object.fromEntries(names.map(n => [n.lang, n.name]));
 
-  // Step 2: GPT-mini — synonyms only (short prompt, cheap)
-  const translationsList = APP_LANGUAGES
-    .map(l => `${l}: "${nameMap[l]}"`)
-    .join(", ");
+  // Step 2: AI model — synonyms, description, storage_tips only (short prompt)
+  const translationsList = APP_LANGUAGES.map(l => `${l}: "${nameMap[l]}"`).join(", ");
 
   const prompt = `Ты генерируешь синонимы для продуктов кулинарного приложения.
 
@@ -104,13 +103,18 @@ async function callDeepLHybrid(
   "uk": {"synonyms":["..."],"description":"...","storage_tips":"..."}
 }`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetch(isNv ? NVIDIA_URL : OPENAI_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.1 }),
+    body: JSON.stringify({
+      model: isNv ? NVIDIA_MODEL : "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: isNv ? 0.2 : 0.1,
+      ...(isNv ? { max_tokens: 2048, top_p: 0.7 } : {}),
+    }),
   });
 
-  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`${isNv ? "NVIDIA" : "OpenAI"} ${res.status}: ${await res.text()}`);
   const data = await res.json();
   const content: string = data?.choices?.[0]?.message?.content ?? "";
   const inputTokens: number = data?.usage?.prompt_tokens ?? 0;
@@ -142,9 +146,21 @@ async function callDeepLHybrid(
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { productId, provider = "openai", apply = false } = body as { productId: string; provider: "openai" | "nvidia" | "deepl"; apply: boolean };
+    const { productId, provider = "openai", apply = false, translations: precomputed } = body as {
+      productId: string; provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia"; apply: boolean; translations?: TranslationMap;
+    };
 
     if (!productId) return NextResponse.json({ error: "productId required" }, { status: 400 });
+
+    // ── Fast-apply: save pre-computed translations without re-running the model ─
+    if (apply && precomputed) {
+      const { error: delErr } = await supabaseAdmin.from("product_translations").delete().eq("product_id", productId);
+      if (delErr) throw new Error(`Delete failed: ${delErr.message}`);
+      const rows = Object.entries(precomputed).map(([language_code, t]) => ({ product_id: productId, language_code, ...t }));
+      const { error: insErr } = await supabaseAdmin.from("product_translations").insert(rows);
+      if (insErr) throw new Error(`Insert failed: ${insErr.message}`);
+      return NextResponse.json({ applied: true, after: precomputed });
+    }
 
     const [productRes, transRes] = await Promise.all([
       supabaseAdmin.from("product_dictionary").select("*").eq("id", productId).single(),
@@ -168,8 +184,9 @@ export async function POST(request: Request) {
     if (missingLangs.length > 0) issues.push(`нет языков: ${missingLangs.join(", ")}`);
 
     // ── DeepL hybrid branch ───────────────────────────────────────────────────
-    if (provider === "deepl") {
-      const { translations: after, inputTokens, outputTokens, timeTaken } = await callDeepLHybrid(product.canonical_name, before);
+    if (provider === "deepl" || provider === "deepl-nvidia") {
+      const synonymsProvider = provider === "deepl-nvidia" ? "nvidia" : "openai";
+      const { translations: after, inputTokens, outputTokens, timeTaken } = await callDeepLHybrid(product.canonical_name, before, synonymsProvider);
 
       if (apply) {
         const { error: delErr } = await supabaseAdmin.from("product_translations").delete().eq("product_id", productId);
