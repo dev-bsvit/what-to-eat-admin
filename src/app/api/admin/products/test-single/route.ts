@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { APP_LANGUAGES } from "@/lib/translate";
+import { APP_LANGUAGES, translateBatch } from "@/lib/translate";
 import { normalize } from "@/lib/stringUtils";
 
 export const maxDuration = 120;
@@ -56,12 +56,93 @@ export async function GET(request: Request) {
   return NextResponse.json({ error: "Provide ?q= or ?productId=" }, { status: 400 });
 }
 
+// ── DeepL + GPT hybrid ────────────────────────────────────────────────────────
+
+type TranslationMap = Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>;
+
+async function callDeepLHybrid(
+  canonicalName: string,
+  existingTranslations: TranslationMap
+): Promise<{ translations: TranslationMap; inputTokens: number; outputTokens: number; timeTaken: number }> {
+  const startMs = Date.now();
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+
+  // Step 1: DeepL — translate name to all 8 languages in parallel
+  const sourceLang = "RU";
+  const names = await Promise.all(
+    APP_LANGUAGES.map(lang =>
+      translateBatch([canonicalName], lang, sourceLang)
+        .then(r => ({ lang, name: r[0] ?? canonicalName }))
+        .catch(() => ({ lang, name: existingTranslations[lang]?.name ?? canonicalName }))
+    )
+  );
+  const nameMap: Record<string, string> = Object.fromEntries(names.map(n => [n.lang, n.name]));
+
+  // Step 2: GPT-mini — synonyms only (short prompt, cheap)
+  const translationsList = APP_LANGUAGES
+    .map(l => `${l}: "${nameMap[l]}"`)
+    .join(", ");
+
+  const prompt = `Ты генерируешь синонимы для продуктов кулинарного приложения.
+
+Продукт: "${canonicalName}"
+Переводы: ${translationsList}
+
+Для каждого из 8 языков верни 5-8 синонимов: множественное число, региональные варианты, рыночные названия, разговорные формы.
+Также добавь: description (1 предложение) и storage_tips (1 предложение) для каждого языка.
+
+Верни ТОЛЬКО валидный JSON:
+{
+  "en": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "ru": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "de": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "it": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "fr": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "es": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "pt-BR": {"synonyms":["..."],"description":"...","storage_tips":"..."},
+  "uk": {"synonyms":["..."],"description":"...","storage_tips":"..."}
+}`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.1 }),
+  });
+
+  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const content: string = data?.choices?.[0]?.message?.content ?? "";
+  const inputTokens: number = data?.usage?.prompt_tokens ?? 0;
+  const outputTokens: number = data?.usage?.completion_tokens ?? 0;
+
+  let cleaned = content.trim();
+  if (cleaned.startsWith("```json")) cleaned = cleaned.slice(7);
+  else if (cleaned.startsWith("```")) cleaned = cleaned.slice(3);
+  if (cleaned.endsWith("```")) cleaned = cleaned.slice(0, -3);
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+
+  const translations: TranslationMap = {};
+  for (const lang of APP_LANGUAGES) {
+    const g = parsed[lang] ?? {};
+    translations[lang] = {
+      name: nameMap[lang],
+      synonyms: Array.isArray(g.synonyms) ? g.synonyms.filter(Boolean) : [],
+      description: g.description ?? null,
+      storage_tips: g.storage_tips ?? null,
+    };
+  }
+
+  return { translations, inputTokens, outputTokens, timeTaken: Date.now() - startMs };
+}
+
 // ── POST: run model on single product ─────────────────────────────────────────
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { productId, provider = "openai", apply = false } = body as { productId: string; provider: "openai" | "nvidia"; apply: boolean };
+    const { productId, provider = "openai", apply = false } = body as { productId: string; provider: "openai" | "nvidia" | "deepl"; apply: boolean };
 
     if (!productId) return NextResponse.json({ error: "productId required" }, { status: 400 });
 
@@ -85,6 +166,31 @@ export async function POST(request: Request) {
     }
     const missingLangs = (APP_LANGUAGES as readonly string[]).filter(l => !before[l]);
     if (missingLangs.length > 0) issues.push(`нет языков: ${missingLangs.join(", ")}`);
+
+    // ── DeepL hybrid branch ───────────────────────────────────────────────────
+    if (provider === "deepl") {
+      const { translations: after, inputTokens, outputTokens, timeTaken } = await callDeepLHybrid(product.canonical_name, before);
+
+      if (apply) {
+        const { error: delErr } = await supabaseAdmin.from("product_translations").delete().eq("product_id", productId);
+        if (delErr) throw new Error(`Delete failed: ${delErr.message}`);
+        const rows = Object.entries(after).map(([language_code, t]) => ({ product_id: productId, language_code, ...t }));
+        const { error: insErr } = await supabaseAdmin.from("product_translations").insert(rows);
+        if (insErr) throw new Error(`Insert failed: ${insErr.message}`);
+      }
+
+      return NextResponse.json({
+        product: { id: product.id, name: product.canonical_name, canonicalAfter: product.canonical_name },
+        before,
+        after,
+        inputTokens,
+        outputTokens,
+        costUsd: inputTokens * PRICE_IN + outputTokens * PRICE_OUT,
+        timeTaken,
+        applied: apply,
+        issues,
+      });
+    }
 
     const isNvidia = provider === "nvidia";
     const apiKey = isNvidia ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
