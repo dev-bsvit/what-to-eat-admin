@@ -132,7 +132,7 @@ export default function BatchCleanPanel() {
         const res = await fetch("/api/admin/products/batch-clean", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ limit: 20, dryRun: false }),
+          body: JSON.stringify({ limit: 5, dryRun: false }),
         });
 
         if (!res.ok) {

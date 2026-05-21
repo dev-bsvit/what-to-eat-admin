@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { APP_LANGUAGES } from "@/lib/translate";
 import { normalize } from "@/lib/stringUtils";
 
+export const maxDuration = 300;
+
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
 const CATEGORIES = [
