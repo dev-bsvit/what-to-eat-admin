@@ -287,6 +287,70 @@ async function cleanAndTranslate(product: ProductRow): Promise<{
   };
 }
 
+// ── Fetch products with bad EN translations (Cyrillic in EN name) ─────────────
+
+function hasCyrillic(s: string): boolean {
+  return /[Ѐ-ӿ]/.test(s);
+}
+
+// Languages that must use Latin script — Cyrillic in these = bad translation
+const LATIN_LANGUAGES = ["en", "de", "it", "fr", "es", "pt-BR"];
+
+async function fetchBadTranslations(limit: number): Promise<ProductRow[]> {
+  const { data: allProducts } = await supabaseAdmin
+    .from("product_dictionary")
+    .select("*")
+    .limit(5000);
+
+  if (!allProducts?.length) return [];
+
+  const { data: latinTranslations } = await supabaseAdmin
+    .from("product_translations")
+    .select("product_id, language_code, name")
+    .in("language_code", LATIN_LANGUAGES)
+    .limit(10000);
+
+  const badIds = new Set(
+    (latinTranslations ?? [])
+      .filter((r) => hasCyrillic(r.name))
+      .map((r) => r.product_id)
+  );
+
+  return (allProducts as ProductRow[]).filter((p) => badIds.has(p.id)).slice(0, limit);
+}
+
+async function countBadTranslations(): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from("product_translations")
+    .select("product_id, language_code, name")
+    .in("language_code", LATIN_LANGUAGES)
+    .limit(10000);
+  const badIds = new Set((data ?? []).filter((r) => hasCyrillic(r.name)).map((r) => r.product_id));
+  return badIds.size;
+}
+
+// ── Apply translations only (skip product_dictionary update) ──────────────────
+
+async function applyTranslationsOnly(
+  productId: string,
+  data: Awaited<ReturnType<typeof cleanAndTranslate>>
+) {
+  const rows = Object.entries(data.translations).map(([language_code, t]) => ({
+    product_id: productId,
+    language_code,
+    name: t.name,
+    synonyms: t.synonyms,
+    description: t.description,
+    storage_tips: t.storage_tips,
+  }));
+
+  const { error } = await supabaseAdmin
+    .from("product_translations")
+    .upsert(rows, { onConflict: "product_id,language_code" });
+
+  if (error) throw new Error(error.message);
+}
+
 // ── Apply clean data to DB ────────────────────────────────────────────────────
 
 async function applyCleanData(productId: string, data: Awaited<ReturnType<typeof cleanAndTranslate>>) {
@@ -349,8 +413,8 @@ async function applyCleanData(productId: string, data: Awaited<ReturnType<typeof
 
 export async function GET() {
   try {
-    const stats = await getStats();
-    return NextResponse.json({ success: true, stats });
+    const [stats, badTranslations] = await Promise.all([getStats(), countBadTranslations()]);
+    return NextResponse.json({ success: true, stats, badTranslations });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
@@ -364,12 +428,23 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const limit = Math.min(Math.max(body.limit ?? 20, 1), 50);
     const dryRun = body.dryRun === true;
+    const mode: string = body.mode ?? "clean";
 
-    const products = await fetchBatch(limit);
+    const products =
+      mode === "fix-translations"
+        ? await fetchBadTranslations(limit)
+        : await fetchBatch(limit);
 
     if (products.length === 0) {
-      const stats = await getStats();
-      return NextResponse.json({ success: true, processed: 0, remaining: stats.needsProcessing, results: [], stats });
+      const [stats, badTranslations] = await Promise.all([getStats(), countBadTranslations()]);
+      return NextResponse.json({
+        success: true,
+        processed: 0,
+        remaining: mode === "fix-translations" ? badTranslations : stats.needsProcessing,
+        results: [],
+        stats,
+        badTranslations,
+      });
     }
 
     const results: CleanResult[] = [];
@@ -380,7 +455,11 @@ export async function POST(request: Request) {
         const changed = normalize(clean.canonical_name) !== normalize(product.canonical_name);
 
         if (!dryRun) {
-          await applyCleanData(product.id, clean);
+          if (mode === "fix-translations") {
+            await applyTranslationsOnly(product.id, clean);
+          } else {
+            await applyCleanData(product.id, clean);
+          }
         }
 
         results.push({
@@ -400,17 +479,19 @@ export async function POST(request: Request) {
       }
     }
 
-    const stats = await getStats();
+    const [stats, badTranslations] = await Promise.all([getStats(), countBadTranslations()]);
 
     return NextResponse.json({
       success: true,
+      mode,
       dryRun,
       processed: results.length,
       changed: results.filter((r) => r.changed).length,
       errors: results.filter((r) => r.error).length,
-      remaining: stats.needsProcessing,
+      remaining: mode === "fix-translations" ? badTranslations : stats.needsProcessing,
       results,
       stats,
+      badTranslations,
     });
   } catch (error) {
     return NextResponse.json(

@@ -25,6 +25,7 @@ type BatchResponse = {
   remaining: number;
   results: CleanResult[];
   stats: Stats;
+  badTranslations?: number;
   error?: string;
 };
 
@@ -36,12 +37,12 @@ const s = {
     padding: "18px 20px",
     ...style,
   }),
-  btn: (primary = false, disabled = false): React.CSSProperties => ({
+  btn: (primary = false, disabled = false, color?: string): React.CSSProperties => ({
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    border: primary ? "1px solid #000" : "1px solid #d4d4d4",
-    background: primary ? "#000" : "#fff",
+    border: primary ? `1px solid ${color ?? "#000"}` : "1px solid #d4d4d4",
+    background: primary ? (color ?? "#000") : "#fff",
     color: primary ? "#fff" : "#0a0a0a",
     borderRadius: 8,
     padding: "8px 16px",
@@ -86,8 +87,10 @@ function ProgressBar({ value, total }: { value: number; total: number }) {
 
 export default function BatchCleanPanel() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [badTranslations, setBadTranslations] = useState<number | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [running, setRunning] = useState(false);
+  const [activeMode, setActiveMode] = useState<"clean" | "fix-translations">("clean");
   const [stopped, setStopped] = useState(false);
   const [processed, setProcessed] = useState(0);
   const [changed, setChanged] = useState(0);
@@ -102,6 +105,7 @@ export default function BatchCleanPanel() {
       const res = await fetch("/api/admin/products/batch-clean");
       const data = await res.json();
       if (data.stats) setStats(data.stats);
+      if (data.badTranslations !== undefined) setBadTranslations(data.badTranslations);
     } finally {
       setLoadingStats(false);
     }
@@ -109,11 +113,12 @@ export default function BatchCleanPanel() {
 
   useEffect(() => { loadStats(); }, []);
 
-  const start = async () => {
+  const runLoop = async (mode: "clean" | "fix-translations") => {
     if (running) return;
     stopRef.current = false;
     setStopped(false);
     setRunning(true);
+    setActiveMode(mode);
     setProcessed(0);
     setChanged(0);
     setErrors(0);
@@ -123,16 +128,22 @@ export default function BatchCleanPanel() {
     let totalProcessed = 0;
     let totalChanged = 0;
     let totalErrors = 0;
-    let remaining = stats?.needsProcessing ?? 0;
+    let remaining = mode === "fix-translations"
+      ? (badTranslations ?? 0)
+      : (stats?.needsProcessing ?? 0);
 
     while (remaining > 0 && !stopRef.current) {
-      setStatus(`Обрабатываю... осталось ~${remaining} продуктов`);
+      setStatus(
+        mode === "fix-translations"
+          ? `Исправляю переводы... осталось ~${remaining} продуктов`
+          : `Обрабатываю... осталось ~${remaining} продуктов`
+      );
 
       try {
         const res = await fetch("/api/admin/products/batch-clean", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ limit: 5, dryRun: false }),
+          body: JSON.stringify({ limit: 5, dryRun: false, mode }),
         });
 
         if (!res.ok) {
@@ -159,6 +170,7 @@ export default function BatchCleanPanel() {
         setLog((prev) => [...data.results, ...prev].slice(0, 200));
 
         if (data.stats) setStats(data.stats);
+        if (data.badTranslations !== undefined) setBadTranslations(data.badTranslations);
       } catch {
         setStatus("Ошибка сети — остановлено");
         break;
@@ -170,13 +182,13 @@ export default function BatchCleanPanel() {
       setStopped(true);
       setStatus("Остановлено вручную.");
     } else if (remaining === 0) {
-      setStatus("✓ Все продукты обработаны!");
+      setStatus(mode === "fix-translations" ? "✓ Все переводы исправлены!" : "✓ Все продукты обработаны!");
       await loadStats();
     } else if (totalProcessed === 0) {
-      setStatus(`⚠ Не удалось обработать ${remaining} продуктов — нажмите «Запустить» ещё раз`);
+      setStatus(`⚠ Не удалось обработать ${remaining} продуктов — нажмите ещё раз`);
       await loadStats();
     } else {
-      setStatus(`Завершено. Обработано: ${totalProcessed}, осталось: ${remaining} — нажмите «Запустить» для продолжения`);
+      setStatus(`Завершено. Обработано: ${totalProcessed}, осталось: ${remaining} — нажмите для продолжения`);
       await loadStats();
     }
   };
@@ -191,7 +203,7 @@ export default function BatchCleanPanel() {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      {/* Header */}
+      {/* Header — Clean */}
       <div style={s.card()}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
           <div>
@@ -218,15 +230,15 @@ export default function BatchCleanPanel() {
                 type="button"
                 style={s.btn(true, loadingStats || stats?.needsProcessing === 0)}
                 disabled={loadingStats || stats?.needsProcessing === 0}
-                onClick={start}
+                onClick={() => runLoop("clean")}
               >
                 {stats?.needsProcessing === 0 ? "✓ Готово" : "Запустить очистку"}
               </button>
-            ) : (
+            ) : activeMode === "clean" ? (
               <button type="button" style={s.btn(false)} onClick={stop}>
                 Остановить
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -255,8 +267,7 @@ export default function BatchCleanPanel() {
           </div>
         )}
 
-        {/* Running progress */}
-        {running && processed > 0 && (
+        {running && activeMode === "clean" && processed > 0 && (
           <div style={{ marginTop: 14, display: "flex", gap: 16, flexWrap: "wrap" }}>
             <span style={s.badge("default")}>Обработано: {processed}</span>
             <span style={s.badge("green")}>Изменено: {changed}</span>
@@ -264,7 +275,65 @@ export default function BatchCleanPanel() {
           </div>
         )}
 
-        {status && (
+        {status && activeMode === "clean" && (
+          <div style={{
+            marginTop: 12,
+            fontSize: 13,
+            color: status.startsWith("Ошибка") ? "#c22b10" : status.startsWith("✓") ? "#0f7a1f" : "#444",
+            padding: "8px 12px",
+            background: status.startsWith("Ошибка") ? "#fff5f2" : status.startsWith("✓") ? "#edfaef" : "#f7f7f7",
+            borderRadius: 8,
+          }}>
+            {status}
+          </div>
+        )}
+      </div>
+
+      {/* Fix Bad Translations */}
+      <div style={s.card({ borderColor: badTranslations && badTranslations > 0 ? "#fad5a0" : "#e0e0e0" })}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+              <span style={s.badge(badTranslations === 0 ? "green" : "orange")}>
+                {badTranslations === null ? "..." : badTranslations === 0 ? "Все переводы верны" : `${badTranslations} плохих перевода`}
+              </span>
+            </div>
+            <h3 style={{ margin: 0, fontSize: 17, letterSpacing: "-0.3px" }}>
+              Исправить переводы (кириллица в латинских языках)
+            </h3>
+            <p style={{ margin: "4px 0 0", color: "#737373", fontSize: 13, lineHeight: 1.5, maxWidth: 600 }}>
+              Находит продукты где EN/DE/IT/FR/ES/PT перевод содержит кириллицу (напр. «Лимон» вместо «Lemon»).
+              Перезапускает только переводы — canonical_name и КБЖУ не меняет.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            {!running ? (
+              <button
+                type="button"
+                style={s.btn(true, loadingStats || badTranslations === 0, "#8a4b00")}
+                disabled={loadingStats || badTranslations === 0}
+                onClick={() => runLoop("fix-translations")}
+              >
+                {badTranslations === 0 ? "✓ Готово" : "Исправить переводы"}
+              </button>
+            ) : activeMode === "fix-translations" ? (
+              <button type="button" style={s.btn(false)} onClick={stop}>
+                Остановить
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {running && activeMode === "fix-translations" && processed > 0 && (
+          <div style={{ marginTop: 14, display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <span style={s.badge("default")}>Обработано: {processed}</span>
+            <span style={s.badge("green")}>Исправлено: {changed}</span>
+            {errors > 0 && <span style={s.badge("red")}>Ошибок: {errors}</span>}
+          </div>
+        )}
+
+        {status && activeMode === "fix-translations" && (
           <div style={{
             marginTop: 12,
             fontSize: 13,
