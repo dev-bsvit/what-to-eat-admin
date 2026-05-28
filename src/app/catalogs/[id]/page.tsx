@@ -360,7 +360,13 @@ export default function CatalogDetailPage() {
     setImportStatus({ type: "idle", text: "" });
     setImportRows([]);
     try {
-      const res = await fetch(`/api/admin/fetch-csv?url=${encodeURIComponent(importUrl.trim())}`);
+      // Convert any Google Sheets URL to a direct CSV export URL
+      let csvUrl = importUrl.trim();
+      const sheetIdMatch = csvUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+      if (sheetIdMatch) {
+        csvUrl = `https://docs.google.com/spreadsheets/d/${sheetIdMatch[1]}/export?format=csv`;
+      }
+      const res = await fetch(`/api/admin/fetch-csv?url=${encodeURIComponent(csvUrl)}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         setImportStatus({ type: "error", text: err.error || "Не удалось загрузить таблицу" });
