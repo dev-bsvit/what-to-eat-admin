@@ -145,7 +145,7 @@ export async function POST(request: Request) {
               text: normalizeText(typeof step === "string" ? step : step?.text),
               order_index: idx,
             }))
-            .filter((s) => s.text);
+            .filter((s: { recipe_id: string; text: string | null; order_index: number }) => s.text);
           if (stepRows.length > 0) {
             await supabaseAdmin.from("recipe_steps").insert(stepRows);
           }
