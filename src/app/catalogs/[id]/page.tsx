@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, BookOpen, Camera, FolderOpen, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Camera, FolderOpen, Plus, Save, Trash2, Upload, AlertCircle, CheckCircle2 } from "lucide-react";
 import LandingEditor from "./LandingEditor";
 import {
   CATALOG_DIETARY_OPTIONS,
@@ -136,7 +136,15 @@ export default function CatalogDetailPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("");
-  const [activeTab, setActiveTab] = useState<"settings" | "landing" | "translations" | "recipes" | "technical">("settings");
+  const [activeTab, setActiveTab] = useState<"settings" | "landing" | "translations" | "recipes" | "technical" | "import">("settings");
+
+  // Import tab state
+  const [importUrl, setImportUrl] = useState("");
+  type ImportRow = { jsonStr: string; image_url: string; parsed: Record<string, unknown> | null; parseError: string | null };
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importStatus, setImportStatus] = useState<{ type: "idle" | "error" | "success"; text: string }>({ type: "idle", text: "" });
+  const [importErrors, setImportErrors] = useState<{ index: number; title: string; error: string }[]>([]);
   const [triggerLandingSave, setTriggerLandingSave] = useState(0);
   const [isSavingAll, setIsSavingAll] = useState(false);
 
@@ -199,7 +207,7 @@ export default function CatalogDetailPage() {
   }
 
   function openRecipe(recipeId: string) {
-    router.push(`/recipes?edit=${recipeId}`);
+    router.push(`/recipes?edit=${recipeId}&returnCatalog=${cuisineId}`);
   }
 
   async function deleteRecipe(recipeId: string, title: string) {
@@ -320,6 +328,114 @@ export default function CatalogDetailPage() {
     }
   }
 
+  // ── Import helpers ──────────────────────────────────────────────────────
+  function parseCSV(text: string): string[][] {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = "";
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"') {
+        if (inQuotes && text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (c === ',' && !inQuotes) {
+        row.push(field); field = "";
+      } else if ((c === '\n' || c === '\r') && !inQuotes) {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = "";
+        if (row.some(f => f.trim())) rows.push(row);
+        row = [];
+      } else {
+        field += c;
+      }
+    }
+    if (field || row.length > 0) { row.push(field); if (row.some(f => f.trim())) rows.push(row); }
+    return rows;
+  }
+
+  async function loadFromUrl() {
+    if (!importUrl.trim()) return;
+    setImportLoading(true);
+    setImportStatus({ type: "idle", text: "" });
+    setImportRows([]);
+    try {
+      const res = await fetch(`/api/admin/fetch-csv?url=${encodeURIComponent(importUrl.trim())}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setImportStatus({ type: "error", text: err.error || "Не удалось загрузить таблицу" });
+        return;
+      }
+      const csvText = await res.text();
+      const allRows = parseCSV(csvText);
+      if (allRows.length === 0) { setImportStatus({ type: "error", text: "Таблица пустая" }); return; }
+
+      // Detect header row: if first row contains "json" or "image_url" skip it
+      const firstRow = allRows[0];
+      const hasHeader = firstRow.some(c => /^json$/i.test(c.trim()) || /^image_url$/i.test(c.trim()));
+      const dataRows = hasHeader ? allRows.slice(1) : allRows;
+
+      const rows: ImportRow[] = dataRows
+        .filter(row => row[0]?.trim())
+        .map(row => {
+          const jsonStr = row[0]?.trim() || "";
+          const image_url = row[1]?.trim() || "";
+          let parsed: Record<string, unknown> | null = null;
+          let parseError: string | null = null;
+          try { parsed = JSON.parse(jsonStr); } catch { parseError = "Невалидный JSON"; }
+          return { jsonStr, image_url, parsed, parseError };
+        });
+
+      setImportRows(rows);
+      const valid = rows.filter(r => !r.parseError).length;
+      const invalid = rows.length - valid;
+      setImportStatus({
+        type: invalid > 0 ? "error" : "success",
+        text: `Найдено ${rows.length} рецептов${invalid > 0 ? `, из них ${invalid} с ошибкой JSON` : ""}`,
+      });
+    } catch {
+      setImportStatus({ type: "error", text: "Ошибка соединения" });
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function importAll() {
+    const validRows = importRows.filter(r => r.parsed && !r.parseError);
+    if (validRows.length === 0) return;
+    setImportLoading(true);
+    setImportStatus({ type: "idle", text: "Импортирую..." });
+    setImportErrors([]);
+    const recipes = validRows.map(row => ({
+      ...row.parsed,
+      image_url: row.image_url || (row.parsed as any)?.image_url || null,
+    }));
+    try {
+      const res = await fetch("/api/admin/recipes/bulk-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cuisine_id: cuisineId, recipes }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setImportStatus({ type: "error", text: result.error || "Ошибка импорта" });
+        return;
+      }
+      setImportErrors(result.errors || []);
+      setImportStatus({
+        type: result.errors?.length ? "error" : "success",
+        text: `Импортировано ${result.imported} рецептов${result.errors?.length ? `, ошибок: ${result.errors.length}` : ""}`,
+      });
+      await loadData();
+      if (!result.errors?.length) setActiveTab("recipes");
+    } catch {
+      setImportStatus({ type: "error", text: "Ошибка соединения" });
+    } finally {
+      setImportLoading(false);
+    }
+  }
+  // ── End import helpers ───────────────────────────────────────────────────
+
   if (loading) {
     return (
       <div style={{
@@ -400,6 +516,7 @@ export default function CatalogDetailPage() {
           { key: 'landing', label: 'Лендинг' },
           { key: 'translations', label: 'Переводы' },
           { key: 'recipes', label: `Рецепты (${recipes.length})` },
+          { key: 'import', label: 'Импорт' },
           { key: 'technical', label: 'Техническое' },
         ] as const).map(({ key, label }) => (
           <button
@@ -756,6 +873,175 @@ export default function CatalogDetailPage() {
         </div>
       )}
       </>}
+
+      {/* Tab: Import */}
+      {activeTab === 'import' && (
+        <div className={styles.panel} style={{ padding: 24, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, color: 'var(--text-primary)' }}>
+            Импорт рецептов из Google Таблицы
+          </h2>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>
+            Создай таблицу с двумя колонками: <strong>json</strong> и <strong>image_url</strong>.
+            Каждая строка — один рецепт. Опубликуй как CSV: <em>Файл → Поделиться → Опубликовать в интернете → CSV</em>.
+          </p>
+
+          {/* JSON schema hint */}
+          <details style={{ marginBottom: 20 }}>
+            <summary style={{ fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--text-secondary)' }}>
+              Схема JSON рецепта (развернуть)
+            </summary>
+            <pre style={{
+              marginTop: 10, padding: 12, borderRadius: 8, fontSize: 11,
+              background: 'var(--bg-surface)', border: '1px solid var(--border-medium)',
+              overflowX: 'auto', lineHeight: 1.6, color: 'var(--text-primary)',
+            }}>{`{
+  "title": "Борщ украинский",        // обязательное
+  "description": "Насыщенный...",
+  "prep_time": 20,                   // минуты
+  "cook_time": 90,
+  "servings": 6,
+  "difficulty": "easy|medium|hard",
+  "calories": 280,
+  "protein": 12, "carbs": 30, "fat": 8, "fiber": 3,
+  "tags": ["суп", "украинская кухня"],
+  "meal_role": ["lunch", "dinner"],  // breakfast|lunch|dinner|snack
+  "main_ingredient": "говядина",
+  "budget_level": 2,                 // 1-3
+  "kid_friendly": true,
+  "spicy_level": 0,                  // 0-3
+  "ingredients": [
+    { "name": "говядина", "quantity": 500, "unit": "г" },
+    { "name": "свекла",   "quantity": 300, "unit": "г" }
+  ],
+  "steps": [
+    "Нарежь мясо кубиками...",
+    "Свари бульон 1.5 часа...",
+    "Добавь свеклу и морковь..."
+  ],
+  "tips": "Советы по приготовлению",
+  "serving_tips": "Подавать со сметаной",
+  "storage_tips": "Хранить 3 дня"
+}`}</pre>
+          </details>
+
+          {/* URL input */}
+          <div className="form-group">
+            <label className="form-label">Ссылка на Google Sheets (опубликованный CSV)</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                className="input"
+                placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') loadFromUrl(); }}
+                disabled={importLoading}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={loadFromUrl}
+                disabled={importLoading || !importUrl.trim()}
+                style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+              >
+                <Upload size={15} />
+                {importLoading ? "Загружаю..." : "Загрузить"}
+              </button>
+            </div>
+          </div>
+
+          {/* Status */}
+          {importStatus.text && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+              borderRadius: 10, fontSize: 14, fontWeight: 600, marginBottom: 16,
+              background: importStatus.type === 'error' ? 'rgba(255,59,48,0.1)' : 'rgba(52,199,89,0.1)',
+              color: importStatus.type === 'error' ? '#ff3b30' : '#34c759',
+            }}>
+              {importStatus.type === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+              {importStatus.text}
+            </div>
+          )}
+
+          {/* Preview table */}
+          {importRows.length > 0 && (
+            <>
+              <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border-medium)' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: 'var(--text-secondary)', width: 36 }}>#</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: 'var(--text-secondary)' }}>Название</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', width: 70 }}>Шагов</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', width: 80 }}>Ингред.</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', width: 60 }}>Фото</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', width: 60 }}>JSON</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importRows.map((row, i) => {
+                      const p = row.parsed as any;
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--border-light)', background: row.parseError ? 'rgba(255,59,48,0.04)' : undefined }}>
+                          <td style={{ padding: '7px 10px', color: 'var(--text-secondary)' }}>{i + 1}</td>
+                          <td style={{ padding: '7px 10px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {row.parseError ? (
+                              <span style={{ color: '#ff3b30', fontWeight: 400 }}>{row.parseError}</span>
+                            ) : (
+                              p?.title || <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '7px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            {p?.steps ? (Array.isArray(p.steps) ? p.steps.length : '?') : '—'}
+                          </td>
+                          <td style={{ padding: '7px 10px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            {p?.ingredients ? (Array.isArray(p.ingredients) ? p.ingredients.length : '?') : '—'}
+                          </td>
+                          <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                            {row.image_url ? (
+                              <span style={{ color: '#34c759', fontSize: 16 }}>✓</span>
+                            ) : (
+                              <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                            {row.parseError ? (
+                              <span style={{ color: '#ff3b30', fontSize: 16 }}>✗</span>
+                            ) : (
+                              <span style={{ color: '#34c759', fontSize: 16 }}>✓</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Import errors from last run */}
+              {importErrors.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: '#ff3b30' }}>
+                    Ошибки последнего импорта:
+                  </div>
+                  {importErrors.map((e, i) => (
+                    <div key={i} style={{ fontSize: 12, color: '#ff3b30', marginBottom: 2 }}>
+                      #{e.index + 1} {e.title}: {e.error}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                className="btn btn-primary"
+                onClick={importAll}
+                disabled={importLoading || importRows.filter(r => !r.parseError).length === 0}
+                style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+              >
+                {importLoading ? "Импортирую..." : `Импортировать ${importRows.filter(r => !r.parseError).length} рецептов в этот каталог`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {activeTab === 'technical' && (
         <div className={styles.panel} style={{ padding: 16 }}>
