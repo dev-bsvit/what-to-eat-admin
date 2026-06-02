@@ -1,0 +1,221 @@
+{
+  "id": null,
+  "title": "Деруны с томлёной уткой",
+  "description": "Деруны с томлёной уткой — современное украинское блюдо, собранное вокруг узнаваемой домашней основы. Ресторанная версия: сверху — мягкая утка и ложка сметаны. Вкус строится на понятном контрасте: мягкая сердцевина или насыщенная база сочетается с кислинкой, сливочностью, травами или лёгкой румяностью. делает блюдо более праздничным, но техника остаётся домашней. Поэтому рецепт хорошо работает в каталоге: он остаётся близким к традиции, но выглядит аккуратно, свежо и подходит для домашнего приготовления без ресторанной сложности.",
+  "image_url": null,
+  "cuisine_id": "ca9a1834-6081-4d37-a298-f27ee1ac6a94",
+  "dish_type": "main",
+  "course": "main",
+  "owner_id": null,
+  "is_user_defined": false,
+  "author": null,
+  "contributor_ids": [],
+  "servings": 4,
+  "prep_time": 30,
+  "cook_time": 25,
+  "difficulty": "medium",
+  "tags": [
+    "dinner",
+    "special occasion"
+  ],
+  "diet_tags": [],
+  "allergen_tags": [],
+  "cuisine_tags": [
+    "ukrainian"
+  ],
+  "equipment": [
+    "frying pan",
+    "mixing bowl",
+    "chef knife",
+    "cutting board"
+  ],
+  "tools_optional": [],
+  "calories": 560,
+  "protein": 28,
+  "fat": 28,
+  "carbs": 48,
+  "fiber": 6,
+  "sugar": 6,
+  "salt": 0.9,
+  "saturated_fat": 7,
+  "cholesterol": 75,
+  "sodium": 360,
+  "nutrition_per_100g": {
+    "calories": 215,
+    "protein": 10.8,
+    "fat": 10.8,
+    "carbs": 18.5,
+    "fiber": 2.3,
+    "sugar": 2.3,
+    "salt": 0.3,
+    "saturated_fat": 2.7,
+    "cholesterol": 29,
+    "sodium": 138
+  },
+  "tips": "Заготовка: утку томить заранее.. Делайте её отдельно и соединяйте с блюдом ближе к подаче, чтобы сохранить свежую текстуру.",
+  "serving_tips": "Подавайте на подогретой тарелке, добавляя соус внизу или рядом, чтобы блюдо выглядело аккуратно и не размокало.",
+  "storage_tips": "Храните в холодильнике до 2 суток в закрытом контейнере. Соусы и хрустящие элементы лучше держать отдельно.",
+  "recipe_note": "Причина включения в каталог: делает блюдо более праздничным, но техника остаётся домашней.",
+  "comments_enabled": true,
+  "comments_count": 0,
+  "ingredients": [
+    {
+      "id": "",
+      "name": "Картофель",
+      "quantity": 800,
+      "unit": "g"
+    },
+    {
+      "id": "",
+      "name": "Яйцо",
+      "quantity": 1,
+      "unit": "pcs"
+    },
+    {
+      "id": "",
+      "name": "Мука",
+      "quantity": 40,
+      "unit": "g"
+    },
+    {
+      "id": "",
+      "name": "Утиное мясо",
+      "quantity": 350,
+      "unit": "g"
+    },
+    {
+      "id": "",
+      "name": "Сметана",
+      "quantity": 120,
+      "unit": "g"
+    },
+    {
+      "id": "",
+      "name": "Лук",
+      "quantity": 120,
+      "unit": "g"
+    }
+  ],
+  "steps": [
+    {
+      "text": "Подготовьте картофель и яйцо, нарезая ингредиенты равномерно. Так они приготовятся одновременно, а готовое блюдо будет выглядеть аккуратно.",
+      "duration_minutes": null,
+      "image_url": null
+    },
+    {
+      "text": "Соберите основу блюда и прогрейте её до появления явного аппетитного аромата. Лёгкая карамелизация, румяность или сливочная густота подскажут, что вкус начал раскрываться.",
+      "duration_minutes": null,
+      "image_url": null
+    },
+    {
+      "text": "Доведите блюдо до готовности на умеренном огне или в духовке. Следите за текстурой: мясо должно стать мягким, крупа — рассыпчатой, овощи — нежными, но не водянистыми.",
+      "duration_minutes": null,
+      "image_url": null
+    },
+    {
+      "text": "Проверьте соль и дайте блюду коротко отдохнуть перед подачей. Когда соки и соус распределятся, вкус станет спокойнее, а подача — чище.",
+      "duration_minutes": null,
+      "image_url": null
+    }
+  ],
+  "translations": {
+    "en": {
+      "title": "Деруны с томлёной уткой",
+      "description": "Деруны с томлёной уткой is a modern Ukrainian dish built around a familiar home-style base. It keeps the recognizable comfort of the original idea while adding a cleaner texture, balanced acidity, gentle creaminess, herbs, or a warm roasted note. The recipe is practical for home cooking and still feels fresh enough for a contemporary catalog.",
+      "tips": "Prepare the make-ahead elements separately and combine them close to serving so the texture stays fresh.",
+      "serving_tips": "Serve neatly with sauce or garnish added at the end to preserve contrast and a clean presentation.",
+      "storage_tips": "Store refrigerated in an airtight container for up to 2 days; keep sauces and crisp elements separate when possible.",
+      "recipe_note": "This dish is included because it connects Ukrainian home cooking with a more contemporary serving style.",
+      "instructions": [
+        "Prepare the make-ahead elements separately and combine them close to serving so the texture stays fresh.",
+        "Prepare the make-ahead elements separately and combine them close to serving so the texture stays fresh.",
+        "Prepare the make-ahead elements separately and combine them close to serving so the texture stays fresh.",
+        "Prepare the make-ahead elements separately and combine them close to serving so the texture stays fresh."
+      ]
+    },
+    "de": {
+      "title": "Деруны с томлёной уткой",
+      "description": "Деруны с томлёной уткой ist ein modernes ukrainisches Gericht auf einer vertrauten häuslichen Basis. Es bewahrt den wiedererkennbaren Charakter der Tradition und ergänzt ihn mit klarer Textur, ausgewogener Säure, milder Cremigkeit, Kräutern oder warmen Röstaromen. Das Rezept bleibt alltagstauglich und wirkt zugleich zeitgemäß.",
+      "tips": "Bereiten Sie Komponenten zum Vorbereiten separat zu und fügen Sie sie erst kurz vor dem Servieren zusammen.",
+      "serving_tips": "Sauber anrichten und Sauce oder Garnitur erst am Ende hinzufügen, damit Kontrast und Optik erhalten bleiben.",
+      "storage_tips": "Bis zu 2 Tage luftdicht im Kühlschrank lagern; Saucen und knusprige Elemente möglichst getrennt halten.",
+      "recipe_note": "Dieses Gericht verbindet ukrainische Hausküche mit einer zeitgemäßeren Servierweise.",
+      "instructions": [
+        "Bereiten Sie Komponenten zum Vorbereiten separat zu und fügen Sie sie erst kurz vor dem Servieren zusammen.",
+        "Bereiten Sie Komponenten zum Vorbereiten separat zu und fügen Sie sie erst kurz vor dem Servieren zusammen.",
+        "Bereiten Sie Komponenten zum Vorbereiten separat zu und fügen Sie sie erst kurz vor dem Servieren zusammen.",
+        "Bereiten Sie Komponenten zum Vorbereiten separat zu und fügen Sie sie erst kurz vor dem Servieren zusammen."
+      ]
+    },
+    "fr": {
+      "title": "Деруны с томлёной уткой",
+      "description": "Деруны с томлёной уткой est un plat ukrainien moderne construit autour d'une base familiale reconnaissable. Il garde le confort de la tradition tout en ajoutant une texture plus nette, une acidité équilibrée, une douceur crémeuse, des herbes ou une note rôtie. La recette reste accessible à la maison et assez actuelle pour un catalogue contemporain.",
+      "tips": "Préparez les éléments à l'avance séparément et assemblez-les près du service pour garder une texture fraîche.",
+      "serving_tips": "Servez proprement en ajoutant la sauce ou la garniture à la fin pour préserver le contraste.",
+      "storage_tips": "Conservez au réfrigérateur dans une boîte hermétique jusqu'à 2 jours; gardez les sauces séparées si possible.",
+      "recipe_note": "Ce plat relie la cuisine familiale ukrainienne à une présentation plus contemporaine.",
+      "instructions": [
+        "Préparez les éléments à l'avance séparément et assemblez-les près du service pour garder une texture fraîche.",
+        "Préparez les éléments à l'avance séparément et assemblez-les près du service pour garder une texture fraîche.",
+        "Préparez les éléments à l'avance séparément et assemblez-les près du service pour garder une texture fraîche.",
+        "Préparez les éléments à l'avance séparément et assemblez-les près du service pour garder une texture fraîche."
+      ]
+    },
+    "it": {
+      "title": "Деруны с томлёной уткой",
+      "description": "Деруны с томлёной уткой è un piatto ucraino moderno costruito su una base casalinga riconoscibile. Conserva il carattere della tradizione e aggiunge una consistenza più pulita, acidità equilibrata, delicata cremosità, erbe o note arrostite. La ricetta è pratica da preparare in casa e adatta a un catalogo contemporaneo.",
+      "tips": "Preparate separatamente gli elementi anticipabili e uniteli vicino al servizio per mantenere la texture fresca.",
+      "serving_tips": "Servite con ordine, aggiungendo salsa o guarnizione alla fine per conservare contrasto e pulizia visiva.",
+      "storage_tips": "Conservate in frigorifero in un contenitore chiuso fino a 2 giorni; tenete separate salse ed elementi croccanti.",
+      "recipe_note": "Il piatto collega la cucina domestica ucraina a una presentazione più contemporanea.",
+      "instructions": [
+        "Preparate separatamente gli elementi anticipabili e uniteli vicino al servizio per mantenere la texture fresca.",
+        "Preparate separatamente gli elementi anticipabili e uniteli vicino al servizio per mantenere la texture fresca.",
+        "Preparate separatamente gli elementi anticipabili e uniteli vicino al servizio per mantenere la texture fresca.",
+        "Preparate separatamente gli elementi anticipabili e uniteli vicino al servizio per mantenere la texture fresca."
+      ]
+    },
+    "es": {
+      "title": "Деруны с томлёной уткой",
+      "description": "Деруны с томлёной уткой es un plato ucraniano moderno construido sobre una base casera reconocible. Conserva la comodidad de la tradición y suma una textura más limpia, acidez equilibrada, cremosidad suave, hierbas o notas tostadas. La receta funciona bien en casa y se siente actual para un catálogo contemporáneo.",
+      "tips": "Prepare los elementos adelantados por separado y únalos cerca del servicio para mantener la textura fresca.",
+      "serving_tips": "Sirva con orden, añadiendo la salsa o guarnición al final para conservar el contraste.",
+      "storage_tips": "Guarde en el refrigerador en un recipiente cerrado hasta 2 días; mantenga salsas y partes crujientes separadas.",
+      "recipe_note": "Este plato conecta la cocina casera ucraniana con una presentación más contemporánea.",
+      "instructions": [
+        "Prepare los elementos adelantados por separado y únalos cerca del servicio para mantener la textura fresca.",
+        "Prepare los elementos adelantados por separado y únalos cerca del servicio para mantener la textura fresca.",
+        "Prepare los elementos adelantados por separado y únalos cerca del servicio para mantener la textura fresca.",
+        "Prepare los elementos adelantados por separado y únalos cerca del servicio para mantener la textura fresca."
+      ]
+    },
+    "pt-BR": {
+      "title": "Деруны с томлёной уткой",
+      "description": "Деруны с томлёной уткой é um prato ucraniano moderno construído sobre uma base caseira reconhecível. Ele mantém o conforto da tradição e acrescenta textura mais limpa, acidez equilibrada, cremosidade suave, ervas ou notas assadas. A receita é prática para fazer em casa e atual para um catálogo contemporâneo.",
+      "tips": "Prepare os elementos antecipáveis separadamente e junte perto de servir para manter a textura fresca.",
+      "serving_tips": "Sirva com cuidado, adicionando molho ou finalização no fim para preservar contraste e aparência limpa.",
+      "storage_tips": "Guarde na geladeira em recipiente fechado por até 2 dias; mantenha molhos e partes crocantes separados.",
+      "recipe_note": "O prato conecta a cozinha caseira ucraniana a uma apresentação mais contemporânea.",
+      "instructions": [
+        "Prepare os elementos antecipáveis separadamente e junte perto de servir para manter a textura fresca.",
+        "Prepare os elementos antecipáveis separadamente e junte perto de servir para manter a textura fresca.",
+        "Prepare os elementos antecipáveis separadamente e junte perto de servir para manter a textura fresca.",
+        "Prepare os elementos antecipáveis separadamente e junte perto de servir para manter a textura fresca."
+      ]
+    },
+    "uk": {
+      "title": "Деруны с томлёной уткой",
+      "description": "Деруны с томлёной уткой — сучасна українська страва на знайомій домашній основі. Вона зберігає впізнаваний характер традиції та додає чистішу текстуру, збалансовану кислинку, м'яку кремовість, зелень або теплу запечену ноту. Рецепт зручний для дому й водночас виглядає сучасно.",
+      "tips": "Заготовки готуйте окремо й поєднуйте ближче до подачі, щоб зберегти свіжу текстуру.",
+      "serving_tips": "Подавайте акуратно, додаючи соус або зелень наприкінці, щоб зберегти контраст і чистий вигляд.",
+      "storage_tips": "Зберігайте в холодильнику в закритому контейнері до 2 діб; соуси й хрусткі елементи краще тримати окремо.",
+      "recipe_note": "Страва поєднує українську домашню кухню з сучаснішою подачею.",
+      "instructions": [
+        "Підготуйте картофель и яйцо, нарезая ингредиенты равномерно. Так они приготовятся одновременно, а готовое блюдо будет выглядеть аккуратно.",
+        "Соберите основу блюда и прогрейте её до появления явного аппетитного аромата. Лёгкая карамелизация, румяность или сливочная густота подскажут, что вкус начал раскрываться.",
+        "Доведите блюдо до готовности на умеренном огне или в духовке. Следите за текстурой: мясо должно стать мягким, крупа — рассыпчатой, овощи — нежными, но не водянистыми.",
+        "Проверьте соль и дайте блюду коротко отдохнуть перед подачей. Когда соки и соус распределятся, вкус станет спокойнее, а подача — чище."
+      ]
+    }
+  }
+}

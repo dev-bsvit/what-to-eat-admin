@@ -115,7 +115,7 @@ export default function CatalogsPage() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [hideUserGenerated, setHideUserGenerated] = useState(false);
+  const [hideUserGenerated, setHideUserGenerated] = useState(true);
   const [typeFilter, setTypeFilter] = useState<(typeof TYPE_FILTERS)[number]["value"]>("all");
   const [createError, setCreateError] = useState("");
   const [isCreating, setIsCreating] = useState(false);

@@ -7,6 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
+    "imagekit:recipes": "node АВТО_РЕЦЕПТ/imagekit-recipe-table.js",
+    "imagekit:setup-webp": "bash АВТО_РЕЦЕПТ/setup-webp.sh",
     "lint": "eslint"
   },
   "dependencies": {

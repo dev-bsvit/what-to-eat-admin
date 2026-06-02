@@ -63,8 +63,7 @@ Return JSON: {"products":[{"name":"...","quantity":1,"unit":"grams|kilograms|mil
     });
 
     if (!openAIResponse.ok) {
-      const err = await openAIResponse.text();
-      console.error("OpenAI error:", err);
+      console.error("OpenAI recognize-image failed:", openAIResponse.status);
       return NextResponse.json({ error: "AI service error" }, { status: 502 });
     }
 
@@ -86,7 +85,7 @@ Return JSON: {"products":[{"name":"...","quantity":1,"unit":"grams|kilograms|mil
         { status: e.status }
       );
     }
-    console.error("recognize-image error:", e);
+    console.error("recognize-image error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

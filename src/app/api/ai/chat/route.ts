@@ -277,8 +277,8 @@ export async function POST(request: Request) {
         } else {
           controller.enqueue(sseChunk({ clean_text: cleanText, done: true }));
         }
-      } catch (err) {
-        console.error("[ai/chat] error:", err);
+      } catch {
+        console.error("[ai/chat] error");
         controller.enqueue(sseChunk({ error: "Stream interrupted", done: true }));
       } finally {
         controller.close();

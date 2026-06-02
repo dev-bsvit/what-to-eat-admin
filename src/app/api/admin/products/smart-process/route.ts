@@ -63,6 +63,8 @@ type SmartStats = {
   badNames: number;
   badTranslations: number;
   missingLanguages: number;
+  duplicateTranslations: number;
+  duplicateTranslationRows: number;
   poorSynonyms: number;
   pendingModeration: number;
   totalIssues: number;
@@ -85,7 +87,7 @@ function hasBadName(name: string): boolean {
 const asNum = (v: unknown) => (typeof v === "number" && isFinite(v) ? v : null);
 
 // Fetch ALL translation rows using pagination (Supabase default max_rows=1000)
-type TranslationRow = { product_id: string; language_code: string; name: string; synonyms: string[] | null };
+type TranslationRow = { id: string; product_id: string; language_code: string; name: string; synonyms: string[] | null };
 
 async function fetchAllTranslations(): Promise<TranslationRow[]> {
   const PAGE = 1000;
@@ -94,7 +96,8 @@ async function fetchAllTranslations(): Promise<TranslationRow[]> {
   while (true) {
     const { data, error } = await supabaseAdmin
       .from("product_translations")
-      .select("product_id, language_code, name, synonyms")
+      .select("id, product_id, language_code, name, synonyms")
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error || !data?.length) break;
     all.push(...(data as TranslationRow[]));
@@ -133,8 +136,17 @@ async function getSmartStats(): Promise<SmartStats> {
 
   // Missing languages: product doesn't have all 8
   const productLangs: Record<string, Set<string>> = {};
+  const seenTranslationKeys = new Set<string>();
+  const duplicateTranslationIds = new Set<string>();
+  let duplicateTranslationRows = 0;
   for (const t of translations) {
     if (!productLangs[t.product_id]) productLangs[t.product_id] = new Set();
+    const key = `${t.product_id}:${t.language_code}`;
+    if (seenTranslationKeys.has(key)) {
+      duplicateTranslationRows += 1;
+      duplicateTranslationIds.add(t.product_id);
+    }
+    seenTranslationKeys.add(key);
     productLangs[t.product_id].add(t.language_code);
   }
   const allRequired = new Set(APP_LANGUAGES as readonly string[]);
@@ -155,21 +167,24 @@ async function getSmartStats(): Promise<SmartStats> {
   const badNames = badNameIds.size;
   const badTranslations = badTranslationIds.size;
   const missingLanguages = missingLangIds.size;
+  const duplicateTranslations = duplicateTranslationIds.size;
   const poorSynonyms = poorSynonymIds.size;
   const pendingModeration = pendingIds.size;
 
   // Unique products with at least one issue (avoids double-counting)
-  const uniqueAffected = new Set([...badNameIds, ...badTranslationIds, ...missingLangIds, ...poorSynonymIds, ...pendingIds]);
+  const uniqueAffected = new Set([...badNameIds, ...badTranslationIds, ...missingLangIds, ...duplicateTranslationIds, ...poorSynonymIds, ...pendingIds]);
 
   return {
     total: total ?? 0,
     badNames,
     badTranslations,
     missingLanguages,
+    duplicateTranslations,
+    duplicateTranslationRows,
     poorSynonyms,
     pendingModeration,
     totalIssues: uniqueAffected.size,
-    isClean: uniqueAffected.size === 0,
+    isClean: uniqueAffected.size === 0 && duplicateTranslationRows === 0,
   };
 }
 
@@ -206,6 +221,17 @@ async function fetchBatch(mode: string, limit: number): Promise<ProductRow[]> {
     return (allProducts as ProductRow[])
       .filter(p => !badIds_check(p.id, translations) && [...allRequired].some(l => !(productLangs[p.id] ?? new Set()).has(l)))
       .slice(0, limit);
+  }
+
+  if (mode === "dedupe-translations") {
+    const seen = new Set<string>();
+    const duplicateIds = new Set<string>();
+    for (const t of translations) {
+      const key = `${t.product_id}:${t.language_code}`;
+      if (seen.has(key)) duplicateIds.add(t.product_id);
+      seen.add(key);
+    }
+    return (allProducts as ProductRow[]).filter(p => duplicateIds.has(p.id)).slice(0, limit);
   }
 
   if (mode === "enrich-synonyms") {
@@ -246,6 +272,7 @@ async function getAutoMode(): Promise<string | null> {
   if (stats.badNames > 0) return "fix-names";
   if (stats.badTranslations > 0) return "fix-translations";
   if (stats.missingLanguages > 0) return "fill-languages";
+  if (stats.duplicateTranslations > 0) return "dedupe-translations";
   if (stats.pendingModeration > 0) return "pending";
   if (stats.poorSynonyms > 0) return "enrich-synonyms";
   return null;
@@ -253,9 +280,68 @@ async function getAutoMode(): Promise<string | null> {
 
 // ── DeepL + AI hybrid batch ───────────────────────────────────────────────────
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function translateNameWithDeepL(productName: string, lang: string): Promise<string> {
+  const translated = await translateTextsWithDeepL([productName], lang);
+  return translated[0] ?? "";
+}
+
+async function translateTextsWithDeepL(texts: string[], lang: string): Promise<string[]> {
+  const delays = [800, 1800, 3500, 7000];
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return (await translateBatch(texts, lang, "RU")).map(raw => {
+        const value = raw ?? "";
+        return value.charAt(0).toUpperCase() + value.slice(1);
+      });
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const retryable = message.includes("429") || message.toLowerCase().includes("too many");
+      if (!retryable || attempt === delays.length) break;
+      await sleep(delays[attempt]);
+    }
+  }
+
+  const message = lastError instanceof Error ? lastError.message : "unknown error";
+  throw new Error(message);
+}
+
+async function translateProductNamesWithDeepL(products: ProductRow[]): Promise<Record<string, Record<string, string>>> {
+  const namesByProduct: Record<string, Record<string, string>> = {};
+  for (const product of products) {
+    namesByProduct[product.id] = { ru: product.canonical_name };
+  }
+
+  for (const lang of APP_LANGUAGES) {
+    if (lang === "ru") continue;
+
+    try {
+      const translated = await translateTextsWithDeepL(products.map(p => p.canonical_name), lang);
+      products.forEach((product, index) => {
+        const name = translated[index] ?? "";
+        if (LATIN_LANGUAGES.includes(lang) && hasCyrillic(name)) {
+          throw new Error(`DeepL returned Cyrillic for ${lang}: "${name}"`);
+        }
+        namesByProduct[product.id][lang] = name;
+      });
+      await sleep(180);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      throw new Error(`DeepL failed for ${lang}: ${message}`);
+    }
+  }
+
+  return namesByProduct;
+}
+
 async function callDeepLBatch(
   product: ProductRow,
-  synonymsProvider: "openai" | "nvidia" = "openai"
+  synonymsProvider: "openai" | "nvidia" = "openai",
+  precomputedNames?: Record<string, string>
 ): Promise<{
   translations: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>;
   inputTokens: number; outputTokens: number;
@@ -264,27 +350,36 @@ async function callDeepLBatch(
   const apiKey = isNv ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} not set`);
 
-  // Step 1: DeepL — 8 language names in parallel
-  const rawNames = await Promise.all(
-    APP_LANGUAGES.map(lang =>
-      translateBatch([product.canonical_name], lang, "RU")
-        .then(r => {
-          const raw = r[0] ?? product.canonical_name;
-          return { lang, name: raw.charAt(0).toUpperCase() + raw.slice(1) };
-        })
-        .catch(() => ({ lang, name: product.canonical_name }))
-    )
-  );
-  // For Latin languages: if DeepL returned Cyrillic (fallback), use English translation instead
-  const enName = rawNames.find(n => n.lang === "en")?.name ?? product.canonical_name;
-  const names = rawNames.map(n => {
-    if (LATIN_LANGUAGES.includes(n.lang) && hasCyrillic(n.name)) {
-      console.log(`[DeepL] ${n.lang} returned Cyrillic for "${product.canonical_name}", using EN fallback "${enName}"`);
-      return { lang: n.lang, name: enName };
+  const nameMap: Record<string, string> = {};
+  if (precomputedNames) {
+    for (const lang of APP_LANGUAGES) {
+      const name = precomputedNames[lang] ?? product.canonical_name;
+      if (LATIN_LANGUAGES.includes(lang) && hasCyrillic(name)) {
+        throw new Error(`DeepL precomputed Cyrillic for ${lang}: "${name}"`);
+      }
+      nameMap[lang] = name;
     }
-    return n;
-  });
-  const nameMap: Record<string, string> = Object.fromEntries(names.map(n => [n.lang, n.name]));
+  } else {
+    // Step 1: DeepL — sequential calls to stay under Free API rate limits
+    for (const lang of APP_LANGUAGES) {
+      if (lang === "ru") {
+        nameMap[lang] = product.canonical_name;
+        continue;
+      }
+
+      try {
+        const name = await translateNameWithDeepL(product.canonical_name, lang);
+        if (LATIN_LANGUAGES.includes(lang) && hasCyrillic(name)) {
+          throw new Error(`DeepL returned Cyrillic for ${lang}: "${name}"`);
+        }
+        nameMap[lang] = name;
+        await sleep(120);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown error";
+        throw new Error(`DeepL failed for ${lang}: ${message}`);
+      }
+    }
+  }
 
   // Step 2: AI — synonyms + description + storage_tips (short prompt)
   const translationsList = APP_LANGUAGES.map(l => `${l}: "${nameMap[l]}"`).join(", ");
@@ -566,6 +661,59 @@ async function applyFull(productId: string, data: Awaited<ReturnType<typeof call
   console.log(`[applyFull] ${productId} translations saved: ${saved} rows`);
 }
 
+// ── Apply: collapse duplicate translation rows without spending AI tokens ──────
+
+async function processDeduplicateTranslations(product: ProductRow): Promise<ProcessResult> {
+  const { data, error } = await supabaseAdmin
+    .from("product_translations")
+    .select("language_code, name, synonyms, description, storage_tips")
+    .eq("product_id", product.id);
+
+  if (error) throw new Error(`Load translations failed: ${error.message}`);
+
+  const rows = (data ?? []) as Array<{
+    language_code: string;
+    name: string;
+    synonyms: string[] | null;
+    description: string | null;
+    storage_tips: string | null;
+  }>;
+
+  const byLang: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }> = {};
+  for (const row of rows) {
+    const current = byLang[row.language_code];
+    const candidate = {
+      name: row.name,
+      synonyms: row.synonyms ?? [],
+      description: row.description ?? null,
+      storage_tips: row.storage_tips ?? null,
+    };
+    if (!current) {
+      byLang[row.language_code] = candidate;
+      continue;
+    }
+
+    const currentScore = (current.synonyms?.length ?? 0) + (current.description ? 1 : 0) + (current.storage_tips ? 1 : 0);
+    const candidateScore = candidate.synonyms.length + (candidate.description ? 1 : 0) + (candidate.storage_tips ? 1 : 0);
+    if (candidateScore > currentScore) byLang[row.language_code] = candidate;
+  }
+
+  const savedRows = await applyTranslations(product.id, byLang);
+  const translationNames = Object.fromEntries(Object.entries(byLang).map(([l, t]) => [l, t.name]));
+  console.log(`[dedupe-translations] OK "${product.canonical_name}" saved=${savedRows}`);
+
+  return {
+    productId: product.id,
+    name: product.canonical_name,
+    action: "dedupe-translations",
+    changed: true,
+    inputTokens: 0,
+    outputTokens: 0,
+    savedRows,
+    translations: translationNames,
+  };
+}
+
 // ── Fix-names: regex clean + duplicate check (no GPT needed) ─────────────────
 
 function cleanName(name: string): string {
@@ -578,7 +726,7 @@ function cleanName(name: string): string {
     .trim();
 }
 
-async function processFixName(product: ProductRow): Promise<ProcessResult> {
+async function processFixName(product: ProductRow, provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia"): Promise<ProcessResult> {
   const cleaned = cleanName(product.canonical_name);
   console.log(`[fix-names] "${product.canonical_name}" → "${cleaned}"`);
 
@@ -621,7 +769,8 @@ async function processFixName(product: ProductRow): Promise<ProcessResult> {
 
   // Regenerate translations with cleaned name via DeepL
   const updated = { ...product, canonical_name: cleaned };
-  const { translations, inputTokens, outputTokens } = await callDeepLBatch(updated, "openai");
+  const synonymsProvider = provider === "nvidia" || provider === "deepl-nvidia" ? "nvidia" : "openai";
+  const { translations, inputTokens, outputTokens } = await callDeepLBatch(updated, synonymsProvider);
   const savedRows = await applyTranslations(product.id, translations);
   const translationNames = Object.fromEntries(Object.entries(translations).map(([l, t]) => [l, t.name]));
   console.log(`[fix-names] OK "${cleaned}" saved=${savedRows} EN="${translations.en?.name}"`);
@@ -631,18 +780,38 @@ async function processFixName(product: ProductRow): Promise<ProcessResult> {
 
 // ── Process one product ───────────────────────────────────────────────────────
 
-async function processOne(product: ProductRow, mode: string, provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia" = "openai"): Promise<ProcessResult> {
+async function processOne(
+  product: ProductRow,
+  mode: string,
+  provider: "openai" | "nvidia" | "deepl" | "deepl-nvidia" = "openai",
+  precomputedDeepLNames?: Record<string, string>
+): Promise<ProcessResult> {
   console.log(`[processOne] START "${product.canonical_name}" mode=${mode} provider=${provider}`);
 
   // fix-names: deterministic regex clean, no GPT, with duplicate detection
   if (mode === "fix-names") {
-    return await processFixName(product);
+    return await processFixName(product, provider);
+  }
+
+  if (mode === "dedupe-translations") {
+    return await processDeduplicateTranslations(product);
+  }
+
+  // Pending products need a full dictionary update and moderation approval.
+  // DeepL hybrid only updates translations, so route hybrid choices to the matching full AI provider.
+  if (mode === "pending") {
+    const fullProvider = provider === "nvidia" || provider === "deepl-nvidia" ? "nvidia" : "openai";
+    const gpt = await callGPTTranslate(product, fullProvider, mode);
+    await applyFull(product.id, gpt);
+    const translationNames = Object.fromEntries(Object.entries(gpt.translations).map(([l, t]) => [l, t.name]));
+    console.log(`[processOne] DONE pending "${product.canonical_name}" → "${gpt.canonical_name}" saved=8 EN="${translationNames.en}" DE="${translationNames.de}"`);
+    return { productId: product.id, name: product.canonical_name, action: mode, changed: true, inputTokens: gpt.inputTokens, outputTokens: gpt.outputTokens, savedRows: 8, translations: translationNames };
   }
 
   // DeepL hybrid: accurate names via DeepL + AI for synonyms only
   if (provider === "deepl" || provider === "deepl-nvidia") {
     const synonymsProvider = provider === "deepl-nvidia" ? "nvidia" : "openai";
-    const { translations, inputTokens, outputTokens } = await callDeepLBatch(product, synonymsProvider);
+    const { translations, inputTokens, outputTokens } = await callDeepLBatch(product, synonymsProvider, precomputedDeepLNames);
     const savedRows = await applyTranslations(product.id, translations);
     const translationNames = Object.fromEntries(Object.entries(translations).map(([l, t]) => [l, t.name]));
     console.log(`[processOne] DONE DeepL "${product.canonical_name}" saved=${savedRows} EN="${translations.en?.name}" DE="${translations.de?.name}"`);
@@ -670,6 +839,7 @@ function getModeRemaining(mode: string, stats: SmartStats): number {
     case "fix-names":       return stats.badNames;
     case "fix-translations": return stats.badTranslations;
     case "fill-languages":  return stats.missingLanguages;
+    case "dedupe-translations": return stats.duplicateTranslations;
     case "pending":         return stats.pendingModeration;
     case "enrich-synonyms": return stats.poorSynonyms;
     default:                return stats.totalIssues;
@@ -731,10 +901,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, mode, processed: 0, remaining: 0, results: [], stats });
     }
 
-    const results = await Promise.all(
-      products.map(async (product) => {
+    const usesDeepL = mode === "fix-names" || ((provider === "deepl" || provider === "deepl-nvidia") && mode !== "pending");
+    const precomputedDeepLNames = usesDeepL && mode !== "fix-names"
+      ? await translateProductNamesWithDeepL(products)
+      : null;
+
+    const runProduct = async (product: ProductRow): Promise<ProcessResult> => {
         try {
-          if (!dryRun) return await processOne(product, mode, provider);
+          if (!dryRun) return await processOne(product, mode, provider, precomputedDeepLNames?.[product.id]);
           return { productId: product.id, name: product.canonical_name, action: mode, changed: false, inputTokens: 0, outputTokens: 0 };
         } catch (err) {
           return {
@@ -747,8 +921,17 @@ export async function POST(request: Request) {
             error: err instanceof Error ? err.message : "Unknown error",
           };
         }
-      })
-    );
+    };
+
+    const results: ProcessResult[] = [];
+    if (usesDeepL) {
+      for (const product of products) {
+        results.push(await runProduct(product));
+        await sleep(350);
+      }
+    } else {
+      results.push(...await Promise.all(products.map(runProduct)));
+    }
 
     const totalIn  = results.reduce((s, r) => s + r.inputTokens, 0);
     const totalOut = results.reduce((s, r) => s + r.outputTokens, 0);

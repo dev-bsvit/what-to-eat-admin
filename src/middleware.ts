@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-function isPublicPath(pathname: string) {
+function isPublicPath(pathname: string, method: string) {
   if (pathname === "/login" || pathname === "/api/login") {
     return true;
   }
@@ -30,6 +30,9 @@ function isPublicPath(pathname: string) {
   if (pathname.startsWith("/api/ai/")) {
     return true;
   }
+  if (method === "GET" && pathname === "/api/admin/products/moderation-agent") {
+    return true;
+  }
   if (pathname.startsWith("/_next/")) {
     return true;
   }
@@ -38,7 +41,7 @@ function isPublicPath(pathname: string) {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (isPublicPath(pathname)) {
+  if (isPublicPath(pathname, request.method)) {
     return NextResponse.next();
   }
 

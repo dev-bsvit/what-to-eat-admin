@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Clock3, Download, Languages, Save, Upload, UsersRound } from "lucide-react";
+import { ArrowLeft, Clock3, Download, Languages, Save, Upload, UsersRound } from "lucide-react";
 import RecipeIngredientsEditor from "@/components/RecipeIngredientsEditor";
 import styles from "../catalogs/catalogs-blueprint.module.css";
 
@@ -423,6 +423,16 @@ const initialState = {
   cuisine_id: "",
   dish_type: "",
   course: "",
+  meal_role: "",
+  fridge_life_days: "1",
+  mood_tags: "",
+  main_ingredient: "",
+  budget_level: "",
+  season: "all",
+  is_compound_safe: "true",
+  goal_tags: "",
+  kid_friendly: "false",
+  spicy_level: "0",
   owner_id: "",
   is_user_defined: "false",
   author: "",
@@ -504,6 +514,10 @@ function buildRecipeImportPrompt({
     contextLines.push(`- Если подходит рецепту, используй course "${form.course.trim()}".`);
   }
 
+  if (form.meal_role.trim()) {
+    contextLines.push(`- meal_role уже задан: ${JSON.stringify(parseTagsField(form.meal_role))}.`);
+  }
+
   if (form.servings > 0) {
     contextLines.push(`- Если точное число порций неизвестно, возьми servings=${form.servings}.`);
   }
@@ -549,6 +563,10 @@ function buildRecipeImportPrompt({
   const difficultyPlaceholder = form.difficulty.trim() || "medium";
   const dishTypePlaceholder = form.dish_type.trim() || "soup";
   const coursePlaceholder = form.course.trim() || "main";
+  const mealRolePlaceholder = parseTagsField(form.meal_role);
+  const moodTagsPlaceholder = parseTagsField(form.mood_tags);
+  const seasonPlaceholder = parseTagsField(form.season);
+  const goalTagsPlaceholder = parseTagsField(form.goal_tags);
 
   return `Сгенерируй JSON для рецепта.
 Верни ТОЛЬКО валидный JSON без markdown и пояснений.
@@ -566,6 +584,10 @@ ${availableCuisines}
 - Каждый steps.text должен быть 1-3 понятных предложения. Избегай телеграфного стиля вроде "Нарежьте овощи" без объяснения. Лучше: "Нарежьте овощи одинаковыми кусочками, чтобы они приготовились одновременно. Лук режьте мельче — так он быстрее отдаст сладость в основу."
 - Для новичков обязательно добавляй визуальные и сенсорные ориентиры: цвет, запах, консистенция, мягкость, момент закипания, степень румяности. Не усложняй профессиональными терминами без объяснения.
 - Не перегружай шаги длинными лекциями. Один шаг = одно логичное действие или короткий связанный этап.
+- Количество шагов определяется только реальной сложностью блюда: столько шагов, сколько нужно, чтобы человек мог приготовить его без вопросов. Не сокращай шаги ради экономии — каждый пропущенный этап это блюдо которое не получилось.
+- ЗАПРЕЩЕНЫ универсальные шаги, которые подходят к любому блюду. ❌ "Соберите основу и прогрейте до аппетитного аромата" ❌ "Доведите до готовности на умеренном огне" ❌ "Проверьте соль и дайте отдохнуть" — это не шаги, это ничего. ✅ Каждый шаг называет конкретный ингредиент, конкретное действие и конкретный результат именно для этого блюда.
+- Для блюд с несколькими компонентами (фарш, соус, тесто, оболочка, маринад и т.д.) у каждого компонента должны быть свои шаги. Нельзя объединять подготовку капусты, начинки и соуса в один шаг.
+- Каждый шаг с термообработкой обязан содержать хотя бы один конкретный ориентир: температуру, время или визуальный признак готовности (золотистый цвет, закипание, мягкость при проколе).
 - Сначала определи язык исходного текста в title / description / instructions / tips / serving_tips / storage_tips / recipe_note. Это базовый язык рецепта.
 - translations содержит переводы для ВСЕХ остальных поддерживаемых языков, кроме базового языка.
 - Базовый язык НЕ дублируй в translations.
@@ -577,6 +599,16 @@ ${availableCuisines}
 - Используй только языки: ${languagesLine}.
 - Для units используй только: ${unitsLine}.
 - tags — обязательный массив строк. Выбери из: quick, special occasion, light, hearty, breakfast, lunch, dinner, snack, vegetarian, vegan, gluten-free, dairy-free, soup, salad, pasta, grill, baking, raw. Правила: quick если totalTime ≤ 20 мин; special occasion если > 60 мин или праздничное блюдо; light если < 300 ккал; hearty если > 650 ккал; breakfast/lunch/dinner/snack — тип приёма пищи (обязателен хотя бы один). Пример: ["dinner","hearty","soup"].
+- meal_role — массив из: breakfast, lunch_main, lunch_side, dinner, snack, dessert. Это точная роль в рационе, не путай с грубым dish_type.
+- fridge_life_days — число дней хранения в холодильнике: 0 для салатов с заправкой, 1 по умолчанию, 2 для котлет/запеканок, 3 для борща/супов.
+- mood_tags — массив из: comfort, light, energizing, festive, quick, cozy.
+- main_ingredient — одно значение из: chicken, beef, fish, pasta, rice, vegetables, eggs, legumes.
+- budget_level — 1 дешево, 2 средне, 3 дорого.
+- season — массив из: spring, summer, autumn, winter, all.
+- is_compound_safe — false для самодостаточных блюд вроде супов; true если можно добавить гарнир или салат.
+- goal_tags — массив из: weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep. Это цели для умного рациона.
+- kid_friendly — boolean: true только для мягких, неострых, понятных детям блюд без алкоголя и небезопасных ингредиентов.
+- spicy_level — 0 нет остроты, 1 лёгкая, 2 средняя, 3 острая.
 - ingredients — массив объектов {id,name,quantity,unit}. Если UUID продукта неизвестен, ставь id пустым "" и заполняй name.
 - Все числовые поля возвращай как number или null, без строк, без единиц измерения и без поясняющего текста.
 - Верхние поля calories / protein / fat / carbs / fiber / sugar / salt / saturated_fat / cholesterol / sodium не оставляй пустыми без причины. Если точных значений нет, рассчитай или реалистично оцени по ингредиентам и количеству порций.
@@ -604,6 +636,16 @@ ${availableCuisines}
   "cuisine_id": "${cuisinePlaceholder}",
   "dish_type": "${dishTypePlaceholder}",
   "course": "${coursePlaceholder}",
+  "meal_role": ${JSON.stringify(mealRolePlaceholder.length ? mealRolePlaceholder : ["dinner"])},
+  "fridge_life_days": ${form.fridge_life_days || 1},
+  "mood_tags": ${JSON.stringify(moodTagsPlaceholder.length ? moodTagsPlaceholder : ["comfort", "cozy"])},
+  "main_ingredient": "fish",
+  "budget_level": 2,
+  "season": ${JSON.stringify(seasonPlaceholder.length ? seasonPlaceholder : ["all"])},
+  "is_compound_safe": false,
+  "goal_tags": ${JSON.stringify(goalTagsPlaceholder.length ? goalTagsPlaceholder : ["balanced", "variety"])},
+  "kid_friendly": false,
+  "spicy_level": 2,
   "owner_id": ${ownerPlaceholder ? `"${ownerPlaceholder}"` : "null"},
   "is_user_defined": ${form.is_user_defined === "true" ? "true" : "false"},
   "author": "Имя автора",
@@ -794,6 +836,16 @@ export default function RecipesPage() {
   const [showInstructionsSection, setShowInstructionsSection] = useState(true);
   const [translating, setTranslating] = useState(false);
   const [translateStatus, setTranslateStatus] = useState("");
+  const returnCatalogId = searchParams.get("returnCatalog") || cuisineId || form.cuisine_id;
+
+  function goBackFromRecipe() {
+    if (returnCatalogId) {
+      router.push(`/catalogs/${returnCatalogId}?tab=recipes`);
+      return;
+    }
+
+    router.back();
+  }
 
   useEffect(() => {
     loadCuisines();
@@ -935,7 +987,7 @@ export default function RecipesPage() {
     updateTranslationDraft(lang, { instructions: getBaseTextContent().instructions.join("\n") });
   };
 
-  function applyImportRecipe(raw: string) {
+  function applyImportRecipe(raw: string, options: { preserveImageUrl?: boolean } = {}) {
     setImportStatus("");
     const trimmed = raw.trim();
     if (!trimmed) {
@@ -994,14 +1046,24 @@ export default function RecipesPage() {
 
     setForm(prev => ({
       ...prev,
-      id: normalized.id || prev.id,
+      id: editId || prev.id || normalized.id,
       title: normalized.title || prev.title,
       description: toText(normalized.description),
-      image_url: toText(normalized.image_url || normalized.imageUrl),
+      image_url: options.preserveImageUrl ? prev.image_url : toText(normalized.image_url || normalized.imageUrl),
       cuisine_id: normalized.cuisine_id || prev.cuisine_id,
       source_language: toText(normalized.source_language || prev.source_language || "ru"),
       dish_type: toText(normalized.dish_type),
       course: toText(normalized.course),
+      meal_role: Array.isArray(normalized.meal_role) ? normalized.meal_role.join(", ") : toText(normalized.meal_role),
+      fridge_life_days: toText(normalized.fridge_life_days ?? prev.fridge_life_days ?? "1"),
+      mood_tags: Array.isArray(normalized.mood_tags) ? normalized.mood_tags.join(", ") : toText(normalized.mood_tags),
+      main_ingredient: toText(normalized.main_ingredient),
+      budget_level: toText(normalized.budget_level),
+      season: Array.isArray(normalized.season) ? normalized.season.join(", ") : toText(normalized.season || prev.season || "all"),
+      is_compound_safe: String(normalized.is_compound_safe ?? true),
+      goal_tags: Array.isArray(normalized.goal_tags) ? normalized.goal_tags.join(", ") : toText(normalized.goal_tags),
+      kid_friendly: String(normalized.kid_friendly ?? false),
+      spicy_level: toText(normalized.spicy_level ?? "0"),
       owner_id: toText(normalized.owner_id),
       is_user_defined: String(normalized.is_user_defined ?? false),
       author: toText(normalized.author),
@@ -1227,6 +1289,16 @@ export default function RecipesPage() {
           cuisine_id: recipe.cuisine_id || "",
           dish_type: recipe.dish_type || "",
           course: recipe.course || "",
+          meal_role: Array.isArray(recipe.meal_role) ? recipe.meal_role.join(", ") : "",
+          fridge_life_days: recipe.fridge_life_days?.toString() || "1",
+          mood_tags: Array.isArray(recipe.mood_tags) ? recipe.mood_tags.join(", ") : "",
+          main_ingredient: recipe.main_ingredient || "",
+          budget_level: recipe.budget_level?.toString() || "",
+          season: Array.isArray(recipe.season) ? recipe.season.join(", ") : "all",
+          is_compound_safe: String(recipe.is_compound_safe ?? true),
+          goal_tags: Array.isArray(recipe.goal_tags) ? recipe.goal_tags.join(", ") : "",
+          kid_friendly: String(recipe.kid_friendly ?? false),
+          spicy_level: recipe.spicy_level?.toString() || "0",
           owner_id: recipe.owner_id || "",
           is_user_defined: String(recipe.is_user_defined ?? false),
           author: recipe.author || "",
@@ -1417,7 +1489,7 @@ export default function RecipesPage() {
       });
 
       const payload = {
-        id: form.id || crypto.randomUUID(),
+        id: editId || form.id || crypto.randomUUID(),
         title: form.title,
         description: form.description || null,
         image_url: form.image_url || null,
@@ -1425,6 +1497,16 @@ export default function RecipesPage() {
         cuisine_id: form.cuisine_id,
         dish_type: form.dish_type || null,
         course: form.course || null,
+        meal_role: form.meal_role ? form.meal_role.split(",").map(t => t.trim()).filter(Boolean) : [],
+        fridge_life_days: form.fridge_life_days ? parseInt(form.fridge_life_days) : 1,
+        mood_tags: form.mood_tags ? form.mood_tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+        main_ingredient: form.main_ingredient || null,
+        budget_level: form.budget_level ? parseInt(form.budget_level) : null,
+        season: form.season ? form.season.split(",").map(t => t.trim()).filter(Boolean) : ["all"],
+        is_compound_safe: form.is_compound_safe === "true",
+        goal_tags: form.goal_tags ? form.goal_tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+        kid_friendly: form.kid_friendly === "true",
+        spicy_level: form.spicy_level ? parseInt(form.spicy_level) : 0,
         owner_id: form.owner_id || null,
         is_user_defined: form.is_user_defined === "true",
         author: form.author || null,
@@ -1479,7 +1561,7 @@ export default function RecipesPage() {
       if (response.ok) {
         alert("Рецепт сохранен!");
         if (!editId) {
-          router.push(cuisineId ? `/catalogs/${cuisineId}` : "/catalogs");
+          router.push(cuisineId ? `/catalogs/${cuisineId}?tab=recipes` : "/catalogs");
         }
       } else {
         const error = await response.json();
@@ -1728,13 +1810,36 @@ export default function RecipesPage() {
           justifyContent: 'space-between',
           alignItems: 'flex-start',
         }}>
-          <h1 style={{
-            fontSize: '24px',
-            fontWeight: 600,
-            color: 'var(--text-primary)',
-          }}>
-            {editId ? 'Редактировать рецепт' : 'Создать рецепт'}
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+            <button
+              type="button"
+              onClick={goBackFromRecipe}
+              title={returnCatalogId ? "Назад в рецепты каталога" : "Назад"}
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '999px',
+                border: '1px solid var(--border-light)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flex: '0 0 auto',
+              }}
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <h1 style={{
+              fontSize: '24px',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              margin: 0,
+            }}>
+              {editId ? 'Редактировать рецепт' : 'Создать рецепт'}
+            </h1>
+          </div>
           <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
             <button
               className="btn btn-secondary"
@@ -1752,10 +1857,10 @@ export default function RecipesPage() {
             </button>
             <button
               className="btn btn-secondary"
-              onClick={() => router.back()}
+              onClick={goBackFromRecipe}
               style={{ minWidth: '100px' }}
             >
-              Отмена
+              {returnCatalogId ? 'В рецепты каталога' : 'Отмена'}
             </button>
             <button
               className="btn btn-primary"
@@ -1842,6 +1947,85 @@ export default function RecipesPage() {
             {translateStatus}
           </div>
         )}
+
+        <div style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-light)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--spacing-lg)',
+          marginBottom: 'var(--spacing-lg)',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(260px, 0.9fr) minmax(360px, 1.4fr)',
+          gap: 'var(--spacing-lg)',
+          alignItems: 'end',
+        }}>
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '13px',
+              fontWeight: 600,
+              marginBottom: 'var(--spacing-xs)',
+              color: 'var(--text-primary)',
+            }}>
+              Ссылка на фото
+            </label>
+            <input
+              type="text"
+              className="input"
+              placeholder="https://example.com/photo.webp"
+              value={form.image_url}
+              onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'end' }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 600,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                JSON рецепта
+              </label>
+              <textarea
+                className="input"
+                rows={3}
+                placeholder="Вставьте JSON рецепта"
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                style={{ fontFamily: 'monospace', fontSize: '12px', resize: 'vertical', minHeight: '44px' }}
+                spellCheck={false}
+              />
+            </div>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => applyImportRecipe(importText, { preserveImageUrl: true })}
+              disabled={!importText.trim()}
+              style={{ minWidth: '130px' }}
+            >
+              Применить
+            </button>
+          </div>
+
+          {importStatus && (
+            <div style={{
+              gridColumn: '1 / -1',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: importStatus.startsWith("Ошибка") || importStatus.startsWith("Неверный") || importStatus.startsWith("Вставьте")
+                ? 'var(--accent-danger)'
+                : 'var(--text-secondary)',
+              background: 'var(--color-ghost-gray)',
+              border: '1px solid var(--border-light)',
+            }}>
+              {importStatus}
+            </div>
+          )}
+        </div>
 
         {recipeEditorMode === "json" && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: 'var(--spacing-lg)' }}>
@@ -2023,7 +2207,7 @@ export default function RecipesPage() {
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: '1fr 1fr 1fr',
             gap: 'var(--spacing-lg)',
             marginBottom: 'var(--spacing-lg)',
           }}>
@@ -2226,6 +2410,230 @@ export default function RecipesPage() {
                 value={form.course}
                 onChange={(e) => setForm({ ...form, course: e.target.value })}
               />
+            </div>
+          </div>
+
+          {/* Поля для умного рациона */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--spacing-lg)',
+            marginBottom: 'var(--spacing-lg)',
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                meal_role
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="breakfast, lunch_main, dinner"
+                value={form.meal_role}
+                onChange={(e) => setForm({ ...form, meal_role: e.target.value })}
+              />
+            </div>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                mood_tags
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="comfort, light, quick"
+                value={form.mood_tags}
+                onChange={(e) => setForm({ ...form, mood_tags: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr',
+            gap: 'var(--spacing-lg)',
+            marginBottom: 'var(--spacing-lg)',
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                fridge_life_days
+              </label>
+              <input
+                type="number"
+                className="input"
+                min="0"
+                value={form.fridge_life_days}
+                onChange={(e) => setForm({ ...form, fridge_life_days: e.target.value })}
+              />
+            </div>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                main_ingredient
+              </label>
+              <select
+                className="input"
+                value={form.main_ingredient}
+                onChange={(e) => setForm({ ...form, main_ingredient: e.target.value })}
+              >
+                <option value="">—</option>
+                {["chicken", "beef", "fish", "pasta", "rice", "vegetables", "eggs", "legumes"].map(value => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                budget_level
+              </label>
+              <select
+                className="input"
+                value={form.budget_level}
+                onChange={(e) => setForm({ ...form, budget_level: e.target.value })}
+              >
+                <option value="">—</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--spacing-lg)',
+            marginBottom: 'var(--spacing-lg)',
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                season
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="all, summer"
+                value={form.season}
+                onChange={(e) => setForm({ ...form, season: e.target.value })}
+              />
+            </div>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                is_compound_safe
+              </label>
+              <select
+                className="input"
+                value={form.is_compound_safe}
+                onChange={(e) => setForm({ ...form, is_compound_safe: e.target.value })}
+              >
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </div>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                kid_friendly
+              </label>
+              <select
+                className="input"
+                value={form.kid_friendly}
+                onChange={(e) => setForm({ ...form, kid_friendly: e.target.value })}
+              >
+                <option value="false">false</option>
+                <option value="true">true</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '2fr 1fr',
+            gap: 'var(--spacing-lg)',
+            marginBottom: 'var(--spacing-lg)',
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                goal_tags
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="balanced, quick, budget, meal_prep"
+                value={form.goal_tags}
+                onChange={(e) => setForm({ ...form, goal_tags: e.target.value })}
+              />
+            </div>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 500,
+                marginBottom: 'var(--spacing-xs)',
+                color: 'var(--text-primary)',
+              }}>
+                spicy_level
+              </label>
+              <select
+                className="input"
+                value={form.spicy_level}
+                onChange={(e) => setForm({ ...form, spicy_level: e.target.value })}
+              >
+                <option value="0">0 — none</option>
+                <option value="1">1 — mild</option>
+                <option value="2">2 — medium</option>
+                <option value="3">3 — hot</option>
+              </select>
             </div>
           </div>
 

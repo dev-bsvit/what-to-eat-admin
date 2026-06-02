@@ -16,12 +16,38 @@ const onlyAllowed = (items: string[] | null, allowed: string[]) => {
     .filter((item) => item.length > 0 && allowedSet.has(item));
 };
 
+const parseCuisineTranslations = (value: unknown) => {
+  const parsed = parseJson(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return [];
+  }
+
+  return Object.entries(parsed as Record<string, unknown>)
+    .map(([languageCode, rawTranslation]) => {
+      if (!rawTranslation || typeof rawTranslation !== "object" || Array.isArray(rawTranslation)) {
+        return null;
+      }
+      const translation = rawTranslation as Record<string, unknown>;
+      const name = normalizeText(translation.name);
+      const description = normalizeText(translation.description);
+      if (!name && !description) {
+        return null;
+      }
+      return {
+        language_code: languageCode,
+        name,
+        description,
+      };
+    })
+    .filter((item): item is { language_code: string; name: string | null; description: string | null } => item !== null);
+};
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
 
   let query = supabaseAdmin
-    .from("cuisines")
+    .from("cuisines_with_translations")
     .select("*")
     .order("name", { ascending: true });
 
@@ -107,6 +133,24 @@ export async function POST(request: Request) {
     if (error) {
       console.error("Supabase error:", error);
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    const translationRows = parseCuisineTranslations(body.translations).map((translation) => ({
+      cuisine_id: data.id,
+      language_code: translation.language_code,
+      name: translation.name ?? data.name,
+      description: translation.description,
+    }));
+
+    if (translationRows.length > 0) {
+      const { error: translationsError } = await supabaseAdmin
+        .from("cuisine_translations")
+        .upsert(translationRows, { onConflict: "cuisine_id,language_code" });
+
+      if (translationsError) {
+        console.error("Supabase cuisine translations error:", translationsError);
+        return NextResponse.json({ error: translationsError.message }, { status: 400 });
+      }
     }
 
     return NextResponse.json({ data });

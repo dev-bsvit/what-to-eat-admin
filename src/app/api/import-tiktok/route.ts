@@ -17,6 +17,16 @@ interface ImportedRecipe {
   servings?: number;
   cuisine?: string;
   tags: string[];
+  meal_role?: string[];
+  fridge_life_days?: number;
+  mood_tags?: string[];
+  main_ingredient?: string;
+  budget_level?: number;
+  season?: string[];
+  is_compound_safe?: boolean;
+  goal_tags?: string[];
+  kid_friendly?: boolean;
+  spicy_level?: number;
   ingredients: Array<{
     name: string;
     amount: string;
@@ -96,6 +106,20 @@ function extractJson(content: string) {
   return match ? match[0] : content;
 }
 
+function normalizeTextArray(value: any, fallback: string[] = []) {
+  return Array.isArray(value) ? value.map((t: any) => String(t).trim()).filter(Boolean) : fallback;
+}
+
+function normalizeNumber(value: any, fallback?: number) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeText(value: any, fallback?: string) {
+  const text = value == null ? "" : String(value).trim();
+  return text || fallback;
+}
+
 function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): ImportedRecipe {
   const title = String(parsed.title || fallback.title || "Рецепт из TikTok").trim();
 
@@ -140,6 +164,16 @@ function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): Import
     servings: Number.isFinite(parsed.servings) ? parsed.servings : (fallback.servings || 4),
     cuisine: parsed.cuisine ? String(parsed.cuisine).trim() : (fallback.cuisine || "international"),
     tags: Array.isArray(parsed.tags) ? parsed.tags.map((t: any) => String(t).trim()).filter(Boolean) : [],
+    meal_role: normalizeTextArray(parsed.meal_role, fallback.meal_role),
+    fridge_life_days: normalizeNumber(parsed.fridge_life_days, fallback.fridge_life_days ?? 1),
+    mood_tags: normalizeTextArray(parsed.mood_tags, fallback.mood_tags),
+    main_ingredient: normalizeText(parsed.main_ingredient, fallback.main_ingredient),
+    budget_level: normalizeNumber(parsed.budget_level, fallback.budget_level),
+    season: normalizeTextArray(parsed.season, fallback.season ?? ["all"]),
+    is_compound_safe: typeof parsed.is_compound_safe === "boolean" ? parsed.is_compound_safe : (fallback.is_compound_safe ?? true),
+    goal_tags: normalizeTextArray(parsed.goal_tags, fallback.goal_tags ?? []),
+    kid_friendly: typeof parsed.kid_friendly === "boolean" ? parsed.kid_friendly : (fallback.kid_friendly ?? false),
+    spicy_level: normalizeNumber(parsed.spicy_level, fallback.spicy_level ?? 0),
     ingredients,
     steps,
     sourceUrl: String(parsed.sourceUrl || fallback.sourceUrl || "").trim(),
@@ -187,6 +221,16 @@ REQUIRED OUTPUT FORMAT (copy structure exactly):
   "servings": 4,
   "cuisine": "international",
   "tags": ["quick", "dinner"],
+  "meal_role": ["dinner"],
+  "fridge_life_days": 1,
+  "mood_tags": ["comfort", "quick"],
+  "main_ingredient": "chicken",
+  "budget_level": 2,
+  "season": ["all"],
+  "is_compound_safe": true,
+  "goal_tags": ["balanced"],
+  "kid_friendly": false,
+  "spicy_level": 1,
   "ingredients": [
     { "name": "ingredient name", "amount": "100", "unit": "г", "note": "" }
   ],
@@ -220,7 +264,18 @@ CRITICAL RULES:
    Meal: "breakfast", "lunch", "dinner", "snack"
    Diet: "vegetarian", "vegan", "gluten-free", "dairy-free"
    Type: "soup", "salad", "pasta", "grill", "baking", "raw"
-   If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.`;
+   If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.
+9. PLANNING FIELDS:
+   - meal_role: array from breakfast, lunch_main, lunch_side, dinner, snack, dessert
+   - fridge_life_days: 0 dressed salads/same-day, 1 default, 2 cutlets/casseroles, 3 soups/borscht/stews
+   - mood_tags: array from comfort, light, energizing, festive, quick, cozy
+   - main_ingredient: one of chicken, beef, fish, pasta, rice, vegetables, eggs, legumes
+   - budget_level: 1 cheap, 2 medium, 3 expensive
+   - season: array from spring, summer, autumn, winter, all
+   - is_compound_safe: false for self-contained soups/stews, true if dish can be paired with a side/salad
+   - goal_tags: array from weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep
+   - kid_friendly: boolean, true only for mild, non-spicy, child-appropriate dishes with no alcohol
+   - spicy_level: 0 none, 1 mild, 2 medium, 3 hot`;
 }
 
 function looksLikeRecipe(text: string) {

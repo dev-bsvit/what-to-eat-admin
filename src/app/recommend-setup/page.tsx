@@ -77,6 +77,15 @@ const MIGRATION_SQL = `-- Run this in Supabase SQL Editor
 CREATE EXTENSION IF NOT EXISTS vector;
 
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS mood_tags text[] DEFAULT '{}';
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS meal_role text[] DEFAULT '{}';
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS fridge_life_days int DEFAULT 1;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS main_ingredient text;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS budget_level smallint;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS season text[] DEFAULT ARRAY['all']::text[];
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS is_compound_safe boolean DEFAULT true;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS goal_tags text[] DEFAULT '{}';
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS kid_friendly boolean DEFAULT false;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS spicy_level smallint DEFAULT 0;
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS embedding vector(1536);
 
 CREATE INDEX IF NOT EXISTS recipes_embedding_idx
@@ -85,6 +94,24 @@ CREATE INDEX IF NOT EXISTS recipes_embedding_idx
 
 CREATE INDEX IF NOT EXISTS recipes_mood_tags_idx
   ON recipes USING gin (mood_tags);
+
+CREATE INDEX IF NOT EXISTS idx_recipes_meal_role
+  ON recipes USING gin (meal_role);
+
+CREATE INDEX IF NOT EXISTS idx_recipes_season
+  ON recipes USING gin (season);
+
+CREATE INDEX IF NOT EXISTS idx_recipes_main_ingredient
+  ON recipes (main_ingredient);
+
+CREATE INDEX IF NOT EXISTS idx_recipes_goal_tags
+  ON recipes USING gin (goal_tags);
+
+CREATE INDEX IF NOT EXISTS idx_recipes_kid_friendly
+  ON recipes (kid_friendly);
+
+CREATE INDEX IF NOT EXISTS idx_recipes_spicy_level
+  ON recipes (spicy_level);
 
 CREATE OR REPLACE FUNCTION match_recipes(
   query_embedding vector(1536),
@@ -236,7 +263,7 @@ export default function RecommendSetupPage() {
           <StepCard
             num={1}
             title="Применить миграцию"
-            description={<>Добавляет колонки <code style={codeStyle}>mood_tags</code> и <code style={codeStyle}>embedding</code>, индексы и функцию <code style={codeStyle}>match_recipes</code> в Supabase.</>}
+            description={<>Добавляет поля планирования рецептов, <code style={codeStyle}>mood_tags</code>, <code style={codeStyle}>embedding</code>, индексы и функцию <code style={codeStyle}>match_recipes</code> в Supabase.</>}
             step={steps.migrate}
             disabled={running}
             onRun={() => runAction("migrate")}
@@ -283,7 +310,7 @@ export default function RecommendSetupPage() {
           <StepCard
             num={2}
             title="Тегировать рецепты"
-            description="GPT-4o-mini автоматически присвоит каждому рецепту теги: light, hearty, junk, usual. Занимает 1–5 минут."
+            description="GPT-4o-mini автоматически присвоит каждому рецепту теги: comfort, light, energizing, festive, quick, cozy. Занимает 1–5 минут."
             step={steps.tag}
             disabled={running || !migrateDone}
             onRun={() => runAction("tag")}

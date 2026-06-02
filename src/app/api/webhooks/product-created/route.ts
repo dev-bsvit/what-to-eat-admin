@@ -23,24 +23,17 @@ function verifyWebhookAuth(request: Request): boolean {
   const authHeader = request.headers.get("authorization");
   const webhookSecret = process.env.WEBHOOK_SECRET;
 
-  console.log(`[Webhook Auth] NODE_ENV: ${process.env.NODE_ENV}`);
-  console.log(`[Webhook Auth] WEBHOOK_SECRET exists: ${!!webhookSecret}`);
-  console.log(`[Webhook Auth] Auth header: ${authHeader?.substring(0, 20)}...`);
-
   // Allow in development
   if (process.env.NODE_ENV === "development") {
     return true;
   }
 
-  // If no secret configured, allow (for testing)
   if (!webhookSecret) {
-    console.log("[Webhook Auth] No WEBHOOK_SECRET configured, allowing request");
-    return true;
+    console.error("[Webhook Auth] WEBHOOK_SECRET is not configured");
+    return false;
   }
 
-  const isValid = authHeader === `Bearer ${webhookSecret}`;
-  console.log(`[Webhook Auth] Validation result: ${isValid}`);
-  return isValid;
+  return authHeader === `Bearer ${webhookSecret}`;
 }
 
 interface SupabaseWebhookPayload {
@@ -86,8 +79,6 @@ export async function POST(request: Request) {
 
     // Process all new products (removed auto_created/user_created check)
     // Every new product should be processed for linking and data filling
-    console.log(`[Webhook] Processing new product: ${product.canonical_name} (${product.id})`)
-
     const results: {
       productId: string;
       productName: string;
@@ -161,7 +152,7 @@ export async function POST(request: Request) {
       results,
     });
   } catch (error) {
-    console.error("Webhook processing error:", error);
+    console.error("Webhook processing error");
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }

@@ -2,14 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
-const MOOD_TAGS = ["light", "hearty", "junk", "usual"];
+const MOOD_TAGS = ["comfort", "light", "energizing", "festive", "quick", "cozy"];
 
 const MIGRATION_SQL = `
 CREATE EXTENSION IF NOT EXISTS vector;
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS mood_tags text[] DEFAULT '{}';
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS meal_role text[] DEFAULT '{}';
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS fridge_life_days int DEFAULT 1;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS main_ingredient text;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS budget_level smallint;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS season text[] DEFAULT ARRAY['all']::text[];
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS is_compound_safe boolean DEFAULT true;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS goal_tags text[] DEFAULT '{}';
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS kid_friendly boolean DEFAULT false;
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS spicy_level smallint DEFAULT 0;
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS embedding vector(1536);
 CREATE INDEX IF NOT EXISTS recipes_embedding_idx ON recipes USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 CREATE INDEX IF NOT EXISTS recipes_mood_tags_idx ON recipes USING gin (mood_tags);
+CREATE INDEX IF NOT EXISTS idx_recipes_meal_role ON recipes USING gin (meal_role);
+CREATE INDEX IF NOT EXISTS idx_recipes_season ON recipes USING gin (season);
+CREATE INDEX IF NOT EXISTS idx_recipes_main_ingredient ON recipes (main_ingredient);
+CREATE INDEX IF NOT EXISTS idx_recipes_goal_tags ON recipes USING gin (goal_tags);
+CREATE INDEX IF NOT EXISTS idx_recipes_kid_friendly ON recipes (kid_friendly);
+CREATE INDEX IF NOT EXISTS idx_recipes_spicy_level ON recipes (spicy_level);
 CREATE OR REPLACE FUNCTION match_recipes(
   query_embedding vector(1536),
   match_count     int DEFAULT 40,
@@ -48,11 +63,13 @@ async function classifyRecipe(recipe: { id: string; title: string; description: 
       messages: [
         {
           role: "system",
-          content: `You are a food categorization assistant. Given a recipe, assign one or more mood tags from: light, hearty, junk, usual.
-- light: salads, soups, vegetables, fish, low-calorie, healthy
-- hearty: meat, pasta, stews, filling, high-protein
-- junk: burgers, pizza, fries, fast food, fried snacks
-- usual: everyday simple dishes
+          content: `You are a food categorization assistant. Given a recipe, assign one or more mood tags from: comfort, light, energizing, festive, quick, cozy.
+- comfort: warming, familiar, rich, soothing dishes
+- light: salads, vegetables, fish, low-calorie, fresh dishes
+- energizing: high-protein, balanced, bright, breakfast-friendly dishes
+- festive: celebration, special occasion, impressive dishes
+- quick: simple dishes that are fast to cook
+- cozy: soups, stews, baked dishes, cold-weather food
 Return ONLY a JSON array, e.g.: ["light"] No explanation.`,
         },
         { role: "user", content: `Recipe: ${recipe.title}\nDescription: ${recipe.description ?? "none"}` },
@@ -64,12 +81,13 @@ Return ONLY a JSON array, e.g.: ["light"] No explanation.`,
   });
   if (!res.ok) throw new Error(`OpenAI ${res.status}`);
   const json = await res.json();
-  const raw = json.choices?.[0]?.message?.content?.trim() ?? '["usual"]';
+  const raw = json.choices?.[0]?.message?.content?.trim() ?? '["comfort"]';
   try {
     const tags = JSON.parse(raw);
-    return (tags as string[]).filter((t) => MOOD_TAGS.includes(t));
+    const filtered = (tags as string[]).filter((t) => MOOD_TAGS.includes(t));
+    return filtered.length ? filtered : ["comfort"];
   } catch {
-    return ["usual"];
+    return ["comfort"];
   }
 }
 

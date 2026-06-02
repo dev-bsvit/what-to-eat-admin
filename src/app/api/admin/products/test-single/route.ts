@@ -60,6 +60,30 @@ export async function GET(request: Request) {
 
 type TranslationMap = Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>;
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function translateNameWithDeepL(canonicalName: string, lang: string): Promise<string> {
+  const delays = [800, 1800, 3500, 7000];
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      const r = await translateBatch([canonicalName], lang, "RU");
+      const raw = r[0] ?? "";
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const retryable = message.includes("429") || message.toLowerCase().includes("too many");
+      if (!retryable || attempt === delays.length) break;
+      await sleep(delays[attempt]);
+    }
+  }
+
+  const message = lastError instanceof Error ? lastError.message : "unknown error";
+  throw new Error(message);
+}
+
 async function callDeepLHybrid(
   canonicalName: string,
   existingTranslations: TranslationMap,
@@ -70,18 +94,26 @@ async function callDeepLHybrid(
   const apiKey = isNv ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} is not set`);
 
-  // Step 1: DeepL — translate name to all 8 languages in parallel
-  const names = await Promise.all(
-    APP_LANGUAGES.map(lang =>
-      translateBatch([canonicalName], lang, "RU")
-        .then(r => {
-          const raw = r[0] ?? canonicalName;
-          const name = raw.charAt(0).toUpperCase() + raw.slice(1);
-          return { lang, name };
-        })
-        .catch(() => ({ lang, name: existingTranslations[lang]?.name ?? canonicalName }))
-    )
-  );
+  // Step 1: DeepL — sequential calls to stay under Free API rate limits
+  const names: Array<{ lang: string; name: string }> = [];
+  for (const lang of APP_LANGUAGES) {
+    if (lang === "ru") {
+      names.push({ lang, name: canonicalName });
+      continue;
+    }
+
+    try {
+      const name = await translateNameWithDeepL(canonicalName, lang);
+      if (LATIN_LANGUAGES.includes(lang) && hasCyrillic(name)) {
+        throw new Error(`DeepL returned Cyrillic for ${lang}: "${name}"`);
+      }
+      names.push({ lang, name });
+      await sleep(120);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      throw new Error(`DeepL failed for ${lang}: ${message}`);
+    }
+  }
   const nameMap: Record<string, string> = Object.fromEntries(names.map(n => [n.lang, n.name]));
 
   // Step 2: AI model — synonyms, description, storage_tips only (short prompt)

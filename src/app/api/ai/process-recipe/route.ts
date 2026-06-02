@@ -62,8 +62,7 @@ OUTPUT: valid JSON with same structure as input. Never put string in integer fie
     });
 
     if (!openAIResponse.ok) {
-      const err = await openAIResponse.text();
-      console.error("OpenAI error:", err);
+      console.error("OpenAI process-recipe failed:", openAIResponse.status);
       return NextResponse.json({ error: "AI service error" }, { status: 502 });
     }
 
@@ -85,7 +84,7 @@ OUTPUT: valid JSON with same structure as input. Never put string in integer fie
         { status: e.status }
       );
     }
-    console.error("process-recipe error:", e);
+    console.error("process-recipe error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

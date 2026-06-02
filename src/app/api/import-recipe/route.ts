@@ -12,6 +12,16 @@ interface ImportedRecipe {
   servings?: number;
   cuisine?: string;
   tags: string[];
+  meal_role?: string[];
+  fridge_life_days?: number;
+  mood_tags?: string[];
+  main_ingredient?: string;
+  budget_level?: number;
+  season?: string[];
+  is_compound_safe?: boolean;
+  goal_tags?: string[];
+  kid_friendly?: boolean;
+  spicy_level?: number;
   ingredients: Array<{
     name: string;
     amount: string;
@@ -184,6 +194,16 @@ export async function POST(request: Request) {
           for (const t of aiResult.tags) {
             if (!recipe.tags.includes(t)) recipe.tags.push(t);
           }
+          recipe.meal_role = aiResult.meal_role;
+          recipe.fridge_life_days = aiResult.fridge_life_days;
+          recipe.mood_tags = aiResult.mood_tags;
+          recipe.main_ingredient = aiResult.main_ingredient;
+          recipe.budget_level = aiResult.budget_level;
+          recipe.season = aiResult.season;
+          recipe.is_compound_safe = aiResult.is_compound_safe;
+          recipe.goal_tags = aiResult.goal_tags;
+          recipe.kid_friendly = aiResult.kid_friendly;
+          recipe.spicy_level = aiResult.spicy_level;
           method = method + (needsAiCleanup ? " + AI cleanup" : "") + (aiResult.tags.length ? " + AI tags" : "");
           console.log("✅ AI доработка завершена, теги:", aiResult.tags);
         }
@@ -255,6 +275,16 @@ async function cleanupRecipeWithAI(
   ingredients: Array<{ name: string; amount: string; unit: string }>;
   steps: Array<{ text: string }>;
   tags: string[];
+  meal_role: string[];
+  fridge_life_days: number;
+  mood_tags: string[];
+  main_ingredient?: string;
+  budget_level?: number;
+  season: string[];
+  is_compound_safe: boolean;
+  goal_tags: string[];
+  kid_friendly: boolean;
+  spicy_level: number;
 } | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
@@ -280,6 +310,7 @@ async function cleanupRecipeWithAI(
   const prompt = `You are a recipe data assistant. Complete ALL tasks below for the given recipe.
 
 ${fixContent ? contentTask + "\n" : ""}2. Pick tags from this exact list ONLY: ${ALLOWED_TAGS.join(", ")}
+3. Fill planning fields for smart meal planning.
 
 Tag rules:
 - quick: total cooking time ≤ 20 min
@@ -300,6 +331,18 @@ Tag rules:
 - baking: cakes, cookies, bread, oven dishes
 - raw: no cooking required
 
+Planning field rules:
+- meal_role: array from breakfast, lunch_main, lunch_side, dinner, snack, dessert
+- fridge_life_days: 0 dressed salads/same-day, 1 default, 2 cutlets/casseroles, 3 soups/borscht/stews
+- mood_tags: array from comfort, light, energizing, festive, quick, cozy
+- main_ingredient: one of chicken, beef, fish, pasta, rice, vegetables, eggs, legumes
+- budget_level: 1 cheap, 2 medium, 3 expensive
+- season: array from spring, summer, autumn, winter, all
+- is_compound_safe: false for self-contained soups/stews, true if dish can be paired with a side/salad
+- goal_tags: array from weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep
+- kid_friendly: boolean, true only for mild, non-spicy, child-appropriate dishes with no alcohol
+- spicy_level: 0 none, 1 mild, 2 medium, 3 hot
+
 Recipe: ${recipe.title}
 ${recipe.description ? `Description: ${recipe.description.slice(0, 400)}` : ""}
 Total time: ${totalTime > 0 ? `${totalTime} min` : "unknown"}
@@ -313,7 +356,17 @@ Return format:
 {
   "ingredients": [{"name": "...", "amount": "...", "unit": "..."}],
   "steps": [{"text": "..."}],
-  "tags": ["...", "..."]
+  "tags": ["...", "..."],
+  "meal_role": ["dinner"],
+  "fridge_life_days": 1,
+  "mood_tags": ["comfort"],
+  "main_ingredient": "chicken",
+  "budget_level": 2,
+  "season": ["all"],
+  "is_compound_safe": true,
+  "goal_tags": ["balanced"],
+  "kid_friendly": false,
+  "spicy_level": 1
 }`;
 
   try {
@@ -345,6 +398,16 @@ Return format:
           .map((t: unknown) => String(t).trim().toLowerCase())
           .filter((t: string) => ALLOWED_TAGS.includes(t))
       : [];
+    const textArray = (value: unknown, fallback: string[] = []) =>
+      Array.isArray(value) ? value.map((t) => String(t).trim()).filter(Boolean) : fallback;
+    const numberOr = (value: unknown, fallback?: number) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const textOr = (value: unknown, fallback?: string) => {
+      const text = value == null ? "" : String(value).trim();
+      return text || fallback;
+    };
 
     return {
       ingredients: Array.isArray(parsed.ingredients)
@@ -362,6 +425,16 @@ Return format:
             .filter((s: any) => s.text.length > 0)
         : recipe.steps,
       tags: validTags,
+      meal_role: textArray(parsed.meal_role, recipe.meal_role ?? []),
+      fridge_life_days: numberOr(parsed.fridge_life_days, recipe.fridge_life_days ?? 1) ?? 1,
+      mood_tags: textArray(parsed.mood_tags, recipe.mood_tags ?? []),
+      main_ingredient: textOr(parsed.main_ingredient, recipe.main_ingredient),
+      budget_level: numberOr(parsed.budget_level, recipe.budget_level),
+      season: textArray(parsed.season, recipe.season ?? ["all"]),
+      is_compound_safe: typeof parsed.is_compound_safe === "boolean" ? parsed.is_compound_safe : (recipe.is_compound_safe ?? true),
+      goal_tags: textArray(parsed.goal_tags, recipe.goal_tags ?? []),
+      kid_friendly: typeof parsed.kid_friendly === "boolean" ? parsed.kid_friendly : (recipe.kid_friendly ?? false),
+      spicy_level: numberOr(parsed.spicy_level, recipe.spicy_level ?? 0) ?? 0,
     };
   } catch (error) {
     console.error("AI cleanup error:", error);

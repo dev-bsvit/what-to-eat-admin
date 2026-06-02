@@ -16,7 +16,7 @@ const CHAT_MODEL = "gpt-4o-mini";
 
 interface RecommendationAnswers {
   maxCookTime?: number | null;
-  mood: "light" | "hearty" | "new" | "junk" | "usual";
+  mood: "comfort" | "light" | "energizing" | "festive" | "quick" | "cozy" | "new" | "hearty" | "junk" | "usual";
   pantryIngredients: string[];
   excludedIngredients: string[];
   servings: number;
@@ -30,17 +30,43 @@ interface RequestBody {
 }
 
 const MOOD_LABELS: Record<string, string> = {
+  comfort: "комфортное",
   light:  "лёгкое и полезное",
+  energizing: "заряжающее энергией",
+  festive: "праздничное",
+  quick: "быстрое",
+  cozy: "уютное",
   hearty: "сытное",
   new:    "что-то новое",
   junk:   "фастфуд или что-то вредное",
   usual:  "как обычно",
 };
 
+const moodFilterTag = (mood: string) => {
+  const map: Record<string, string | null> = {
+    comfort: "comfort",
+    light: "light",
+    energizing: "energizing",
+    festive: "festive",
+    quick: "quick",
+    cozy: "cozy",
+    hearty: "comfort",
+    junk: "festive",
+    usual: null,
+    new: null,
+  };
+  return map[mood] ?? mood;
+};
+
 // Build a natural-language query for embedding from user answers
 function buildQueryText(answers: RecommendationAnswers): string {
   const moodMap: Record<string, string> = {
+    comfort: "comfort food, familiar home cooking, warming satisfying food",
     light:  "light healthy food, salad, soup, vegetables, low calorie",
+    energizing: "energizing high-protein balanced food, bright breakfast or lunch",
+    festive: "festive special occasion impressive dish",
+    quick: "quick easy fast cooking simple dish",
+    cozy: "cozy warm soup stew baked dish cold weather food",
     hearty: "hearty filling meal, meat, pasta, stew, satisfying",
     junk:   "junk food, fast food, burger, pizza, fried snacks",
     usual:  "simple everyday home cooking",
@@ -111,8 +137,9 @@ async function handlePost(req: NextRequest) {
     .select("id, title, description, image_url, cook_time, prep_time, servings, difficulty, diet_tags, cuisine_id, translations")
     .eq("is_user_defined", false)
     .not("image_url", "is", null);
-  if (answers.mood !== "new" && answers.mood !== "usual") {
-    fallbackQuery = fallbackQuery.contains("mood_tags", [answers.mood]);
+  const filterMood = moodFilterTag(answers.mood);
+  if (filterMood) {
+    fallbackQuery = fallbackQuery.contains("mood_tags", [filterMood]);
   }
   if (answers.maxCookTime) {
     fallbackQuery = fallbackQuery.lte("cook_time", answers.maxCookTime);
@@ -133,7 +160,7 @@ async function handlePost(req: NextRequest) {
       query_embedding: embedding,
       match_count: 40,
       filter_cook_time: answers.maxCookTime ?? null,
-      filter_mood: answers.mood !== "new" ? answers.mood : null,
+      filter_mood: filterMood,
       exclude_ids: answers.mood === "new" && excludedRecipeIds.length > 0 ? excludedRecipeIds : [],
     });
     if (!error && data && data.length > 0) rows = data;

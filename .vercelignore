@@ -1,0 +1,7 @@
+.next
+node_modules
+.venv
+.git
+*.log
+scripts
+supabase

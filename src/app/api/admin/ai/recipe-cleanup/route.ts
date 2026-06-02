@@ -61,8 +61,6 @@ OUTPUT FORMAT:
   "confidence": "high|medium|low"
 }`;
 
-    console.log("🤖 AI Recipe Cleanup - Sending request...");
-
     const response = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
@@ -77,9 +75,8 @@ OUTPUT FORMAT:
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ AI error:", errorText);
-      return NextResponse.json({ error: errorText }, { status: 500 });
+      console.error("AI Recipe Cleanup OpenAI failed:", response.status);
+      return NextResponse.json({ error: "AI service error" }, { status: 502 });
     }
 
     const data = await response.json();
@@ -100,8 +97,8 @@ OUTPUT FORMAT:
         parsed = JSON.parse(content);
       }
     } catch {
-      console.error("❌ Invalid JSON from AI:", content);
-      return NextResponse.json({ error: "Invalid JSON from AI", raw: content }, { status: 500 });
+      console.error("AI Recipe Cleanup returned invalid JSON");
+      return NextResponse.json({ error: "Invalid JSON from AI" }, { status: 500 });
     }
 
     // Валидация и нормализация
@@ -122,11 +119,9 @@ OUTPUT FORMAT:
       aiProcessed: true,
     };
 
-    console.log(`✅ AI Recipe Cleanup - Done: ${result.ingredients.length} ingredients, ${result.steps.length} steps`);
-
     return NextResponse.json({ data: result });
   } catch (error) {
-    console.error("❌ AI Recipe Cleanup error:", error);
+    console.error("AI Recipe Cleanup error");
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }

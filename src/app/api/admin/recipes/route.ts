@@ -183,6 +183,16 @@ export async function POST(request: Request) {
       cuisine_id: cuisineId,
       dish_type: normalizeText(body.dish_type),
       course: normalizeText(body.course),
+      meal_role: parseTextArray(body.meal_role),
+      fridge_life_days: parseNumber(body.fridge_life_days),
+      mood_tags: parseTextArray(body.mood_tags),
+      main_ingredient: normalizeText(body.main_ingredient),
+      budget_level: parseNumber(body.budget_level),
+      season: parseTextArray(body.season),
+      is_compound_safe: parseBoolean(body.is_compound_safe) ?? true,
+      goal_tags: parseTextArray(body.goal_tags),
+      kid_friendly: parseBoolean(body.kid_friendly) ?? false,
+      spicy_level: parseNumber(body.spicy_level) ?? 0,
       owner_id: ownerId,
       is_user_defined: isUserDefined,
       author: normalizeText(body.author),
@@ -365,14 +375,14 @@ export async function POST(request: Request) {
   }
 }
 
-// Runs in background after save — generates embedding and mood_tags if missing
+// Runs in background after save — generates embedding and lightweight tags if missing
 async function autoFillRecipe(recipeId: string) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return;
 
   const { data: recipe } = await supabaseAdmin
     .from("recipes")
-    .select("id, title, description, embedding, mood_tags")
+    .select("id, title, description, embedding, mood_tags, goal_tags, kid_friendly, spicy_level")
     .eq("id", recipeId)
     .single();
 
@@ -410,11 +420,13 @@ async function autoFillRecipe(recipeId: string) {
           messages: [
             {
               role: "system",
-              content: `Assign mood tags from: light, hearty, junk, usual.
-- light: salads, soups, vegetables, fish, healthy
-- hearty: meat, pasta, stews, high-protein
-- junk: burgers, pizza, fries, fast food
-- usual: everyday simple dishes
+              content: `Assign mood tags from: comfort, light, energizing, festive, quick, cozy.
+- comfort: warming, familiar, rich, soothing dishes
+- light: salads, vegetables, fish, low-calorie, fresh dishes
+- energizing: high-protein, balanced, bright, breakfast-friendly dishes
+- festive: celebration, special occasion, impressive dishes
+- quick: simple dishes that are fast to cook
+- cozy: soups, stews, baked dishes, cold-weather food
 Return ONLY a JSON array, e.g. ["light"]. No explanation.`,
             },
             { role: "user", content: `Recipe: ${recipe.title}\nDescription: ${recipe.description ?? "none"}` },
@@ -426,14 +438,14 @@ Return ONLY a JSON array, e.g. ["light"]. No explanation.`,
       });
       if (res.ok) {
         const json = await res.json();
-        const raw = json.choices?.[0]?.message?.content?.trim() ?? '["usual"]';
+        const raw = json.choices?.[0]?.message?.content?.trim() ?? '["comfort"]';
         try {
           const tags = (JSON.parse(raw) as string[]).filter((t) =>
-            ["light", "hearty", "junk", "usual"].includes(t)
+            ["comfort", "light", "energizing", "festive", "quick", "cozy"].includes(t)
           );
-          updates.mood_tags = tags.length ? tags : ["usual"];
+          updates.mood_tags = tags.length ? tags : ["comfort"];
         } catch {
-          updates.mood_tags = ["usual"];
+          updates.mood_tags = ["comfort"];
         }
       }
     } catch {

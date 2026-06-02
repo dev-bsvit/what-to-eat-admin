@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const sections = [
   {
@@ -35,8 +35,15 @@ const sections = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const productView = pathname === "/moderation" ? "moderation" : "products";
+  const productView = pathname === "/products"
+    ? searchParams.get("view") === "moderation" || searchParams.get("view") === "agent"
+      ? searchParams.get("view")
+      : "products"
+    : pathname === "/moderation"
+      ? "moderation"
+      : "products";
 
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
@@ -160,6 +167,20 @@ export default function Sidebar() {
                         }}
                       >
                         Модерация
+                      </Link>
+                      <Link
+                        href="/products?view=agent"
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 9999,
+                          textDecoration: "none",
+                          fontSize: 12,
+                          color: productView === "agent" ? "#000000" : "#737373",
+                          background: productView === "agent" ? "#f2f2f2" : "transparent",
+                          fontWeight: productView === "agent" ? 600 : 500,
+                        }}
+                      >
+                        AI агент
                       </Link>
                     </div>
                   )}

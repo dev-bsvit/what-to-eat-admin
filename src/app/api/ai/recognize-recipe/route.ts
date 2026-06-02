@@ -81,8 +81,7 @@ Return JSON:
     });
 
     if (!openAIResponse.ok) {
-      const err = await openAIResponse.text();
-      console.error("OpenAI error:", err);
+      console.error("OpenAI recognize-recipe failed:", openAIResponse.status);
       return NextResponse.json({ error: "AI service error" }, { status: 502 });
     }
 
@@ -104,7 +103,7 @@ Return JSON:
         { status: e.status }
       );
     }
-    console.error("recognize-recipe error:", e);
+    console.error("recognize-recipe error");
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

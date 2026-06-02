@@ -25,6 +25,8 @@ type SmartStats = {
   badNames: number;
   badTranslations: number;
   missingLanguages: number;
+  duplicateTranslations: number;
+  duplicateTranslationRows: number;
   poorSynonyms: number;
   pendingModeration: number;
   totalIssues: number;
@@ -76,8 +78,9 @@ const MODE_META: Record<string, { label: string; description: string; priority: 
   "fix-names":        { label: "Кривые имена",     description: "Emoji, вес или мусор в названии",           priority: 0 },
   "fix-translations": { label: "Плохие переводы",  description: "Кириллица в EN / DE / IT / FR / ES / PT",   priority: 1 },
   "fill-languages":   { label: "Неполные языки",   description: "Продукты без всех 8 переводов",             priority: 2 },
-  "pending":          { label: "Новые продукты",   description: "Пользовательские добавления на модерации",  priority: 3 },
-  "enrich-synonyms":  { label: "Бедные синонимы",  description: "Меньше 3 синонимов — поиск работает хуже", priority: 4 },
+  "dedupe-translations": { label: "Дубли переводов", description: "Несколько строк на один язык продукта",  priority: 3 },
+  "pending":          { label: "Новые продукты",   description: "Пользовательские добавления на модерации",  priority: 4 },
+  "enrich-synonyms":  { label: "Бедные синонимы",  description: "Меньше 3 синонимов — поиск работает хуже", priority: 5 },
 };
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
@@ -716,6 +719,7 @@ export default function ProductBrainPanel() {
             <IssueRow modeKey="fix-names"        count={stats.badNames}          onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
             <IssueRow modeKey="fix-translations" count={stats.badTranslations}   onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
             <IssueRow modeKey="fill-languages"   count={stats.missingLanguages}  onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
+            <IssueRow modeKey="dedupe-translations" count={stats.duplicateTranslations ?? 0} onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
             <IssueRow modeKey="pending"          count={stats.pendingModeration} onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
             <IssueRow modeKey="enrich-synonyms"  count={stats.poorSynonyms}      onRunBatch={runBatch} onRunAll={runLoop} running={running} activeMode={activeMode} />
 
@@ -726,7 +730,7 @@ export default function ProductBrainPanel() {
             }}>
               {[
                 { value: stats.total,                    label: "продуктов" },
-                { value: translationRows?.toLocaleString() ?? "—", label: "строк переводов", warn: translationRows != null && stats.total > 0 && translationRows > stats.total * 8 },
+                { value: translationRows?.toLocaleString() ?? "—", label: "строк переводов", warn: (stats.duplicateTranslationRows ?? 0) > 0 },
                 { value: stats.total - stats.totalIssues, label: "без проблем",  green: true },
                 { value: stats.totalIssues,               label: "с проблемами", red: stats.totalIssues > 0 },
               ].map((s, i) => (

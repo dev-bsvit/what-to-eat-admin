@@ -20,6 +20,16 @@ interface ImportedRecipe {
   servings?: number;
   cuisine?: string;
   tags: string[];
+  meal_role?: string[];
+  fridge_life_days?: number;
+  mood_tags?: string[];
+  main_ingredient?: string;
+  budget_level?: number;
+  season?: string[];
+  is_compound_safe?: boolean;
+  goal_tags?: string[];
+  kid_friendly?: boolean;
+  spicy_level?: number;
   ingredients: Array<{
     name: string;
     amount: string;
@@ -421,6 +431,16 @@ FORMAT:
   "servings": number,
   "cuisine": "string?",
   "tags": ["string"],
+  "meal_role": ["dinner"],
+  "fridge_life_days": 1,
+  "mood_tags": ["comfort", "quick"],
+  "main_ingredient": "chicken",
+  "budget_level": 2,
+  "season": ["all"],
+  "is_compound_safe": true,
+  "goal_tags": ["balanced"],
+  "kid_friendly": false,
+  "spicy_level": 1,
   "ingredients": [
     { "name": "string", "amount": "string", "unit": "string", "note": "string?" }
   ],
@@ -446,12 +466,37 @@ RULES:
   Meal: "breakfast", "lunch", "dinner", "snack"
   Diet: "vegetarian", "vegan", "gluten-free", "dairy-free"
   Type: "soup", "salad", "pasta", "grill", "baking", "raw"
-  If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.`;
+  If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.
+- PLANNING FIELDS:
+  meal_role: array from breakfast, lunch_main, lunch_side, dinner, snack, dessert
+  fridge_life_days: 0 dressed salads/same-day, 1 default, 2 cutlets/casseroles, 3 soups/borscht/stews
+  mood_tags: array from comfort, light, energizing, festive, quick, cozy
+  main_ingredient: one of chicken, beef, fish, pasta, rice, vegetables, eggs, legumes
+  budget_level: 1 cheap, 2 medium, 3 expensive
+  season: array from spring, summer, autumn, winter, all
+  is_compound_safe: false for self-contained soups/stews, true if dish can be paired with a side/salad
+  goal_tags: array from weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep
+  kid_friendly: boolean, true only for mild, non-spicy, child-appropriate dishes with no alcohol
+  spicy_level: 0 none, 1 mild, 2 medium, 3 hot`;
 }
 
 function extractJson(content: string): string {
   const match = content.match(/\{[\s\S]*\}/);
   return match ? match[0] : content;
+}
+
+function normalizeTextArray(value: any, fallback: string[] = []) {
+  return Array.isArray(value) ? value.map((t: any) => String(t).trim()).filter(Boolean) : fallback;
+}
+
+function normalizeNumber(value: any, fallback?: number) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeText(value: any, fallback?: string) {
+  const text = value == null ? "" : String(value).trim();
+  return text || fallback;
 }
 
 function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): ImportedRecipe {
@@ -464,6 +509,16 @@ function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): Import
     servings: Number.isFinite(parsed.servings) ? parsed.servings : fallback.servings,
     cuisine: parsed.cuisine ? String(parsed.cuisine).trim() : fallback.cuisine,
     tags: Array.isArray(parsed.tags) ? parsed.tags.map((t: any) => String(t).trim()).filter(Boolean) : [],
+    meal_role: normalizeTextArray(parsed.meal_role, fallback.meal_role),
+    fridge_life_days: normalizeNumber(parsed.fridge_life_days, fallback.fridge_life_days ?? 1),
+    mood_tags: normalizeTextArray(parsed.mood_tags, fallback.mood_tags),
+    main_ingredient: normalizeText(parsed.main_ingredient, fallback.main_ingredient),
+    budget_level: normalizeNumber(parsed.budget_level, fallback.budget_level),
+    season: normalizeTextArray(parsed.season, fallback.season ?? ["all"]),
+    is_compound_safe: typeof parsed.is_compound_safe === "boolean" ? parsed.is_compound_safe : (fallback.is_compound_safe ?? true),
+    goal_tags: normalizeTextArray(parsed.goal_tags, fallback.goal_tags ?? []),
+    kid_friendly: typeof parsed.kid_friendly === "boolean" ? parsed.kid_friendly : (fallback.kid_friendly ?? false),
+    spicy_level: normalizeNumber(parsed.spicy_level, fallback.spicy_level ?? 0),
     ingredients: Array.isArray(parsed.ingredients)
       ? parsed.ingredients
           .map((i: any) => ({
@@ -669,6 +724,14 @@ async function importViaDedicatedEndpoint(
             servings: undefined,
             cuisine: "international",
             tags: [],
+            meal_role: [],
+            fridge_life_days: 1,
+            mood_tags: [],
+            season: ["all"],
+            is_compound_safe: true,
+            goal_tags: [],
+            kid_friendly: false,
+            spicy_level: 0,
             ingredients: [
               {
                 name: "Смотрите оригинальное видео",
@@ -751,6 +814,16 @@ async function importFromWeb(url: string, apiKey: string): Promise<ImportedRecip
       if (recipe.ingredients.length > 0 && recipe.steps.length > 0) {
         recipe.confidence = "medium";
       }
+      recipe.meal_role = aiResult.meal_role;
+      recipe.fridge_life_days = aiResult.fridge_life_days;
+      recipe.mood_tags = aiResult.mood_tags;
+      recipe.main_ingredient = aiResult.main_ingredient;
+      recipe.budget_level = aiResult.budget_level;
+      recipe.season = aiResult.season;
+      recipe.is_compound_safe = aiResult.is_compound_safe;
+      recipe.goal_tags = aiResult.goal_tags;
+      recipe.kid_friendly = aiResult.kid_friendly;
+      recipe.spicy_level = aiResult.spicy_level;
       method += " + AI cleanup";
     }
   }
@@ -885,14 +958,39 @@ function extractFromHtml(html: string, sourceUrl: string): ImportedRecipe | null
 async function cleanupRecipeWithAI(
   recipe: ImportedRecipe,
   apiKey: string
-): Promise<{ ingredients: Array<{ name: string; amount: string; unit: string }>; steps: Array<{ text: string }> } | null> {
+): Promise<{
+  ingredients: Array<{ name: string; amount: string; unit: string }>;
+  steps: Array<{ text: string }>;
+  meal_role: string[];
+  fridge_life_days: number;
+  mood_tags: string[];
+  main_ingredient?: string;
+  budget_level?: number;
+  season: string[];
+  is_compound_safe: boolean;
+  goal_tags: string[];
+  kid_friendly: boolean;
+  spicy_level: number;
+} | null> {
   const prompt = `Extract recipe data. Return JSON only:
 Recipe: ${recipe.title}
 ${recipe.description ? `Desc: ${recipe.description.slice(0, 200)}` : ""}
 Ingr: ${recipe.ingredients.length > 0 ? JSON.stringify(recipe.ingredients.slice(0, 15).map((i) => i.name)) : "[]"}
 Steps: ${recipe.steps.length > 0 ? recipe.steps.slice(0, 10).map((s) => s.text.slice(0, 100)).join("; ") : ""}
 
-{"ingredients":[{"name":"","amount":"","unit":""}],"steps":[{"text":""}]}`;
+Planning fields:
+- meal_role: array from breakfast, lunch_main, lunch_side, dinner, snack, dessert
+- fridge_life_days: 0 dressed salads/same-day, 1 default, 2 cutlets/casseroles, 3 soups/borscht/stews
+- mood_tags: array from comfort, light, energizing, festive, quick, cozy
+- main_ingredient: one of chicken, beef, fish, pasta, rice, vegetables, eggs, legumes
+- budget_level: 1 cheap, 2 medium, 3 expensive
+- season: array from spring, summer, autumn, winter, all
+- is_compound_safe: false for self-contained soups/stews, true if dish can be paired with a side/salad
+- goal_tags: array from weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep
+- kid_friendly: boolean, true only for mild, non-spicy, child-appropriate dishes with no alcohol
+- spicy_level: 0 none, 1 mild, 2 medium, 3 hot
+
+{"ingredients":[{"name":"","amount":"","unit":""}],"steps":[{"text":""}],"meal_role":["dinner"],"fridge_life_days":1,"mood_tags":["comfort"],"main_ingredient":"chicken","budget_level":2,"season":["all"],"is_compound_safe":true,"goal_tags":["balanced"],"kid_friendly":false,"spicy_level":1}`;
 
   try {
     const response = await fetch(OPENAI_URL, {
@@ -916,6 +1014,16 @@ Steps: ${recipe.steps.length > 0 ? recipe.steps.slice(0, 10).map((s) => s.text.s
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
+    const textArray = (value: unknown, fallback: string[] = []) =>
+      Array.isArray(value) ? value.map((t) => String(t).trim()).filter(Boolean) : fallback;
+    const numberOr = (value: unknown, fallback?: number) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const textOr = (value: unknown, fallback?: string) => {
+      const text = value == null ? "" : String(value).trim();
+      return text || fallback;
+    };
 
     return {
       ingredients: Array.isArray(parsed.ingredients)
@@ -934,6 +1042,16 @@ Steps: ${recipe.steps.length > 0 ? recipe.steps.slice(0, 10).map((s) => s.text.s
             }))
             .filter((s: any) => s.text.length > 0)
         : [],
+      meal_role: textArray(parsed.meal_role, recipe.meal_role ?? []),
+      fridge_life_days: numberOr(parsed.fridge_life_days, recipe.fridge_life_days ?? 1) ?? 1,
+      mood_tags: textArray(parsed.mood_tags, recipe.mood_tags ?? []),
+      main_ingredient: textOr(parsed.main_ingredient, recipe.main_ingredient),
+      budget_level: numberOr(parsed.budget_level, recipe.budget_level),
+      season: textArray(parsed.season, recipe.season ?? ["all"]),
+      is_compound_safe: typeof parsed.is_compound_safe === "boolean" ? parsed.is_compound_safe : (recipe.is_compound_safe ?? true),
+      goal_tags: textArray(parsed.goal_tags, recipe.goal_tags ?? []),
+      kid_friendly: typeof parsed.kid_friendly === "boolean" ? parsed.kid_friendly : (recipe.kid_friendly ?? false),
+      spicy_level: numberOr(parsed.spicy_level, recipe.spicy_level ?? 0) ?? 0,
     };
   } catch {
     return null;

@@ -4,6 +4,8 @@ import { CATALOG_RECOMMENDATION_PROMPT } from "@/lib/catalogRecommendationTags";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
+export const dynamic = "force-dynamic";
+
 function stripMarkdown(content: string): string {
   let s = content.trim();
   if (s.startsWith("```json")) s = s.slice(7);
@@ -79,15 +81,6 @@ const SCHEMA_DESCRIPTION = `
     {"id": "<uuid>", "question": string, "answer": string}
     // ...
   ],
-  "purchase_cta": {
-    "title": "Открыть каталог",
-    "subtitle": string,
-    "priceBadge": string,       // например "$4" или "$2.99"
-    "features": [
-      {"id": "<uuid>", "icon": string, "title": string, "subtitle": string}
-    ],
-    "buttonTitle": "Открыть каталог"
-  },
   "theme": {
     "pageBackgroundHex": string,      // очень тёмный, почти чёрный
     "heroBackgroundHex": string,      // тот же что в preview_card.backgroundHex
@@ -112,7 +105,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const cuisineName: string = String(body.cuisineName || "").trim();
     const cuisineDescription: string = String(body.cuisineDescription || "").trim();
-    const price: string = String(body.price || "$2").trim();
     const language: string = String(body.language || "ru").trim();
     const userPrompt: string = String(body.userPrompt || "").trim();
     const existingJson: string = String(body.existingJson || "").trim();
@@ -132,7 +124,6 @@ export async function POST(request: Request) {
     const contextBlock = [
       `Название каталога: ${cuisineName}`,
       cuisineDescription ? `Описание: ${cuisineDescription}` : "",
-      `Цена: ${price}`,
       `Язык контента: ${language} — ${langInstruction}`,
       userPrompt ? `Дополнительные пожелания: ${userPrompt}` : "",
       existingJson ? `Текущие данные (используй как основу, улучши): ${existingJson.slice(0, 2000)}` : "",

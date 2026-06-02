@@ -266,17 +266,12 @@ export interface LandingTextContent {
   benefits_cards: Array<{ id: string; eyebrow?: string; title: string; text: string }>;
 
   faq_items: Array<{ id: string; question: string; answer: string }>;
-
-  cta_title?: string;
-  cta_subtitle?: string;
-  cta_features: Array<{ id: string; title: string; subtitle?: string }>;
-  cta_button_title?: string;
 }
 
 /**
  * Nested translation result — matches iOS Swift LandingTranslation CodingKeys exactly.
  * Top-level keys use snake_case (preview_card, inside_section, etc.)
- * Inner fields use camelCase (beforeLabel, afterLabel, buttonTitle, etc.)
+ * Inner fields use camelCase (beforeLabel, afterLabel, etc.)
  */
 export interface LandingTranslationResult {
   preview_card: { title?: string; subtitle?: string; badges?: string[] };
@@ -287,7 +282,6 @@ export interface LandingTranslationResult {
   transformation_section?: { title?: string; subtitle?: string | null; beforeLabel?: string; afterLabel?: string; pairs?: Array<{ id: string; beforeText: string; afterText: string }> };
   benefits_section?: { title?: string; subtitle?: string; cards?: Array<{ id: string; eyebrow?: string; title: string; text: string }> };
   faq_items?: Array<{ id: string; question: string; answer: string }>;
-  purchase_cta?: { title?: string; subtitle?: string; features?: Array<{ id: string; title: string; subtitle?: string }>; buttonTitle?: string };
 }
 
 /** Convert flat LandingTextContent + translated values → nested LandingTranslationResult */
@@ -376,19 +370,6 @@ function flatToNested(
     }));
   }
 
-  if (content.cta_title || content.cta_features.length) {
-    result.purchase_cta = {
-      title: get("cta_title") ?? content.cta_title,
-      subtitle: get("cta_subtitle") ?? content.cta_subtitle,
-      features: content.cta_features.map((f, i) => ({
-        id: f.id,
-        title: get(`cta_feature_${i}_title`) ?? f.title,
-        subtitle: get(`cta_feature_${i}_subtitle`) ?? f.subtitle,
-      })),
-      buttonTitle: get("cta_button_title") ?? content.cta_button_title,
-    };
-  }
-
   return result;
 }
 
@@ -452,14 +433,6 @@ export async function translateLanding(
     push(`faq_${i}_answer`, f.answer);
   });
 
-  push("cta_title", content.cta_title);
-  push("cta_subtitle", content.cta_subtitle);
-  content.cta_features.forEach((f, i) => {
-    push(`cta_feature_${i}_title`, f.title);
-    push(`cta_feature_${i}_subtitle`, f.subtitle);
-  });
-  push("cta_button_title", content.cta_button_title);
-
   const translated = await translateBatch(pairs.map((p) => p.text), targetLang, sourceLang);
   const t: Record<string, string> = {};
   pairs.forEach(({ key }, i) => { t[key] = translated[i]; });
@@ -478,8 +451,6 @@ export function extractLandingText(landing: Record<string, unknown>): LandingTex
   const transform = (landing.transformation_section ?? null) as Record<string, unknown> | null;
   const benefits = (landing.benefits_section ?? null) as Record<string, unknown> | null;
   const faqs = (landing.faq_items ?? []) as Array<Record<string, unknown>>;
-  const cta = (landing.purchase_cta ?? null) as Record<string, unknown> | null;
-
   return {
     preview_card_title: String(pc.title ?? ""),
     preview_card_subtitle: pc.subtitle ? String(pc.subtitle) : undefined,
@@ -504,10 +475,6 @@ export function extractLandingText(landing: Record<string, unknown>): LandingTex
     benefits_subtitle: benefits?.subtitle ? String(benefits.subtitle) : undefined,
     benefits_cards: Array.isArray(benefits?.cards) ? (benefits!.cards as Array<Record<string, unknown>>).map((c) => ({ id: String(c.id ?? ""), eyebrow: c.eyebrow ? String(c.eyebrow) : undefined, title: String(c.title ?? ""), text: String(c.text ?? "") })) : [],
     faq_items: faqs.map((f) => ({ id: String(f.id ?? ""), question: String(f.question ?? ""), answer: String(f.answer ?? "") })),
-    cta_title: cta?.title ? String(cta.title) : undefined,
-    cta_subtitle: cta?.subtitle ? String(cta.subtitle) : undefined,
-    cta_features: Array.isArray(cta?.features) ? (cta!.features as Array<Record<string, unknown>>).map((f) => ({ id: String(f.id ?? ""), title: String(f.title ?? ""), subtitle: f.subtitle ? String(f.subtitle) : undefined })) : [],
-    cta_button_title: cta?.buttonTitle ? String(cta.buttonTitle) : undefined,
   };
 }
 

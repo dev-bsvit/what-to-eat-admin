@@ -54,6 +54,14 @@ interface Cuisine {
   updated_at?: string | null;
 }
 
+type CatalogTab = "settings" | "landing" | "translations" | "recipes" | "technical" | "import";
+
+const catalogTabs: CatalogTab[] = ["settings", "landing", "translations", "recipes", "technical", "import"];
+
+function normalizeCatalogTab(value: string | null): CatalogTab {
+  return value && catalogTabs.includes(value as CatalogTab) ? (value as CatalogTab) : "settings";
+}
+
 function toggleValue(items: string[], value: string) {
   return items.includes(value) ? items.filter((item) => item !== value) : [...items, value];
 }
@@ -136,7 +144,7 @@ export default function CatalogDetailPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("");
-  const [activeTab, setActiveTab] = useState<"settings" | "landing" | "translations" | "recipes" | "technical" | "import">("settings");
+  const [activeTab, setActiveTab] = useState<CatalogTab>("settings");
 
   // Import tab state
   const [importUrl, setImportUrl] = useState("");
@@ -150,6 +158,10 @@ export default function CatalogDetailPage() {
 
   useEffect(() => {
     loadData();
+  }, [cuisineId]);
+
+  useEffect(() => {
+    setActiveTab(normalizeCatalogTab(new URLSearchParams(window.location.search).get("tab")));
   }, [cuisineId]);
 
   async function loadData() {

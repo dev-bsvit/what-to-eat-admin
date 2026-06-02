@@ -83,6 +83,23 @@ export async function checkAndIncrementAiUsage(userId: string): Promise<void> {
 
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
+  const { data: rpcData, error: rpcError } = await adminClient.rpc(
+    "increment_ai_usage_if_allowed",
+    {
+      target_user_id: userId,
+      target_date: today,
+      max_count: FREE_LIMITS.aiUsesPerDay,
+    }
+  );
+
+  if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+    const result = rpcData[0] as { allowed?: boolean; current_count?: number };
+    if (!result.allowed) {
+      throw new AuthError("Daily AI limit reached. Upgrade to Premium.", 403, "ai_limit_reached");
+    }
+    return;
+  }
+
   // Читаем текущий счётчик
   const { data } = await adminClient
     .from("ai_usage")
