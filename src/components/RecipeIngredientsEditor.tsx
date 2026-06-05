@@ -9,6 +9,7 @@ interface Ingredient {
   productName: string;
   quantity: number;
   unit: string;
+  isMain?: boolean;
   calories?: number;
   protein?: number;
   fat?: number;
@@ -331,6 +332,7 @@ export default function RecipeIngredientsEditor({ value, onChange, servings }: R
       productName: product.canonical_name,
       quantity: 100,
       unit: product.preferred_unit || "g",
+      isMain: false,
       calories: product.calories,
       protein: product.protein,
       fat: product.fat,
@@ -543,10 +545,26 @@ export default function RecipeIngredientsEditor({ value, onChange, servings }: R
                   <span style={{ fontSize: '24px' }}>{ing.icon || "📦"}</span>
                 )}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
-                  <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <div style={{ fontWeight: 500, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {index + 1}. {ing.productName}
+                    <button
+                      type="button"
+                      title={ing.isMain ? "Главный ингредиент (убрать)" : "Пометить как главный"}
+                      onClick={() => updateIngredient(ing.id, "isMain", !ing.isMain)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        padding: '0 2px',
+                        opacity: ing.isMain ? 1 : 0.3,
+                        lineHeight: 1,
+                      }}
+                    >
+                      ⭐
+                    </button>
                     {isUnmatched && (
-                      <span style={{ marginLeft: '8px', fontSize: '12px', color: '#b00020' }}>
+                      <span style={{ fontSize: '12px', color: '#b00020' }}>
                         Нет в базе
                       </span>
                     )}

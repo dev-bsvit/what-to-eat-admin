@@ -264,6 +264,7 @@ export async function POST(request: Request) {
             unit: normalizeText(item?.unit),
             note: normalizeText(item?.note),
             optional: parseBoolean(item?.optional) ?? false,
+            is_main: parseBoolean(item?.isMain) ?? false,
             order_index: index,
           };
         })

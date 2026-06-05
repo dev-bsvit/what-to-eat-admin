@@ -609,7 +609,7 @@ ${availableCuisines}
 - goal_tags — массив из: weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep. Это цели для умного рациона.
 - kid_friendly — boolean: true только для мягких, неострых, понятных детям блюд без алкоголя и небезопасных ингредиентов.
 - spicy_level — 0 нет остроты, 1 лёгкая, 2 средняя, 3 острая.
-- ingredients — массив объектов {id,name,quantity,unit}. Если UUID продукта неизвестен, ставь id пустым "" и заполняй name.
+- ingredients — массив объектов {id,name,quantity,unit,isMain}. isMain: true для 1–3 определяющих ингредиентов блюда: белок (курица, рыба, говядина), основной овощ (картофель, кабачок), база (паста, рис, чечевица). isMain: false для соли, масла, воды, специй, лука, чеснока и любых вспомогательных добавок. Если UUID продукта неизвестен, ставь id пустым "" и заполняй name.
 - Все числовые поля возвращай как number или null, без строк, без единиц измерения и без поясняющего текста.
 - Верхние поля calories / protein / fat / carbs / fiber / sugar / salt / saturated_fat / cholesterol / sodium не оставляй пустыми без причины. Если точных значений нет, рассчитай или реалистично оцени по ингредиентам и количеству порций.
 - nutrition_per_100g заполняй числами, если они известны или их можно оценить. Если все значения действительно неизвестны, ставь nutrition_per_100g: null, а не объект из одних null.
@@ -689,9 +689,9 @@ ${availableCuisines}
   "comments_enabled": ${commentsEnabledPlaceholder},
   "comments_count": 0,
   "ingredients": [
-    {"id": "UUID продукта", "name": "Креветки", "quantity": 200, "unit": "g"},
-    {"id": "", "name": "Кокосовое молоко", "quantity": 400, "unit": "ml"},
-    {"id": "", "name": "Лемонграсс", "quantity": 2, "unit": "pcs"}
+    {"id": "UUID продукта", "name": "Креветки", "quantity": 200, "unit": "g", "isMain": true},
+    {"id": "", "name": "Кокосовое молоко", "quantity": 400, "unit": "ml", "isMain": false},
+    {"id": "", "name": "Лемонграсс", "quantity": 2, "unit": "pcs", "isMain": false}
   ],
   "steps": [
     {"text": "Подготовьте ингредиенты заранее: очистите креветки, нарежьте лемонграсс крупными кусочками и откройте кокосовое молоко. Когда всё под рукой, суп готовится быстро, а креветки не успевают стать жёсткими.", "duration_minutes": null, "image_url": null},
