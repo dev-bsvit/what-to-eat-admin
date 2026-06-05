@@ -104,40 +104,108 @@ async function getEmbedding(text: string, apiKey: string): Promise<number[] | nu
   }
 }
 
+// Map common English ingredient names to Russian for DB matching
+const EN_TO_RU: Record<string, string> = {
+  strawberry: "клубник", strawberries: "клубник",
+  apple: "яблок", apples: "яблок",
+  chicken: "куриц", beef: "говядин", pork: "свинин",
+  potato: "картофел", potatoes: "картофел", tomato: "томат", tomatoes: "томат",
+  cheese: "сыр", egg: "яиц", eggs: "яиц", milk: "молок",
+  mushroom: "гриб", mushrooms: "гриб",
+  carrot: "морков", onion: "лук", garlic: "чеснок",
+  pasta: "паст", rice: "рис", salmon: "сёмг",
+  lemon: "лимон", orange: "апельсин", banana: "банан",
+  cabbage: "капуст", cucumber: "огурц", pepper: "перец",
+  shrimp: "кревет", tuna: "тунец", cod: "трески",
+  cottage: "творог", cream: "сливк", butter: "масл",
+};
+
+// Strip common Russian inflection suffixes for stem search
+function stemRu(word: string): string {
+  const endings = ["ями","ами","ого","ому","ими","ых","их","ей","ий","ой","ый",
+    "ое","ие","ые","ки","ку","ка","ке","ко","ков","ов","ев","и","ы","е","а","у","ю"];
+  for (const e of endings) {
+    if (word.endsWith(e) && word.length - e.length >= 3) return word.slice(0, -e.length);
+  }
+  return word;
+}
+
+// Ingredient-based search: finds recipes that actually contain the ingredient
+async function searchByIngredient(queryWords: string[]): Promise<any[]> {
+  const stems: string[] = [];
+  for (const w of queryWords) {
+    const ruStem = EN_TO_RU[w.toLowerCase()];
+    if (ruStem) { stems.push(ruStem); continue; }
+    // Try Russian stem of the word itself
+    const s = stemRu(w.toLowerCase());
+    if (s.length >= 3) stems.push(s);
+  }
+  if (!stems.length) return [];
+
+  const orFilter = stems.map(s => `canonical_name.ilike.%${s}%`).join(",");
+  const { data: products } = await supabaseAdmin
+    .from("product_dictionary").select("id").or(orFilter).limit(20);
+  if (!products?.length) return [];
+
+  const { data: riRows } = await supabaseAdmin
+    .from("recipe_ingredients")
+    .select("recipe_id, is_main")
+    .in("product_dictionary_id", products.map(p => p.id))
+    .limit(60);
+  if (!riRows?.length) return [];
+
+  // Score: main ingredient = 2 pts, secondary = 1 pt
+  const scores: Record<string, number> = {};
+  for (const ri of riRows) scores[ri.recipe_id] = (scores[ri.recipe_id] ?? 0) + (ri.is_main ? 2 : 1);
+
+  const topIds = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => id);
+  const { data: recipes } = await supabaseAdmin
+    .from("recipes")
+    .select("id, title, description, image_url, cook_time, difficulty, cuisine_id")
+    .in("id", topIds).eq("is_user_defined", false).not("image_url", "is", null).limit(5);
+
+  const map = Object.fromEntries((recipes ?? []).map(r => [r.id, r]));
+  return topIds.map(id => map[id]).filter(Boolean);
+}
+
 async function searchRecipes(query: string, apiKey: string) {
+  // Extract words from query (e.g. "strawberry cake recipes" → ["strawberry","cake","recipes"])
+  const queryWords = query.toLowerCase().replace(/[^a-zа-яёa-z\s]/gi, " ").split(/\s+/).filter(w => w.length > 2);
+
+  // 1. Try ingredient-based search first (most precise)
+  const ingredientRows = await searchByIngredient(queryWords);
+  if (ingredientRows.length >= 2) {
+    return ingredientRows.map((r) => ({
+      id: r.id, title: r.title, description: r.description ?? null,
+      image_url: r.image_url ?? null, cook_time: r.cook_time ?? null,
+      difficulty: r.difficulty ?? null, cuisine_id: r.cuisine_id ?? null,
+    }));
+  }
+
+  // 2. Fall back to embedding search
   const embedding = await getEmbedding(query, apiKey);
-
   let rows: any[] = [];
-
   if (embedding) {
     const { data } = await supabaseAdmin.rpc("match_recipes", {
-      query_embedding: embedding,
-      match_count: 5,
-      filter_cook_time: null,
-      filter_mood: null,
-      exclude_ids: [],
+      query_embedding: embedding, match_count: 5,
+      filter_cook_time: null, filter_mood: null, exclude_ids: [],
     });
     if (data?.length) rows = data;
   }
 
+  // 3. Last resort: any recipes
   if (!rows.length) {
     const { data } = await supabaseAdmin
       .from("recipes")
       .select("id, title, description, image_url, cook_time, difficulty, cuisine_id")
-      .eq("is_user_defined", false)
-      .not("image_url", "is", null)
-      .limit(5);
+      .eq("is_user_defined", false).not("image_url", "is", null).limit(5);
     rows = data ?? [];
   }
 
   return rows.map((r) => ({
-    id: r.id,
-    title: r.title,
-    description: r.description ?? null,
-    image_url: r.image_url ?? null,
-    cook_time: r.cook_time ?? null,
-    difficulty: r.difficulty ?? null,
-    cuisine_id: r.cuisine_id ?? null,
+    id: r.id, title: r.title, description: r.description ?? null,
+    image_url: r.image_url ?? null, cook_time: r.cook_time ?? null,
+    difficulty: r.difficulty ?? null, cuisine_id: r.cuisine_id ?? null,
   }));
 }
 
