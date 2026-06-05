@@ -104,7 +104,7 @@ export async function POST(request: Request) {
   try {
     user = await verifyUser(request);
     if (!user.isPremium) {
-      await checkAndIncrementAiUsage(user.userId);
+      await checkAndIncrementAiUsage(user.userId, "photo-chat");
     }
     body = await request.json();
   } catch (e) {

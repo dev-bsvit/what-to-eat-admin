@@ -1,6 +1,6 @@
 // POST /api/ai/recognize-text
 // Голосовой ввод продуктов — распознаёт список продуктов из текста.
-// Free: 1 запрос/день. Premium: без ограничений.
+// Free: 2 запроса/день для этой функции. Premium: без ограничений.
 
 import { after } from "next/server";
 import { NextResponse } from "next/server";
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
 
     // 2. Для free пользователей проверяем лимит
     if (!user.isPremium) {
-      await checkAndIncrementAiUsage(user.userId);
+      await checkAndIncrementAiUsage(user.userId, "recognize-text");
     }
 
     // 3. Читаем тело запроса

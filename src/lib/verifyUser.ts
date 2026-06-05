@@ -14,7 +14,8 @@ export interface VerifiedUser {
 
 // Лимиты бесплатного тарифа (зеркало из iOS Subscription.swift)
 export const FREE_LIMITS = {
-  aiUsesPerDay: 2,
+  aiFeatureUsesPerDay: 2,
+  aiChatUsesPerDay: 10,
 };
 
 // Создаём клиент без service role — для проверки пользовательского JWT
@@ -76,7 +77,11 @@ export async function verifyUser(request: Request): Promise<VerifiedUser> {
 
 // Проверяет и инкрементирует счётчик AI-запросов для free пользователей.
 // Возвращает true если лимит не превышен, throws если превышен.
-export async function checkAndIncrementAiUsage(userId: string): Promise<void> {
+export async function checkAndIncrementAiUsage(
+  userId: string,
+  endpoint: string,
+  maxCount: number = FREE_LIMITS.aiFeatureUsesPerDay
+): Promise<void> {
   const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -88,14 +93,19 @@ export async function checkAndIncrementAiUsage(userId: string): Promise<void> {
     {
       target_user_id: userId,
       target_date: today,
-      max_count: FREE_LIMITS.aiUsesPerDay,
+      target_endpoint: endpoint,
+      max_count: maxCount,
     }
   );
 
   if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
     const result = rpcData[0] as { allowed?: boolean; current_count?: number };
     if (!result.allowed) {
-      throw new AuthError("Daily AI limit reached. Upgrade to Premium.", 403, "ai_limit_reached");
+      throw new AuthError(
+        "Daily AI limit reached. Upgrade to Premium.",
+        403,
+        endpoint === "ai-chat" ? "ai_chat_limit_reached" : "ai_feature_limit_reached"
+      );
     }
     return;
   }
@@ -106,18 +116,23 @@ export async function checkAndIncrementAiUsage(userId: string): Promise<void> {
     .select("count")
     .eq("user_id", userId)
     .eq("date", today)
-    .single();
+    .eq("endpoint", endpoint)
+    .maybeSingle();
 
   const currentCount = data?.count ?? 0;
 
-  if (currentCount >= FREE_LIMITS.aiUsesPerDay) {
-    throw new AuthError("Daily AI limit reached. Upgrade to Premium.", 403, "ai_limit_reached");
+  if (currentCount >= maxCount) {
+    throw new AuthError(
+      "Daily AI limit reached. Upgrade to Premium.",
+      403,
+      endpoint === "ai-chat" ? "ai_chat_limit_reached" : "ai_feature_limit_reached"
+    );
   }
 
   // Инкрементируем (upsert — создаём или обновляем запись за сегодня)
   await adminClient.from("ai_usage").upsert(
-    { user_id: userId, date: today, count: currentCount + 1 },
-    { onConflict: "user_id,date" }
+    { user_id: userId, date: today, endpoint, count: currentCount + 1 },
+    { onConflict: "user_id,date,endpoint" }
   );
 }
 

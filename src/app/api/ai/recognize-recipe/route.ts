@@ -1,6 +1,6 @@
 // POST /api/ai/recognize-recipe
 // Распознавание полного рецепта из фото.
-// Free: 1 запрос/день (общий счётчик). Premium: без ограничений.
+// Free: 2 запроса/день для этой функции. Premium: без ограничений.
 
 import { after } from "next/server";
 import { NextResponse } from "next/server";
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
     const user = await verifyUser(request);
     if (!user.isPremium) {
-      await checkAndIncrementAiUsage(user.userId);
+      await checkAndIncrementAiUsage(user.userId, "recognize-recipe");
     }
 
     const body = await request.json();

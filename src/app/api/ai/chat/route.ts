@@ -3,7 +3,7 @@
 // Возвращает SSE: сначала чанки текста, потом рецепты (если AI решил их показать).
 
 import { after } from "next/server";
-import { verifyUser, checkAndIncrementAiUsage, logTokenUsage, AuthError } from "@/lib/verifyUser";
+import { verifyUser, checkAndIncrementAiUsage, logTokenUsage, AuthError, FREE_LIMITS } from "@/lib/verifyUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -168,7 +168,7 @@ export async function POST(request: Request) {
   try {
     user = await verifyUser(request);
     if (!user.isPremium) {
-      await checkAndIncrementAiUsage(user.userId);
+      await checkAndIncrementAiUsage(user.userId, "ai-chat", FREE_LIMITS.aiChatUsesPerDay);
     }
     body = await request.json();
   } catch (e) {

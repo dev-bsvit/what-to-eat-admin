@@ -4,12 +4,14 @@
 CREATE TABLE IF NOT EXISTS ai_usage (
   user_id   UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   date      DATE        NOT NULL DEFAULT CURRENT_DATE,
+  endpoint  TEXT        NOT NULL DEFAULT 'global',
   count     INT         NOT NULL DEFAULT 0,
-  PRIMARY KEY (user_id, date)
+  PRIMARY KEY (user_id, date, endpoint)
 );
 
 -- Индекс для быстрой проверки по пользователю и дате
 CREATE INDEX IF NOT EXISTS ai_usage_user_date_idx ON ai_usage (user_id, date);
+CREATE INDEX IF NOT EXISTS ai_usage_user_date_endpoint_idx ON ai_usage (user_id, date, endpoint);
 
 -- RLS: пользователь видит только свои записи
 ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;

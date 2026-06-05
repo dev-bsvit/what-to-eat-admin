@@ -60,10 +60,17 @@ const LIMITS = [
     critical: false,
   },
   {
-    feature: "AI голос / фото (в день)",
-    free: "1 раз / день",
+    feature: "AI функции: голос / фото / рецепт",
+    free: "2 раза / день на каждую функцию",
     premium: "Без ограничений",
-    source: "Subscription.swift:253  FreeTierLimits.maxAIUsesPerDay = 1",
+    source: "Subscription.swift:266  FreeTierLimits.maxAIUsesPerDay = 2",
+    critical: true,
+  },
+  {
+    feature: "AI чат",
+    free: "10 сообщений / день",
+    premium: "Без ограничений",
+    source: "Subscription.swift:267  FreeTierLimits.maxAIChatUsesPerDay = 10",
     critical: true,
   },
   {
@@ -106,7 +113,7 @@ const AI_ENDPOINTS = [
     endpoint: "/api/ai/recognize-text",
     model: "gpt-4o-mini",
     maxTokens: 500,
-    freeLimit: "1 / день",
+    freeLimit: "2 / день",
     premiumLimit: "∞",
     desc: "Пользователь говорит — AI разбирает продукты с количеством и единицей",
   },
@@ -115,7 +122,7 @@ const AI_ENDPOINTS = [
     endpoint: "/api/ai/recognize-image",
     model: "gpt-4o-mini (vision)",
     maxTokens: 800,
-    freeLimit: "1 / день (общий с голосом)",
+    freeLimit: "2 / день",
     premiumLimit: "∞",
     desc: "Фото чека, рукописного списка или кулинарной книги",
   },
@@ -124,7 +131,7 @@ const AI_ENDPOINTS = [
     endpoint: "/api/ai/recognize-recipe",
     model: "gpt-4o-mini (vision, high)",
     maxTokens: 4000,
-    freeLimit: "1 / день (общий с голосом)",
+    freeLimit: "2 / день",
     premiumLimit: "∞",
     desc: "Извлекает полный рецепт из фото: название, ингредиенты, шаги",
   },
@@ -133,9 +140,27 @@ const AI_ENDPOINTS = [
     endpoint: "/api/ai/extract-recipe-text",
     model: "gpt-4o-mini",
     maxTokens: 2500,
-    freeLimit: "1 / день (общий AI лимит)",
+    freeLimit: "2 / день",
     premiumLimit: "∞",
     desc: "Преобразует текстовый рецепт из AI-чата в форму сохранения",
+  },
+  {
+    name: "AI чат",
+    endpoint: "/api/ai/chat",
+    model: "gpt-4o-mini",
+    maxTokens: 600,
+    freeLimit: "10 / день",
+    premiumLimit: "∞",
+    desc: "Кулинарный чат и поиск подходящих рецептов",
+  },
+  {
+    name: "Фото-чат",
+    endpoint: "/api/ai/photo-chat",
+    model: "gpt-4o-mini (vision)",
+    maxTokens: 700,
+    freeLimit: "2 / день",
+    premiumLimit: "∞",
+    desc: "Одноразовый чат по фото продуктов",
   },
   {
     name: "AI улучшение рецепта",
@@ -159,7 +184,7 @@ const SUPABASE_TABLES = [
   },
   {
     table: "ai_usage",
-    fields: ["user_id (uuid)", "date (date)", "count (int) — сбрасывается каждые сутки"],
+    fields: ["user_id (uuid)", "date (date)", "endpoint (text)", "count (int) — сбрасывается каждые сутки"],
   },
   {
     table: "purchases",
@@ -342,8 +367,8 @@ export default function SubscriptionRulesPage() {
             <li>Сервер верифицирует токен через Supabase Auth.</li>
             <li>Проверяет subscription_status пользователя в таблице profiles.</li>
             <li>Если Free — проверяет счётчик AI-запросов за сегодня в ai_usage.</li>
-            <li>Если лимит достигнут — возвращает 403 с reason: ai_limit_reached.</li>
-            <li>Клиент получает 403 и показывает Paywall.</li>
+            <li>Если лимит достигнут — возвращает 403 с reason: ai_chat_limit_reached или ai_feature_limit_reached.</li>
+            <li>Клиент получает 403 и показывает сообщение, что лимит на сегодня закончился.</li>
             <li>Если всё ок — форвардит запрос к OpenAI и возвращает результат.</li>
           </ol>
         </div>

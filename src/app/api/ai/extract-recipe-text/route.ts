@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     const user = await verifyUser(request);
     if (!user.isPremium) {
-      await checkAndIncrementAiUsage(user.userId);
+      await checkAndIncrementAiUsage(user.userId, "extract-recipe-text");
     }
 
     const body = await request.json();
