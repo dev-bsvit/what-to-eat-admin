@@ -33,6 +33,7 @@ CRITICAL:
 - Extract EVERY SINGLE ingredient and step, no exceptions
 - Do NOT skip, summarize, or combine steps
 - Keep ORIGINAL language from the image
+- Set "m": true for 1-3 ingredients that DEFINE the dish (main protein, main starch, key base). Set "m": false for oil, salt, water, spices, garlic, herbs, sugar, vinegar, etc.
 
 Return JSON:
 {
@@ -43,7 +44,7 @@ Return JSON:
   "s": servings_or_null,
   "cu": "cuisine or null",
   "tags": [],
-  "ing": [{"n":"name","a":"amount","u":"unit"}],
+  "ing": [{"n":"name","a":"amount","u":"unit","m":true/false}],
   "steps": [{"text":"full step text"}]
 }`;
 

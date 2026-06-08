@@ -27,6 +27,7 @@ interface ImportedRecipe {
     amount: string;
     unit: string;
     note?: string;
+    isMain?: boolean;
   }>;
   steps: Array<{
     text: string;
@@ -272,7 +273,7 @@ async function cleanupRecipeWithAI(
   recipe: ImportedRecipe,
   fixContent: boolean
 ): Promise<{
-  ingredients: Array<{ name: string; amount: string; unit: string }>;
+  ingredients: Array<{ name: string; amount: string; unit: string; isMain?: boolean }>;
   steps: Array<{ text: string }>;
   tags: string[];
   meal_role: string[];
@@ -311,6 +312,11 @@ async function cleanupRecipeWithAI(
 
 ${fixContent ? contentTask + "\n" : ""}2. Pick tags from this exact list ONLY: ${ALLOWED_TAGS.join(", ")}
 3. Fill planning fields for smart meal planning.
+
+isMain rules for ingredients:
+- isMain: true → 1-3 ingredients that DEFINE the dish: the main protein (chicken, beef, fish, eggs-as-main), main starch (pasta, rice, potatoes, dough), or key base vegetable/fruit. These are what the dish is "about".
+- isMain: false → everything else: oil, salt, water, sugar, vinegar, spices, pepper, garlic, onion, herbs, flour-as-thickener, broth, butter-as-condiment.
+- Rule of thumb: if you could name the dish after this ingredient, it's isMain: true.
 
 Tag rules:
 - quick: total cooking time ≤ 20 min
@@ -354,7 +360,7 @@ ${fixContent ? `NEVER return empty ingredients or steps arrays — infer if need
 ` : ""}
 Return format:
 {
-  "ingredients": [{"name": "...", "amount": "...", "unit": "..."}],
+  "ingredients": [{"name": "...", "amount": "...", "unit": "...", "isMain": true/false}],
   "steps": [{"text": "..."}],
   "tags": ["...", "..."],
   "meal_role": ["dinner"],
@@ -416,6 +422,7 @@ Return format:
               name: String(i.name || "").trim(),
               amount: String(i.amount || "").trim(),
               unit: String(i.unit || "").trim(),
+              isMain: typeof i.isMain === "boolean" ? i.isMain : false,
             }))
             .filter((i: any) => i.name.length > 0)
         : recipe.ingredients,

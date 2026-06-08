@@ -40,6 +40,7 @@ TASKS:
 3. Detect cu (cuisine) from ingredients/title if obvious
 4. Keep original language. Clean whitespace.
 5. DO NOT add pt/ct if not in input!
+6. Set isMain: true for 1-3 ingredients that DEFINE the dish (main protein, main starch, key base vegetable). Set isMain: false for oil, salt, water, spices, garlic, onion, herbs, sugar, vinegar.
 
 OUTPUT: valid JSON with same structure as input. Never put string in integer field.`;
 

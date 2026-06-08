@@ -35,6 +35,7 @@ Rules:
 - If the text contains multiple recipes, extract the main/first complete recipe.
 - Split ingredients into name, amount, unit. Put notes in note.
 - Steps must be actionable cooking instructions, in order.
+- Set "m": true for 1-3 ingredients that DEFINE the dish (main protein, main starch, key base). Set "m": false for oil, salt, water, spices, garlic, herbs, sugar, vinegar, etc.
 - Return valid JSON only.
 
 Return JSON:
@@ -46,7 +47,7 @@ Return JSON:
   "s": servings_or_null,
   "cu": "cuisine or null",
   "tags": [],
-  "ing": [{"n":"name","a":"amount","u":"unit","note":"optional note"}],
+  "ing": [{"n":"name","a":"amount","u":"unit","note":"optional note","m":true/false}],
   "steps": [{"text":"step text","timer": timer_minutes_or_null}]
 }`;
 
