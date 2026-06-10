@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -60,6 +61,94 @@ const MAX_COMBINED_TEXT_LENGTH = 12_000;
 
 const metaExtractionCache = new Map<string, { expiresAt: number; extraction: InstagramExtraction }>();
 const metaExtractionInFlight = new Map<string, Promise<InstagramExtraction>>();
+
+// ---------------------------------------------------------------------------
+// Persistent recipe cache (Supabase, keyed by reel shortcode).
+// A reel parsed once is served instantly and never re-fetched from Instagram.
+// Cache failures must never break the import — every call is best-effort.
+// ---------------------------------------------------------------------------
+
+const cacheSupabase = (() => {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+})();
+
+function shortcodeFromUrl(url: string): string | null {
+  try {
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
+    // /reel/<code>/, /p/<code>/, /tv/<code>/
+    const markerIndex = segments.findIndex((s) => ["reel", "reels", "p", "tv"].includes(s));
+    const code = markerIndex >= 0 ? segments[markerIndex + 1] : segments[0];
+    return code && /^[A-Za-z0-9_-]{5,}$/.test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getCachedRecipe(shortcode: string): Promise<ImportedRecipe | null> {
+  if (!cacheSupabase) return null;
+  try {
+    const { data } = await cacheSupabase
+      .from("instagram_import_cache")
+      .select("recipe, hits")
+      .eq("shortcode", shortcode)
+      .maybeSingle();
+    if (!data?.recipe) return null;
+    // hit counter — fire and forget
+    void cacheSupabase
+      .from("instagram_import_cache")
+      .update({ hits: (data.hits ?? 0) + 1 })
+      .eq("shortcode", shortcode)
+      .then(() => {});
+    return data.recipe as ImportedRecipe;
+  } catch (error) {
+    console.warn("[instagram] cache read failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function putCachedRecipe(shortcode: string, recipe: ImportedRecipe, sourceUrl: string) {
+  if (!cacheSupabase) return;
+  try {
+    await cacheSupabase
+      .from("instagram_import_cache")
+      .upsert({ shortcode, recipe, source_url: sourceUrl });
+  } catch (error) {
+    console.warn("[instagram] cache write failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency limiter for heavy extraction (python + ffmpeg + whisper).
+// Protects the instance from CPU starvation when several users import at
+// once and keeps the Instagram request rate human-like.
+// ---------------------------------------------------------------------------
+
+const MAX_CONCURRENT_FULL_IMPORTS = 2;
+let activeFullImports = 0;
+const fullImportWaiters: Array<() => void> = [];
+
+async function acquireImportSlot() {
+  if (activeFullImports < MAX_CONCURRENT_FULL_IMPORTS) {
+    activeFullImports += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => fullImportWaiters.push(resolve));
+  activeFullImports += 1;
+}
+
+function releaseImportSlot() {
+  activeFullImports -= 1;
+  fullImportWaiters.shift()?.();
+}
 
 function runProcess(command: string, args: string[], cwd: string, timeoutMs?: number) {
   return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
@@ -531,6 +620,24 @@ export async function POST(request: Request) {
       hasCookiesJson: Boolean(process.env.INSTAGRAM_COOKIES_JSON),
       hasProxy: Boolean(process.env.INSTAGRAM_PROXY),
     });
+
+    // Реюз готового результата: тот же ролик отдаём из кэша мгновенно,
+    // не трогая Instagram и OpenAI повторно
+    const shortcode = shortcodeFromUrl(normalizedUrl);
+    if (!metaOnly && shortcode) {
+      const cachedRecipe = await getCachedRecipe(shortcode);
+      if (cachedRecipe) {
+        console.info("[instagram] recipe cache hit", { shortcode });
+        return NextResponse.json({
+          recipe: cachedRecipe,
+          meta: {
+            method: "cache",
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+    }
+
     const extractedMeta = await getCachedInstagramMeta(normalizedUrl, cwd);
 
     console.info("[instagram] extracted", {
@@ -555,6 +662,11 @@ export async function POST(request: Request) {
     if (!apiKey) {
       return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
+
+    // Тяжёлая часть (python + ffmpeg + whisper) — не больше N параллельно,
+    // иначе одновременные импорты разных пользователей душат инстанс
+    await acquireImportSlot();
+    try {
 
     let transcript = "";
     let extracted = extractedMeta;
@@ -661,6 +773,10 @@ export async function POST(request: Request) {
 
     const recipe = normalizeRecipe(parsed, fallback);
 
+    if (shortcode) {
+      await putCachedRecipe(shortcode, recipe, extracted.source_url);
+    }
+
     return NextResponse.json({
       recipe,
       meta: {
@@ -668,6 +784,10 @@ export async function POST(request: Request) {
         timestamp: new Date().toISOString(),
       },
     });
+
+    } finally {
+      releaseImportSlot();
+    }
   } catch (error) {
     if (error instanceof Error) {
       try {
