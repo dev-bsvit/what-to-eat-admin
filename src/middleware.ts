@@ -4,6 +4,10 @@ function isPublicPath(pathname: string, method: string) {
   if (pathname === "/login" || pathname === "/api/login") {
     return true;
   }
+  // Public legal pages (linked from the iOS app and App Store Connect)
+  if (pathname === "/privacy" || pathname === "/terms") {
+    return true;
+  }
   if (pathname === "/api/user/import-recipe") {
     return true;
   }
