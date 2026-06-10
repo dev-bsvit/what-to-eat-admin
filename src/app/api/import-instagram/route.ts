@@ -320,6 +320,48 @@ function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): Import
   };
 }
 
+/// Превращает текст (подпись + опц. транскрипт) в структурированный рецепт через GPT.
+/// Используется и серверным путём, и путём «подпись пришла с устройства».
+async function parseRecipeFromText(
+  apiKey: string,
+  combinedText: string,
+  sourceUrl: string,
+  imageUrl: string | undefined,
+  fallback: Partial<ImportedRecipe>
+): Promise<ImportedRecipe> {
+  const prompt = buildPrompt(combinedText, sourceUrl, getDomain(sourceUrl), imageUrl);
+
+  const aiResponse = await fetch(OPENAI_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model: MODEL, input: prompt, temperature: 0.2 }),
+    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
+  });
+
+  if (!aiResponse.ok) {
+    const errorText = await aiResponse.text();
+    throw new Error(JSON.stringify({ error: "AI error", details: errorText }));
+  }
+
+  const aiData = await aiResponse.json();
+  const aiText = aiData?.output?.[0]?.content?.[0]?.text;
+  if (!aiText) {
+    throw new Error(JSON.stringify({ error: "Empty AI response" }));
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(extractJson(aiText));
+  } catch {
+    throw new Error(JSON.stringify({ error: "Invalid JSON from AI", raw: aiText }));
+  }
+
+  return normalizeRecipe(parsed, fallback);
+}
+
 async function transcribeAudio(apiKey: string, audioPath: string) {
   const audioBuffer = await fs.readFile(audioPath);
   const form = new FormData();
@@ -605,7 +647,7 @@ export async function POST(request: Request) {
   let fullExtractionOutputDir: string | null = null;
   try {
     const body = await request.json();
-    const { url, metaOnly = false } = body;
+    const { url, metaOnly = false, caption: clientCaption, thumbnail_url: clientThumbnail } = body;
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
@@ -634,6 +676,57 @@ export async function POST(request: Request) {
             method: "cache",
             timestamp: new Date().toISOString(),
           },
+        });
+      }
+    }
+
+    // Подпись пришла с устройства (WebView) — сервер НЕ обращается к Instagram,
+    // сразу структурируем текст через GPT. Это снимает риск блокировки сервера.
+    if (
+      !metaOnly &&
+      typeof clientCaption === "string" &&
+      clientCaption.trim().length >= 20
+    ) {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      }
+      const captionText = clientCaption.trim();
+      const imageUrl =
+        typeof clientThumbnail === "string" && clientThumbnail ? clientThumbnail : undefined;
+      console.info("[instagram] device-caption import", {
+        shortcode,
+        captionLength: captionText.length,
+        hasThumbnail: Boolean(imageUrl),
+      });
+      try {
+        const recipe = await parseRecipeFromText(
+          apiKey,
+          truncateForAI(captionText),
+          normalizedUrl,
+          imageUrl,
+          {
+            title: captionText.split("\n")[0]?.trim() || "Instagram recipe",
+            description: captionText,
+            imageUrl,
+            sourceUrl: normalizedUrl,
+            sourceDomain: getDomain(normalizedUrl),
+          }
+        );
+        if (shortcode) {
+          await putCachedRecipe(shortcode, recipe, normalizedUrl);
+        }
+        return NextResponse.json({
+          recipe,
+          meta: {
+            method: "device-caption+ai",
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (error) {
+        // Не валим импорт — падаем на обычный серверный путь ниже
+        console.warn("[instagram] device-caption import failed, falling back to server", {
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }
@@ -724,54 +817,20 @@ export async function POST(request: Request) {
 
     // Only use HTTPS URLs for imageUrl — AsyncImage on iOS cannot load data: URLs
     const imageUrl = extracted.thumbnail_url || undefined;
-    const prompt = buildPrompt(
+
+    const recipe = await parseRecipeFromText(
+      apiKey,
       combinedText,
       extracted.source_url,
-      getDomain(extracted.source_url),
-      imageUrl
+      imageUrl,
+      {
+        title: extracted.caption?.split("\n")[0]?.trim() || "Instagram recipe",
+        description: extracted.caption?.trim(),
+        imageUrl: imageUrl,
+        sourceUrl: extracted.source_url,
+        sourceDomain: getDomain(extracted.source_url),
+      }
     );
-
-    const aiResponse = await fetch(OPENAI_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        input: prompt,
-        temperature: 0.2,
-      }),
-      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      return NextResponse.json({ error: "AI error", details: errorText }, { status: 500 });
-    }
-
-    const aiData = await aiResponse.json();
-    const aiText = aiData?.output?.[0]?.content?.[0]?.text;
-    if (!aiText) {
-      return NextResponse.json({ error: "Empty AI response" }, { status: 500 });
-    }
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(extractJson(aiText));
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON from AI", raw: aiText }, { status: 500 });
-    }
-
-    const fallback: Partial<ImportedRecipe> = {
-      title: extracted.caption?.split("\n")[0]?.trim() || "Instagram recipe",
-      description: extracted.caption?.trim(),
-      imageUrl: imageUrl,
-      sourceUrl: extracted.source_url,
-      sourceDomain: getDomain(extracted.source_url),
-    };
-
-    const recipe = normalizeRecipe(parsed, fallback);
 
     if (shortcode) {
       await putCachedRecipe(shortcode, recipe, extracted.source_url);
