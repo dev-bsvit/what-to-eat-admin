@@ -603,7 +603,7 @@ ${availableCuisines}
 - fridge_life_days — число дней хранения в холодильнике: 0 для салатов с заправкой, 1 по умолчанию, 2 для котлет/запеканок, 3 для борща/супов.
 - mood_tags — массив из: comfort, light, energizing, festive, quick, cozy.
 - main_ingredient — одно значение из: chicken, beef, fish, pasta, rice, vegetables, eggs, legumes.
-- budget_level — 1 дешево, 2 средне, 3 дорого.
+- budget_level — обязательное число 1/2/3 по стоимости продуктов (не оставляй null): 1 = низкий (крупы, картофель, овощи, яйца, бобовые, мука, дешёвая курица); 2 = средний (курица/свинина/фарш, сыр, сметана, недорогая рыба, грибы); 3 = высокий (говядина, телятина, красная рыба, морепродукты, орехи, сыры премиум, деликатесы).
 - season — массив из: spring, summer, autumn, winter, all.
 - is_compound_safe — false для самодостаточных блюд вроде супов; true если можно добавить гарнир или салат.
 - goal_tags — массив из: weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep. Это цели для умного рациона.

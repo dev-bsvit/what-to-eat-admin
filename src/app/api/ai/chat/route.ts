@@ -21,7 +21,18 @@ const SYSTEM_PROMPT = `Ты кулинарный ассистент прилож
 — ингредиенты, замены, сочетания продуктов
 — техники готовки и кухонное оборудование
 — диеты, питание и калорийность
-— хранение продуктов и планирование меню
+— рационы, меню, meal prep, списки покупок и планирование питания
+— хранение продуктов, сезонность и доступность продуктов в разных странах
+
+ВАЖНО ПРО ГРАНИЦЫ ТЕМЫ:
+Если основная задача связана с едой, питанием, меню, рационом, рецептами, продуктами, покупками или готовкой — это кулинарный запрос, даже если пользователь упоминает страну, город, национальность, язык, бюджет, семью, количество людей, место проживания, сезон, магазин или бытовые условия.
+
+Примеры разрешённых запросов:
+— «Составь рацион питания на неделю для 2 людей из Украины, которые живут в Болгарии»
+— «Меню на неделю для семьи в Германии»
+— «Что купить в Lidl на 3 ужина»
+— «Рацион с болгарскими продуктами и украинскими вкусами»
+— «План питания на 1500 ккал»
 
 На любые НЕкулинарные вопросы (политика, история, знаменитости, спорт, медицина вне питания и т.д.) — вежливо откажи одним предложением и предложи спросить про еду.
 
@@ -38,6 +49,7 @@ const SYSTEM_PROMPT = `Ты кулинарный ассистент прилож
 — «вегетарианское» / «без мяса» → строго без мяса
 — «быстрое» / «за 15 минут» → блюда с коротким временем готовки
 — «новое» / «что-нибудь необычное» → не предлагай обычные домашние блюда
+— «дешёвое» / «бюджетное» / «эконом» → недорогие блюда из простых продуктов; «дорогое» / «премиум» → блюда с мясом/рыбой/деликатесами
 Предпочтения из сообщения важнее наличия продуктов в холодильнике.
 
 ВАЖНО — теги для поиска рецептов:
@@ -46,6 +58,7 @@ const SYSTEM_PROMPT = `Ты кулинарный ассистент прилож
 Когда ДОБАВЛЯТЬ:
 — «что приготовить», «предложи рецепт», «хочу приготовить», «что поесть», «дай рецепт»
 — «что на ужин/обед/завтрак», «идеи для блюд»
+— «составь рацион», «меню на неделю», «план питания», «meal plan», «список покупок»
 — быстрые команды «Из того что есть», «По настроению», «Случайный рецепт»
 
 Когда НЕ добавлять:
@@ -131,7 +144,7 @@ function stemRu(word: string): string {
 }
 
 // Ingredient-based search: finds recipes that actually contain the ingredient
-async function searchByIngredient(queryWords: string[]): Promise<any[]> {
+async function searchByIngredient(queryWords: string[], budget: number | null = null): Promise<any[]> {
   const stems: string[] = [];
   for (const w of queryWords) {
     const ruStem = EN_TO_RU[w.toLowerCase()];
@@ -159,21 +172,33 @@ async function searchByIngredient(queryWords: string[]): Promise<any[]> {
   for (const ri of riRows) scores[ri.recipe_id] = (scores[ri.recipe_id] ?? 0) + (ri.is_main ? 2 : 1);
 
   const topIds = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([id]) => id);
-  const { data: recipes } = await supabaseAdmin
+  let recipesQuery = supabaseAdmin
     .from("recipes")
     .select("id, title, description, image_url, cook_time, difficulty, cuisine_id")
-    .in("id", topIds).eq("is_user_defined", false).not("image_url", "is", null).limit(5);
+    .in("id", topIds).eq("is_user_defined", false).not("image_url", "is", null);
+  if (budget) recipesQuery = recipesQuery.eq("budget_level", budget);
+  const { data: recipes } = await recipesQuery.limit(5);
 
   const map = Object.fromEntries((recipes ?? []).map(r => [r.id, r]));
   return topIds.map(id => map[id]).filter(Boolean);
 }
 
-async function searchRecipes(query: string, apiKey: string) {
+// Детект бюджета по ключевым словам (ru/uk/en) → 1=низкий, 2=средний, 3=высокий, null=любой
+function detectBudgetLevel(text: string): number | null {
+  const t = text.toLowerCase();
+  const low = /\b(дешёв|дешев|деш[еи]вл|бюджетн|эконом|недорог|подешевле|cheap|budget|inexpensive|affordable)/i;
+  const high = /\b(дорог|премиум|деликатес|роскош|подорож|expensive|premium|gourmet|fancy|luxur)/i;
+  if (low.test(t)) return 1;
+  if (high.test(t)) return 3;
+  return null;
+}
+
+async function searchRecipes(query: string, apiKey: string, budget: number | null = null) {
   // Extract words from query (e.g. "strawberry cake recipes" → ["strawberry","cake","recipes"])
   const queryWords = query.toLowerCase().replace(/[^a-zа-яёa-z\s]/gi, " ").split(/\s+/).filter(w => w.length > 2);
 
   // 1. Try ingredient-based search first (most precise)
-  const ingredientRows = await searchByIngredient(queryWords);
+  const ingredientRows = await searchByIngredient(queryWords, budget);
   if (ingredientRows.length >= 2) {
     return ingredientRows.map((r) => ({
       id: r.id, title: r.title, description: r.description ?? null,
@@ -189,16 +214,19 @@ async function searchRecipes(query: string, apiKey: string) {
     const { data } = await supabaseAdmin.rpc("match_recipes", {
       query_embedding: embedding, match_count: 5,
       filter_cook_time: null, filter_mood: null, exclude_ids: [],
+      filter_budget: budget,
     });
     if (data?.length) rows = data;
   }
 
   // 3. Last resort: any recipes
   if (!rows.length) {
-    const { data } = await supabaseAdmin
+    let q = supabaseAdmin
       .from("recipes")
       .select("id, title, description, image_url, cook_time, difficulty, cuisine_id")
-      .eq("is_user_defined", false).not("image_url", "is", null).limit(5);
+      .eq("is_user_defined", false).not("image_url", "is", null);
+    if (budget) q = q.eq("budget_level", budget);
+    const { data } = await q.limit(5);
     rows = data ?? [];
   }
 
@@ -283,7 +311,7 @@ export async function POST(request: Request) {
             messages: chatMessages,
             stream: true,
             temperature: 0.75,
-            max_tokens: 600,
+            max_tokens: 1000,
           }),
         });
 
@@ -333,7 +361,10 @@ export async function POST(request: Request) {
 
         // Отправляем финальный чистый текст (без тега) и рецепты
         if (searchQuery) {
-          const recipes = await searchRecipes(searchQuery, apiKey);
+          // Бюджет берём из последнего сообщения пользователя + поискового запроса
+          const lastUserText = [...userMessages].reverse().find((m) => m.role === "user")?.content ?? "";
+          const budget = detectBudgetLevel(`${lastUserText} ${searchQuery}`);
+          const recipes = await searchRecipes(searchQuery, apiKey, budget);
           controller.enqueue(
             sseChunk({
               // clean_text нужен чтобы iOS заменил стриминговый текст (с тегом) на чистый

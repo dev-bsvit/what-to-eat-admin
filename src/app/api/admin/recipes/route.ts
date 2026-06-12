@@ -383,7 +383,7 @@ async function autoFillRecipe(recipeId: string) {
 
   const { data: recipe } = await supabaseAdmin
     .from("recipes")
-    .select("id, title, description, embedding, mood_tags, goal_tags, kid_friendly, spicy_level")
+    .select("id, title, description, embedding, mood_tags, goal_tags, kid_friendly, spicy_level, budget_level")
     .eq("id", recipeId)
     .single();
 
@@ -448,6 +448,39 @@ Return ONLY a JSON array, e.g. ["light"]. No explanation.`,
         } catch {
           updates.mood_tags = ["comfort"];
         }
+      }
+    } catch {
+      // non-blocking
+    }
+  }
+
+  // Estimate budget_level (1=low, 2=medium, 3=high) if missing
+  if (recipe.budget_level == null) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: `Оцени бюджет блюда. Ответь СТРОГО одной цифрой 1, 2 или 3.
+1 = низкий: крупы, картофель, овощи, яйца, бобовые, мука, дешёвая курица.
+2 = средний: курица/свинина/фарш, сыр, сметана, недорогая рыба, грибы.
+3 = высокий: говядина, телятина, красная рыба, морепродукты, орехи, сыры премиум, деликатесы.`,
+            },
+            { role: "user", content: `Блюдо: ${recipe.title}\nОписание: ${recipe.description ?? "нет"}\nБюджет (1/2/3):` },
+          ],
+          max_tokens: 2,
+          temperature: 0,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const m = String(json.choices?.[0]?.message?.content ?? "").match(/[123]/);
+        if (m) updates.budget_level = Number(m[0]);
       }
     } catch {
       // non-blocking

@@ -20,6 +20,7 @@ interface RecommendationAnswers {
   pantryIngredients: string[];
   excludedIngredients: string[];
   servings: number;
+  budget?: number | null; // 1=низкий, 2=средний, 3=высокий
 }
 
 interface RequestBody {
@@ -144,6 +145,10 @@ async function handlePost(req: NextRequest) {
   if (answers.maxCookTime) {
     fallbackQuery = fallbackQuery.lte("cook_time", answers.maxCookTime);
   }
+  const filterBudget = [1, 2, 3].includes(Number(answers.budget)) ? Number(answers.budget) : null;
+  if (filterBudget) {
+    fallbackQuery = fallbackQuery.eq("budget_level", filterBudget);
+  }
   if (answers.mood === "new" && excludedRecipeIds.length > 0) {
     fallbackQuery = fallbackQuery.not("id", "in", `(${excludedRecipeIds.join(",")})`);
   }
@@ -162,6 +167,7 @@ async function handlePost(req: NextRequest) {
       filter_cook_time: answers.maxCookTime ?? null,
       filter_mood: filterMood,
       exclude_ids: answers.mood === "new" && excludedRecipeIds.length > 0 ? excludedRecipeIds : [],
+      filter_budget: filterBudget,
     });
     if (!error && data && data.length > 0) rows = data;
   }

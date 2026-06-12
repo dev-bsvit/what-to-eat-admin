@@ -113,12 +113,14 @@ CREATE INDEX IF NOT EXISTS idx_recipes_kid_friendly
 CREATE INDEX IF NOT EXISTS idx_recipes_spicy_level
   ON recipes (spicy_level);
 
+DROP FUNCTION IF EXISTS match_recipes(vector, integer, integer, text, uuid[]);
 CREATE OR REPLACE FUNCTION match_recipes(
   query_embedding vector(1536),
   match_count     int DEFAULT 40,
   filter_cook_time int DEFAULT NULL,
   filter_mood     text DEFAULT NULL,
-  exclude_ids     uuid[] DEFAULT '{}'
+  exclude_ids     uuid[] DEFAULT '{}',
+  filter_budget   int DEFAULT NULL
 )
 RETURNS TABLE (
   id uuid, title text, description text, image_url text,
@@ -136,6 +138,7 @@ LANGUAGE sql STABLE AS $$
     AND r.embedding IS NOT NULL
     AND (filter_cook_time IS NULL OR r.cook_time <= filter_cook_time)
     AND (filter_mood IS NULL OR r.mood_tags @> ARRAY[filter_mood])
+    AND (filter_budget IS NULL OR r.budget_level = filter_budget)
     AND (array_length(exclude_ids, 1) IS NULL OR r.id != ALL(exclude_ids))
   ORDER BY r.embedding <=> query_embedding
   LIMIT match_count;
