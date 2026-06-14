@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 // Wake-up ping (Render free tier cold-start)
 export async function GET() {
-  return NextResponse.json({ ok: true, build: "budget-5" });
+  return NextResponse.json({ ok: true });
 }
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
@@ -56,7 +56,10 @@ const moodFilterTag = (mood: string) => {
     usual: null,
     new: null,
   };
-  return map[mood] ?? mood;
+  // ВАЖНО: usual/new намеренно дают null (без mood-фильтра). Нельзя писать
+  // `map[mood] ?? mood` — это вернёт строку "usual"/"new" и отфильтрует по
+  // несуществующему mood_tag → пустая выдача → last-resort.
+  return mood in map ? map[mood] : mood;
 };
 
 // Build a natural-language query for embedding from user answers
@@ -159,7 +162,6 @@ async function handlePost(req: NextRequest) {
   ]);
 
   let rows: any[] | null = null;
-  const dbg: Record<string, string> = { path: "none", matchErr: "", matchN: "", fbErr: "", fbN: "" };
 
   if (embedding) {
     const { data, error } = await supabaseAdmin.rpc("match_recipes", {
@@ -170,48 +172,29 @@ async function handlePost(req: NextRequest) {
       exclude_ids: answers.mood === "new" && excludedRecipeIds.length > 0 ? excludedRecipeIds : [],
       filter_budget: filterBudget,
     });
-    dbg.matchErr = error ? `${error.code}:${error.message}`.slice(0, 80) : "";
-    dbg.matchN = String(data?.length ?? 0);
-    if (!error && data && data.length > 0) { rows = data; dbg.path = "match"; }
+    if (!error && data && data.length > 0) rows = data;
   }
 
-  dbg.fbErr = fallbackResult.error ? `${fallbackResult.error.code}`.slice(0, 40) : "";
-  dbg.fbN = String(fallbackResult.data?.length ?? 0);
   if (!rows || rows.length === 0) {
     rows = (!fallbackResult.error && fallbackResult.data?.length) ? fallbackResult.data : null;
-    if (rows) dbg.path = "fallback";
   }
 
-  // --- Last fallback: any 8 recipes ---
+  // --- Last fallback: any 8 recipes (respect budget if set) ---
   if (!rows || rows.length === 0) {
-    const { data } = await supabaseAdmin
+    let lastQuery = supabaseAdmin
       .from("recipes")
       .select("id, title, description, image_url, cook_time, prep_time, servings, difficulty, diet_tags, cuisine_id, translations")
-      .not("image_url", "is", null)
-      .limit(8);
+      .not("image_url", "is", null);
+    if (filterBudget) lastQuery = lastQuery.eq("budget_level", filterBudget);
+    const { data } = await lastQuery.limit(8);
     rows = data ?? [];
-    dbg.path = "lastresort";
   }
 
   // Shuffle and pick 8
   const selected = rows.sort(() => Math.random() - 0.5).slice(0, 8);
 
-  const pa = await supabaseAdmin.from("recipes").select("id", { count: "exact", head: true }).eq("budget_level", 3);
-  const pb = await supabaseAdmin.from("recipes").select("id", { count: "exact", head: true }).eq("budget_level", 3).eq("is_user_defined", false);
-  const pc = await supabaseAdmin.from("recipes").select("id", { count: "exact", head: true }).eq("budget_level", 3).eq("is_user_defined", false).not("image_url", "is", null);
-  const probe = pa;
-
   const aiMessage = await generateAiMessage(answers, selected, favoriteRecipeTitles, language);
-  const resp = buildResponse(selected, aiMessage, answers);
-  resp.headers.set("x-dbg-budget", String(filterBudget));
-  resp.headers.set("x-dbg-embedding", `${embedding ? 1 : 0}|len=${embedding?.length ?? 0}`);
-  resp.headers.set("x-dbg-path", dbg.path);
-  resp.headers.set("x-dbg-match", `${dbg.matchN}|${dbg.matchErr}`);
-  resp.headers.set("x-dbg-fb", `${dbg.fbN}|${dbg.fbErr}`);
-  resp.headers.set("x-dbg-probe3", `${probe.count ?? "null"}|${probe.error?.code ?? ""}`);
-  resp.headers.set("x-dbg-stages", `a=${pa.count}|b=${pb.count},${pb.error?.code ?? ""}|c=${pc.count},${pc.error?.code ?? ""}`);
-  resp.headers.set("x-dbg-url", String(process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "?").slice(8, 28));
-  return resp;
+  return buildResponse(selected, aiMessage, answers);
 }
 
 function buildResponse(rows: any[], aiMessage: string, answers: RecommendationAnswers) {
