@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 // Wake-up ping (Render free tier cold-start)
 export async function GET() {
-  return NextResponse.json({ ok: true, build: "budget-2" });
+  return NextResponse.json({ ok: true, build: "budget-3" });
 }
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
@@ -159,6 +159,7 @@ async function handlePost(req: NextRequest) {
   ]);
 
   let rows: any[] | null = null;
+  const dbg: Record<string, string> = { path: "none", matchErr: "", matchN: "", fbErr: "", fbN: "" };
 
   if (embedding) {
     const { data, error } = await supabaseAdmin.rpc("match_recipes", {
@@ -169,11 +170,16 @@ async function handlePost(req: NextRequest) {
       exclude_ids: answers.mood === "new" && excludedRecipeIds.length > 0 ? excludedRecipeIds : [],
       filter_budget: filterBudget,
     });
-    if (!error && data && data.length > 0) rows = data;
+    dbg.matchErr = error ? `${error.code}:${error.message}`.slice(0, 80) : "";
+    dbg.matchN = String(data?.length ?? 0);
+    if (!error && data && data.length > 0) { rows = data; dbg.path = "match"; }
   }
 
+  dbg.fbErr = fallbackResult.error ? `${fallbackResult.error.code}`.slice(0, 40) : "";
+  dbg.fbN = String(fallbackResult.data?.length ?? 0);
   if (!rows || rows.length === 0) {
     rows = (!fallbackResult.error && fallbackResult.data?.length) ? fallbackResult.data : null;
+    if (rows) dbg.path = "fallback";
   }
 
   // --- Last fallback: any 8 recipes ---
@@ -184,6 +190,7 @@ async function handlePost(req: NextRequest) {
       .not("image_url", "is", null)
       .limit(8);
     rows = data ?? [];
+    dbg.path = "lastresort";
   }
 
   // Shuffle and pick 8
@@ -192,8 +199,10 @@ async function handlePost(req: NextRequest) {
   const aiMessage = await generateAiMessage(answers, selected, favoriteRecipeTitles, language);
   const resp = buildResponse(selected, aiMessage, answers);
   resp.headers.set("x-dbg-budget", String(filterBudget));
-  resp.headers.set("x-dbg-raw-budget", String(answers.budget));
   resp.headers.set("x-dbg-embedding", embedding ? "1" : "0");
+  resp.headers.set("x-dbg-path", dbg.path);
+  resp.headers.set("x-dbg-match", `${dbg.matchN}|${dbg.matchErr}`);
+  resp.headers.set("x-dbg-fb", `${dbg.fbN}|${dbg.fbErr}`);
   return resp;
 }
 
