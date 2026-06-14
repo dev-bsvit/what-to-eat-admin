@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 // Wake-up ping (Render free tier cold-start)
 export async function GET() {
-  return NextResponse.json({ ok: true, build: "budget-4" });
+  return NextResponse.json({ ok: true, build: "budget-5" });
 }
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
@@ -196,10 +196,10 @@ async function handlePost(req: NextRequest) {
   // Shuffle and pick 8
   const selected = rows.sort(() => Math.random() - 0.5).slice(0, 8);
 
-  const probe = await supabaseAdmin
-    .from("recipes")
-    .select("id", { count: "exact", head: true })
-    .eq("budget_level", 3);
+  const pa = await supabaseAdmin.from("recipes").select("id", { count: "exact", head: true }).eq("budget_level", 3);
+  const pb = await supabaseAdmin.from("recipes").select("id", { count: "exact", head: true }).eq("budget_level", 3).eq("is_user_defined", false);
+  const pc = await supabaseAdmin.from("recipes").select("id", { count: "exact", head: true }).eq("budget_level", 3).eq("is_user_defined", false).not("image_url", "is", null);
+  const probe = pa;
 
   const aiMessage = await generateAiMessage(answers, selected, favoriteRecipeTitles, language);
   const resp = buildResponse(selected, aiMessage, answers);
@@ -209,6 +209,7 @@ async function handlePost(req: NextRequest) {
   resp.headers.set("x-dbg-match", `${dbg.matchN}|${dbg.matchErr}`);
   resp.headers.set("x-dbg-fb", `${dbg.fbN}|${dbg.fbErr}`);
   resp.headers.set("x-dbg-probe3", `${probe.count ?? "null"}|${probe.error?.code ?? ""}`);
+  resp.headers.set("x-dbg-stages", `a=${pa.count}|b=${pb.count},${pb.error?.code ?? ""}|c=${pc.count},${pc.error?.code ?? ""}`);
   resp.headers.set("x-dbg-url", String(process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "?").slice(8, 28));
   return resp;
 }
