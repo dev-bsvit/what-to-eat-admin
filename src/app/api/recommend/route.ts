@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 // Wake-up ping (Render free tier cold-start)
 export async function GET() {
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, build: "budget-1" });
 }
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
