@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 // Wake-up ping (Render free tier cold-start)
 export async function GET() {
-  return NextResponse.json({ ok: true, build: "budget-1" });
+  return NextResponse.json({ ok: true, build: "budget-2" });
 }
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
@@ -190,7 +190,11 @@ async function handlePost(req: NextRequest) {
   const selected = rows.sort(() => Math.random() - 0.5).slice(0, 8);
 
   const aiMessage = await generateAiMessage(answers, selected, favoriteRecipeTitles, language);
-  return buildResponse(selected, aiMessage, answers);
+  const resp = buildResponse(selected, aiMessage, answers);
+  resp.headers.set("x-dbg-budget", String(filterBudget));
+  resp.headers.set("x-dbg-raw-budget", String(answers.budget));
+  resp.headers.set("x-dbg-embedding", embedding ? "1" : "0");
+  return resp;
 }
 
 function buildResponse(rows: any[], aiMessage: string, answers: RecommendationAnswers) {
