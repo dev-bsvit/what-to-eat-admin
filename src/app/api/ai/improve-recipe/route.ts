@@ -93,6 +93,9 @@ interface DBRecipe {
   prep_time: number | null;
   cook_time: number | null;
   servings: number | null;
+  tips: string | null;
+  serving_tips: string | null;
+  storage_tips: string | null;
   ingredients: DBIngredient[];
   steps: DBStep[];
 }
@@ -102,7 +105,7 @@ async function fetchRecipeForImprove(recipeId: string): Promise<DBRecipe | null>
 
   const { data: recipe, error } = await admin
     .from("recipes")
-    .select("id, title, description, prep_time, cook_time, servings")
+    .select("id, title, description, prep_time, cook_time, servings, tips, serving_tips, storage_tips")
     .eq("id", recipeId)
     .single();
 
@@ -137,6 +140,9 @@ interface ImprovedData {
   prepTime: number | null;
   cookTime: number | null;
   servings: number | null;
+  tips: string | null;
+  servingTips: string | null;
+  storageTips: string | null;
   ingredients: Array<{ amount: number | null; unit: string; note: string | null }>;
   steps: Array<{ text: string }>;
 }
@@ -144,7 +150,7 @@ interface ImprovedData {
 async function saveImprovedRecipe(recipeId: string, improved: ImprovedData, original: DBRecipe) {
   const admin = makeAdmin();
 
-  // 1. Update basic recipe fields
+  // 1. Update basic recipe fields + tips
   await admin
     .from("recipes")
     .update({
@@ -153,6 +159,9 @@ async function saveImprovedRecipe(recipeId: string, improved: ImprovedData, orig
       prep_time: improved.prepTime,
       cook_time: improved.cookTime,
       servings: improved.servings,
+      tips: improved.tips,
+      serving_tips: improved.servingTips,
+      storage_tips: improved.storageTips,
     })
     .eq("id", recipeId);
 
@@ -184,57 +193,80 @@ async function saveImprovedRecipe(recipeId: string, improved: ImprovedData, orig
 // ─── GPT prompt ──────────────────────────────────────────────────────────────
 
 function buildPrompt(recipe: DBRecipe, langName: string): string {
-  const ingLines = recipe.ingredients
-    .map((ing, i) => `${i + 1}. ${ing.name ?? "—"} | ${ing.amount ?? "?"} ${ing.unit ?? ""} ${ing.note ? `(${ing.note})` : ""}`.trimEnd())
-    .join("\n");
+  const ingLines = recipe.ingredients.length
+    ? recipe.ingredients
+        .map((ing, i) => `${i + 1}. ${ing.name ?? "—"} | ${ing.amount ?? "?"} ${ing.unit ?? ""} ${ing.note ? `(${ing.note})` : ""}`.trimEnd())
+        .join("\n")
+    : "(нет ингредиентов)";
 
-  const stepLines = recipe.steps
-    .map((s, i) => `${i + 1}. ${s.text}`)
-    .join("\n");
+  const stepLines = recipe.steps.length
+    ? recipe.steps.map((s, i) => `${i + 1}. ${s.text}`).join("\n")
+    : "(нет шагов)";
 
-  return `You are a recipe quality editor. This recipe was imported from a social media video (Instagram/TikTok/YouTube) and may have gaps, duplicated words in the title, missing amounts, or incomplete steps.
+  return `You are a professional culinary editor. This recipe was imported from social media (Instagram/TikTok/YouTube) and needs thorough improvement to become a complete, high-quality recipe.
 
-OUTPUT LANGUAGE: ${langName}. ALL user-visible text must be in ${langName}.
+OUTPUT LANGUAGE: ${langName}. Every text field must be in ${langName}.
 
-INPUT RECIPE:
+═══ INPUT RECIPE ═══
 Title: ${recipe.title}
-Description: ${recipe.description ?? "(missing)"}
-Prep time: ${recipe.prep_time ?? "?"} min
-Cook time: ${recipe.cook_time ?? "?"} min
-Servings: ${recipe.servings ?? "?"}
+Description: ${recipe.description ?? "(отсутствует)"}
+Prep time: ${recipe.prep_time ?? "?"} min | Cook time: ${recipe.cook_time ?? "?"} min | Servings: ${recipe.servings ?? "?"}
+Tips: ${recipe.tips ?? "(отсутствуют)"}
+Serving tips: ${recipe.serving_tips ?? "(отсутствуют)"}
+Storage tips: ${recipe.storage_tips ?? "(отсутствуют)"}
 
-INGREDIENTS (${recipe.ingredients.length} total — return EXACTLY this many in the same order):
-${ingLines || "(none)"}
+INGREDIENTS (${recipe.ingredients.length} items — return EXACTLY this count, same order):
+${ingLines}
 
 STEPS:
-${stepLines || "(none)"}
+${stepLines}
+═══════════════════
 
-YOUR TASKS:
-1. Fix the title — remove duplicated words, correct obvious errors, keep the dish name.
-2. Write a concise 1-2 sentence description if missing or poor.
-3. Set realistic prep/cook times if missing or clearly wrong.
-4. For each ingredient (same order, same count): improve the amount (use realistic typical values if "?"), normalize units to г/кг/мл/л/шт/ст.л./ч.л., fix notes.
-5. Rewrite steps so they form a complete, logical, detailed cooking sequence. Fix any gaps.
-6. DO NOT add or remove ingredients. DO NOT change ingredient names.
-7. DO NOT translate ingredient names — keep them in ${langName}.
-8. Preserve the author's cooking style and original recipe concept.
+YOUR TASKS — be thorough, not conservative:
 
-RESPOND WITH VALID JSON ONLY (no markdown):
+TITLE: Fix duplicate words, typos, garbled transliteration. Make it clean and appetizing.
+
+DESCRIPTION (2-3 sentences): Write a mouth-watering description highlighting the dish's appeal, key flavors, and occasion. If it's missing or generic, create a good one from scratch.
+
+TIMES: Set realistic values. Salads: prep 10-15 min, cook 0 min. Soups: prep 20 min, cook 40-60 min. Don't use 0 for cook_time of hot dishes.
+
+INGREDIENTS: For each ingredient in the same order:
+- Fill in missing amounts with realistic culinary values (e.g. 2 яйца, 135 г курицы, 150 г грибов)
+- Normalize units: г / кг / мл / л / шт / ст.л. / ч.л. / стакан
+- Add helpful notes where useful (e.g. "нарезанные кубиками", "вареные вкрутую")
+- Do NOT rename, add, or remove ingredients
+
+STEPS: Rewrite to be detailed and clear:
+- Each step should be a complete action with specific details (temp, time, technique)
+- Add missing obvious steps (пред-нагрев, отдых, подача)
+- Remove vague placeholders ("следуйте рецепту", "готовьте как обычно")
+- Aim for 4-8 well-written steps
+
+TIPS (tips): 1-2 useful cooking tips that help avoid common mistakes or improve the result. Example: "Не пережаривайте грибы — достаточно 3-4 минуты на сильном огне для золотистой корочки."
+
+SERVING_TIPS (serving_tips): How best to serve the dish — temperature, garnish, pairing. Example: "Подавайте сразу после приготовления, украсив зеленью. Хорошо сочетается с тостами."
+
+STORAGE_TIPS (storage_tips): Storage instructions. Example: "Хранить в холодильнике до 24 часов. Не заправляйте салат заранее — заправляйте перед подачей."
+
+RESPOND WITH VALID JSON ONLY (no markdown, no explanation):
 {
-  "title": "fixed title",
-  "description": "1-2 sentence description",
+  "title": "...",
+  "description": "...",
   "prepTime": 15,
-  "cookTime": 30,
+  "cookTime": 0,
   "servings": 4,
+  "tips": "...",
+  "servingTips": "...",
+  "storageTips": "...",
   "ingredients": [
-    { "amount": 500, "unit": "г", "note": "" }
+    { "amount": 135, "unit": "г", "note": "консервированная" }
   ],
   "steps": [
-    { "text": "Step text" }
+    { "text": "Detailed step text." }
   ]
 }
 
-ingredients array must have EXACTLY ${recipe.ingredients.length} elements in the original order.`;
+ingredients array MUST have EXACTLY ${recipe.ingredients.length} elements in the original order.`;
 }
 
 // ─── Parse GPT response ───────────────────────────────────────────────────────
@@ -267,6 +299,9 @@ function parseImproved(raw: string, original: DBRecipe): ImprovedData {
     prepTime: typeof parsed.prepTime === "number" ? parsed.prepTime : original.prep_time,
     cookTime: typeof parsed.cookTime === "number" ? parsed.cookTime : original.cook_time,
     servings: typeof parsed.servings === "number" ? parsed.servings : original.servings,
+    tips: parsed.tips ? String(parsed.tips).trim() : original.tips,
+    servingTips: parsed.servingTips ? String(parsed.servingTips).trim() : original.serving_tips,
+    storageTips: parsed.storageTips ? String(parsed.storageTips).trim() : original.storage_tips,
     ingredients,
     steps,
   };
