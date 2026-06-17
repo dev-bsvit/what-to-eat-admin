@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { spawn } from "node:child_process";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 
 export const runtime = "nodejs";
+// YouTube pages can be large — increase limit to 60 s (Vercel hobby plan max)
+export const maxDuration = 60;
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
-const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const MODEL = "gpt-4o-mini";
 
 interface ImportedRecipe {
   title: string;
@@ -27,212 +26,187 @@ interface ImportedRecipe {
   goal_tags?: string[];
   kid_friendly?: boolean;
   spicy_level?: number;
-  ingredients: Array<{
-    name: string;
-    amount: string;
-    unit: string;
-    note?: string;
-  }>;
+  ingredients: Array<{ name: string; amount: string; unit: string; note?: string }>;
   steps: Array<{ text: string }>;
   sourceUrl: string;
   sourceDomain?: string;
   confidence: "high" | "medium" | "low";
 }
 
-interface YouTubeExtraction {
-  video_id: string;
-  title: string;
-  description: string;
-  subtitles: string;
-  thumbnail_url?: string | null;
-  audio_path?: string | null;
-  source_url: string;
-  uploader?: string | null;
-  audio_error?: string | null;
-}
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
-interface YouTubePreview {
-  video_id?: string | null;
-  title: string;
-  thumbnail_url?: string | null;
-  source_url: string;
-  uploader?: string | null;
-}
-
-const MODEL = "gpt-4o-mini";
-const TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
-
-function runProcess(command: string, args: string[], cwd: string) {
-  return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-    let child;
-    try {
-      child = spawn(command, args, { cwd });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      resolve({ code: 127, stdout: "", stderr: message });
-      return;
+function extractVideoId(rawUrl: string): string | null {
+  try {
+    const u = new URL(rawUrl);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") return u.pathname.split("/").filter(Boolean)[0] || null;
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      if (u.pathname === "/watch") return u.searchParams.get("v");
+      const parts = u.pathname.split("/").filter(Boolean);
+      if (["shorts", "embed", "live"].includes(parts[0])) return parts[1] || null;
     }
-    let stdout = "";
-    let stderr = "";
+  } catch { /* ignore */ }
+  return null;
+}
 
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      resolve({ code: 127, stdout, stderr: error.message });
-    });
-    child.on("close", (code) => {
-      resolve({ code: code ?? 0, stdout, stderr });
-    });
-  });
+function watchUrl(rawUrl: string): string {
+  const id = extractVideoId(rawUrl);
+  return id ? `https://www.youtube.com/watch?v=${id}` : rawUrl;
 }
 
 function getDomain(url: string) {
+  try { return new URL(url).hostname; } catch { return "youtube.com"; }
+}
+
+function extractJson(content: string): string {
+  const m = content.match(/\{[\s\S]*\}/);
+  return m ? m[0] : content;
+}
+
+function normalizeArr(v: unknown, fb: string[] = []): string[] {
+  return Array.isArray(v) ? v.map((t) => String(t).trim()).filter(Boolean) : fb;
+}
+
+function normalizeNum(v: unknown, fb?: number): number | undefined {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fb;
+}
+
+// ─── YouTube page scraper (replaces yt-dlp) ───────────────────────────────────
+
+const YT_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept-Language": "en-US,en;q=0.9",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Cache-Control": "no-cache",
+};
+
+interface YTPageData {
+  title: string;
+  description: string;
+  thumbnailUrl: string | null;
+  videoId: string | null;
+}
+
+/** Fetches the YouTube watch page and parses ytInitialData for title + description. */
+async function scrapeYouTubePage(videoId: string): Promise<YTPageData | null> {
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  let html: string;
   try {
-    return new URL(url).hostname;
-  } catch {
-    return undefined;
-  }
-}
-
-function truncateLog(value: string | null | undefined, max = 1000) {
-  if (!value) return "";
-  return value.length > max ? `${value.slice(0, max)}...` : value;
-}
-
-function logProcessResult(label: string, result: { code: number; stdout: string; stderr: string }) {
-  console.info(label, {
-    code: result.code,
-    stdout: truncateLog(result.stdout, 300),
-    stderr: truncateLog(result.stderr, 1200),
-  });
-}
-
-function isInterpreterMissing(result: { code: number; stderr: string }) {
-  if (result.code === 127) return true;
-  return /enoent|not found/i.test(result.stderr);
-}
-
-function parseStructuredFailure(stdout: string, stderr: string) {
-  try {
-    const parsed = JSON.parse(stdout.trim());
-    if (parsed && typeof parsed === "object" && (parsed.error || parsed.message)) {
-      return {
-        error: String(parsed.error || "YouTube extract failed"),
-        details: String(parsed.message || stderr || stdout).trim(),
-      };
-    }
-  } catch {
-    // Not structured JSON, fall back to stderr/stdout.
-  }
-
-  const details = (stderr || stdout).trim();
-  if (!details) return null;
-
-  return {
-    error: "YouTube extract failed",
-    details,
-  };
-}
-
-function extractJson(content: string) {
-  const match = content.match(/\{[\s\S]*\}/);
-  return match ? match[0] : content;
-}
-
-function normalizeTextArray(value: any, fallback: string[] = []) {
-  return Array.isArray(value) ? value.map((t: any) => String(t).trim()).filter(Boolean) : fallback;
-}
-
-function normalizeNumber(value: any, fallback?: number) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function normalizeText(value: any, fallback?: string) {
-  const text = value == null ? "" : String(value).trim();
-  return text || fallback;
-}
-
-function extractYouTubeVideoId(rawUrl: string) {
-  try {
-    const parsed = new URL(rawUrl);
-    const host = parsed.hostname.replace(/^www\./, "");
-
-    if (host === "youtu.be") {
-      const id = parsed.pathname.split("/").filter(Boolean)[0];
-      return id || null;
-    }
-
-    if (host === "youtube.com" || host === "m.youtube.com") {
-      if (parsed.pathname === "/watch") {
-        return parsed.searchParams.get("v");
-      }
-
-      const parts = parsed.pathname.split("/").filter(Boolean);
-      if (parts[0] === "shorts" || parts[0] === "embed" || parts[0] === "live") {
-        return parts[1] || null;
-      }
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function buildYouTubeWatchUrl(rawUrl: string) {
-  const videoId = extractYouTubeVideoId(rawUrl);
-  if (!videoId) return rawUrl;
-  return `https://www.youtube.com/watch?v=${videoId}`;
-}
-
-async function fetchYouTubePreview(rawUrl: string): Promise<YouTubePreview | null> {
-  const normalizedUrl = buildYouTubeWatchUrl(rawUrl);
-  const videoId = extractYouTubeVideoId(normalizedUrl);
-  const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(normalizedUrl)}&format=json`;
-
-  try {
-    const response = await fetch(oembedUrl, {
-      signal: AbortSignal.timeout(8000),
+    const res = await fetch(url, {
+      headers: YT_HEADERS,
+      signal: AbortSignal.timeout(12_000),
     });
-
-    if (!response.ok) {
-      console.warn("[youtube] oembed failed", { status: response.status, url: normalizedUrl });
+    if (!res.ok) {
+      console.warn("[youtube] page fetch failed", { status: res.status });
       return null;
     }
+    html = await res.text();
+  } catch (err) {
+    console.warn("[youtube] page fetch error", err);
+    return null;
+  }
 
-    const data = await response.json();
-    const title = data?.title ? String(data.title).trim() : "";
-    const thumbnailUrl = data?.thumbnail_url ? String(data.thumbnail_url).trim() : null;
-    const uploader = data?.author_name ? String(data.author_name).trim() : null;
+  // ytInitialData is a large JSON assigned inside a <script> tag.
+  // Match everything between the assignment and the first </script> boundary.
+  const match = html.match(/var ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
+  if (!match) {
+    console.warn("[youtube] ytInitialData not found in page HTML");
+    return null;
+  }
 
-    if (!title && !thumbnailUrl) {
-      return null;
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(match[1]);
+  } catch {
+    console.warn("[youtube] ytInitialData JSON parse failed");
+    return null;
+  }
+
+  // ── Title ──
+  // twoColumnWatchNextResults → results → videoPrimaryInfoRenderer
+  let title = "";
+  try {
+    const results = (data as any)
+      ?.contents?.twoColumnWatchNextResults?.results?.results?.contents as any[];
+    const primary = results?.find((c: any) => c?.videoPrimaryInfoRenderer)?.videoPrimaryInfoRenderer;
+    title = primary?.title?.runs?.map((r: any) => r.text).join("") ?? "";
+  } catch { /* ignore */ }
+
+  // ── Description ──
+  let description = "";
+  try {
+    // Engagement panel path (new UI)
+    const panels = (data as any)?.engagementPanels as any[] | undefined;
+    const descPanel = panels?.find(
+      (p: any) =>
+        p?.engagementPanelSectionListRenderer?.targetId ===
+        "engagement-panel-structured-description"
+    );
+    const items =
+      descPanel?.engagementPanelSectionListRenderer?.content
+        ?.structuredDescriptionContentRenderer?.items as any[];
+    const bodyItem = items?.find((i: any) => i?.expandableVideoDescriptionBodyRenderer);
+    const attrText =
+      bodyItem?.expandableVideoDescriptionBodyRenderer?.attributedDescriptionBodyText;
+    // attributedDescriptionBodyText.content is sometimes a plain string, sometimes runs
+    if (typeof attrText?.content === "string") {
+      description = attrText.content;
+    } else {
+      description = (attrText?.commandRuns ?? attrText?.runs ?? [])
+        .map((r: any) => r.text ?? "")
+        .join("");
     }
+  } catch { /* ignore */ }
 
+  // Fallback: secondary info renderer (old UI)
+  if (!description) {
+    try {
+      const results = (data as any)
+        ?.contents?.twoColumnWatchNextResults?.results?.results?.contents as any[];
+      const secondary = results?.find((c: any) => c?.videoSecondaryInfoRenderer)
+        ?.videoSecondaryInfoRenderer;
+      description =
+        secondary?.attributedDescription?.content ??
+        secondary?.description?.runs?.map((r: any) => r.text).join("") ??
+        "";
+    } catch { /* ignore */ }
+  }
+
+  // ── Thumbnail (best quality) ──
+  let thumbnailUrl: string | null = null;
+  try {
+    const results = (data as any)
+      ?.contents?.twoColumnWatchNextResults?.results?.results?.contents as any[];
+    const primary = results?.find((c: any) => c?.videoPrimaryInfoRenderer)?.videoPrimaryInfoRenderer;
+    const thumbs = primary?.thumbnail?.thumbnails as any[];
+    thumbnailUrl = thumbs?.at(-1)?.url ?? null;
+  } catch { /* ignore */ }
+  // Fallback to standard maxresdefault
+  if (!thumbnailUrl) thumbnailUrl = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+
+  return { title, description, thumbnailUrl, videoId };
+}
+
+/** oEmbed fallback — only title + thumbnail, NO description. */
+async function oEmbedFallback(rawUrl: string): Promise<Pick<YTPageData, "title" | "thumbnailUrl"> | null> {
+  const oembed = `https://www.youtube.com/oembed?url=${encodeURIComponent(rawUrl)}&format=json`;
+  try {
+    const res = await fetch(oembed, { signal: AbortSignal.timeout(6_000) });
+    if (!res.ok) return null;
+    const d = await res.json();
     return {
-      video_id: videoId,
-      title: title || "YouTube video",
-      thumbnail_url: thumbnailUrl,
-      source_url: normalizedUrl,
-      uploader,
+      title: String(d?.title ?? "").trim() || "YouTube",
+      thumbnailUrl: d?.thumbnail_url ? String(d.thumbnail_url) : null,
     };
-  } catch (error) {
-    console.warn("[youtube] oembed error", {
-      url: normalizedUrl,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return null;
-  }
+  } catch { return null; }
 }
 
-function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): ImportedRecipe {
-  const title = String(parsed.title || fallback.title || "Рецепт из YouTube").trim();
+// ─── Recipe normaliser ────────────────────────────────────────────────────────
 
+function normalizeRecipe(parsed: any, fb: Partial<ImportedRecipe>): ImportedRecipe {
+  const title = String(parsed.title || fb.title || "Рецепт из YouTube").trim();
   let ingredients = Array.isArray(parsed.ingredients)
     ? parsed.ingredients
         .map((i: any) => ({
@@ -243,152 +217,96 @@ function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): Import
         }))
         .filter((i: any) => i.name.length > 0)
     : [];
-
   let steps = Array.isArray(parsed.steps)
-    ? parsed.steps
-        .map((s: any) => ({
-          text: String(s.text || s || "").trim(),
-        }))
-        .filter((s: any) => s.text.length > 0)
+    ? parsed.steps.map((s: any) => ({ text: String(s.text || s || "").trim() })).filter((s: any) => s.text.length > 0)
     : [];
 
-  if (ingredients.length === 0) {
-    ingredients = [
-      { name: "Основной ингредиент", amount: "по вкусу", unit: "", note: "Уточните по видео" }
-    ];
-  }
-
-  if (steps.length === 0) {
-    steps = [
-      { text: "Подготовьте ингредиенты согласно видео" },
-      { text: "Следуйте инструкциям из оригинального видео" }
-    ];
-  }
+  if (!ingredients.length)
+    ingredients = [{ name: "Основной ингредиент", amount: "по вкусу", unit: "", note: "Уточните по видео" }];
+  if (!steps.length)
+    steps = [{ text: "Следуйте инструкциям из видео" }];
 
   return {
     title,
-    description: parsed.description ? String(parsed.description).trim() : fallback.description,
-    imageUrl: parsed.imageUrl || fallback.imageUrl,
-    prepTime: Number.isFinite(parsed.prepTime) ? parsed.prepTime : (fallback.prepTime || 15),
-    cookTime: Number.isFinite(parsed.cookTime) ? parsed.cookTime : (fallback.cookTime || 30),
-    servings: Number.isFinite(parsed.servings) ? parsed.servings : (fallback.servings || 4),
-    cuisine: parsed.cuisine ? String(parsed.cuisine).trim() : (fallback.cuisine || "international"),
-    tags: Array.isArray(parsed.tags) ? parsed.tags.map((t: any) => String(t).trim()).filter(Boolean) : [],
-    meal_role: normalizeTextArray(parsed.meal_role, fallback.meal_role),
-    fridge_life_days: normalizeNumber(parsed.fridge_life_days, fallback.fridge_life_days ?? 1),
-    mood_tags: normalizeTextArray(parsed.mood_tags, fallback.mood_tags),
-    main_ingredient: normalizeText(parsed.main_ingredient, fallback.main_ingredient),
-    budget_level: normalizeNumber(parsed.budget_level, fallback.budget_level),
-    season: normalizeTextArray(parsed.season, fallback.season ?? ["all"]),
-    is_compound_safe: typeof parsed.is_compound_safe === "boolean" ? parsed.is_compound_safe : (fallback.is_compound_safe ?? true),
-    goal_tags: normalizeTextArray(parsed.goal_tags, fallback.goal_tags ?? []),
-    kid_friendly: typeof parsed.kid_friendly === "boolean" ? parsed.kid_friendly : (fallback.kid_friendly ?? false),
-    spicy_level: normalizeNumber(parsed.spicy_level, fallback.spicy_level ?? 0),
+    description: parsed.description ? String(parsed.description).trim() : fb.description,
+    imageUrl: parsed.imageUrl || fb.imageUrl,
+    prepTime: normalizeNum(parsed.prepTime, fb.prepTime ?? 15),
+    cookTime: normalizeNum(parsed.cookTime, fb.cookTime ?? 30),
+    servings: normalizeNum(parsed.servings, fb.servings ?? 4),
+    cuisine: parsed.cuisine ? String(parsed.cuisine).trim() : (fb.cuisine ?? "international"),
+    tags: normalizeArr(parsed.tags),
+    meal_role: normalizeArr(parsed.meal_role, fb.meal_role),
+    fridge_life_days: normalizeNum(parsed.fridge_life_days, fb.fridge_life_days ?? 1),
+    mood_tags: normalizeArr(parsed.mood_tags, fb.mood_tags),
+    main_ingredient: parsed.main_ingredient ? String(parsed.main_ingredient).trim() : fb.main_ingredient,
+    budget_level: normalizeNum(parsed.budget_level, fb.budget_level),
+    season: normalizeArr(parsed.season, fb.season ?? ["all"]),
+    is_compound_safe: typeof parsed.is_compound_safe === "boolean" ? parsed.is_compound_safe : (fb.is_compound_safe ?? true),
+    goal_tags: normalizeArr(parsed.goal_tags, fb.goal_tags ?? []),
+    kid_friendly: typeof parsed.kid_friendly === "boolean" ? parsed.kid_friendly : (fb.kid_friendly ?? false),
+    spicy_level: normalizeNum(parsed.spicy_level, fb.spicy_level ?? 0),
     ingredients,
     steps,
-    sourceUrl: String(parsed.sourceUrl || fallback.sourceUrl || "").trim(),
-    sourceDomain: parsed.sourceDomain || fallback.sourceDomain || "youtube.com",
+    sourceUrl: String(parsed.sourceUrl || fb.sourceUrl || "").trim(),
+    sourceDomain: parsed.sourceDomain || fb.sourceDomain || "youtube.com",
     confidence: ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "low",
   };
 }
 
-async function transcribeAudio(apiKey: string, audioPath: string) {
-  const audioBuffer = await fs.readFile(audioPath);
-  const form = new FormData();
-  form.append("file", new Blob([audioBuffer]), path.basename(audioPath));
-  form.append("model", TRANSCRIBE_MODEL);
+function buildPrompt(inputText: string, sourceUrl: string, sourceDomain: string, imageUrl?: string | null) {
+  return `Extract recipe from YouTube video description. Return VALID JSON only, no markdown.
 
-  const response = await fetch(TRANSCRIBE_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: form,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Transcription failed");
-  }
-
-  const data = await response.json();
-  return data?.text ? String(data.text).trim() : "";
-}
-
-function buildPrompt(inputText: string, sourceUrl: string, sourceDomain?: string, imageUrl?: string) {
-  return `Extract recipe from YouTube video (description + subtitles/transcript). Return VALID JSON only.
-
-INPUT TEXT:
+INPUT:
 ${inputText}
 
-REQUIRED OUTPUT FORMAT (copy structure exactly):
+OUTPUT FORMAT:
 {
-  "title": "Recipe name from text or generate descriptive title",
+  "title": "Recipe name",
   "description": "Brief description",
   "imageUrl": ${imageUrl ? `"${imageUrl}"` : "null"},
-  "prepTime": 15,
-  "cookTime": 30,
-  "servings": 4,
+  "prepTime": 15, "cookTime": 30, "servings": 4,
   "cuisine": "international",
-  "tags": ["quick", "dinner"],
+  "tags": ["quick","dinner"],
   "meal_role": ["dinner"],
   "fridge_life_days": 1,
-  "mood_tags": ["comfort", "quick"],
+  "mood_tags": ["comfort"],
   "main_ingredient": "chicken",
   "budget_level": 2,
   "season": ["all"],
   "is_compound_safe": true,
   "goal_tags": ["balanced"],
   "kid_friendly": false,
-  "spicy_level": 1,
-  "ingredients": [
-    { "name": "ingredient name", "amount": "100", "unit": "г", "note": "" }
-  ],
-  "steps": [
-    { "text": "Step description" }
-  ],
+  "spicy_level": 0,
+  "ingredients": [{"name":"ingredient","amount":"100","unit":"г","note":""}],
+  "steps": [{"text":"Step text"}],
   "sourceUrl": "${sourceUrl}",
-  "sourceDomain": "${sourceDomain || "youtube.com"}",
+  "sourceDomain": "${sourceDomain}",
   "confidence": "medium"
 }
 
-CRITICAL RULES:
-1. ALWAYS return valid JSON - no markdown, no comments, no extra text
-2. NEVER return empty arrays for ingredients or steps - ALWAYS extract or infer:
-   - If cooking mentioned but amounts unclear: use "по вкусу" or estimate typical amounts (100г, 1 шт)
-   - If steps unclear: create logical cooking sequence based on mentioned ingredients/actions
-   - If only dish name known: infer typical ingredients and basic cooking steps
-3. ALWAYS fill required fields with defaults if unknown
-4. For ingredients without specific amounts: use "по вкусу", "1 шт", "100 г" etc.
-5. Keep ORIGINAL language - do NOT translate Russian to English or vice versa
-6. confidence: "high" if clear recipe, "medium" if inferred some data, "low" if mostly guessed
-7. Extract ALL mentioned food items as ingredients, even if amounts are not specified
-8. YouTube descriptions often contain full recipe - look for ingredient lists and step-by-step instructions
-9. Subtitles/transcript contain spoken recipe instructions - extract cooking steps from speech
-10. TAGS — choose only from this list (pick all that apply):
-    Time: "quick" (≤20 min total), "special occasion" (>60 min total)
-    Calories: "light" (<300 kcal/serving), "hearty" (>650 kcal/serving)
-    Meal: "breakfast", "lunch", "dinner", "snack"
-    Diet: "vegetarian", "vegan", "gluten-free", "dairy-free"
-    Type: "soup", "salad", "pasta", "grill", "baking", "raw"
-    If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.
-11. PLANNING FIELDS:
-    - meal_role: array from breakfast, lunch_main, lunch_side, dinner, snack, dessert
-    - fridge_life_days: 0 dressed salads/same-day, 1 default, 2 cutlets/casseroles, 3 soups/borscht/stews
-    - mood_tags: array from comfort, light, energizing, festive, quick, cozy
-    - main_ingredient: one of chicken, beef, fish, pasta, rice, vegetables, eggs, legumes
-    - budget_level: 1 cheap, 2 medium, 3 expensive
-    - season: array from spring, summer, autumn, winter, all
-    - is_compound_safe: false for self-contained soups/stews, true if dish can be paired with a side/salad
-    - goal_tags: array from weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep
-    - kid_friendly: boolean, true only for mild, non-spicy, child-appropriate dishes with no alcohol
-    - spicy_level: 0 none, 1 mild, 2 medium, 3 hot`;
+RULES:
+1. Keep ORIGINAL language — do NOT translate Russian↔English.
+2. NEVER return empty arrays for ingredients or steps.
+3. confidence: "high" if full recipe found, "medium" if partially inferred, "low" if mostly guessed.
+4. tags: only from — quick, special occasion, light, hearty, breakfast, lunch, dinner, snack, vegetarian, vegan, gluten-free, dairy-free, soup, salad, pasta, grill, baking, raw.
+5. meal_role: breakfast, lunch_main, lunch_side, dinner, snack, dessert.
+6. mood_tags: comfort, light, energizing, festive, quick, cozy.
+7. main_ingredient: chicken, beef, fish, pasta, rice, vegetables, eggs, legumes.
+8. budget_level: 1 cheap, 2 medium, 3 expensive.
+9. goal_tags: weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep.`;
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
+
+export async function GET() {
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { url, metaOnly = false } = body;
+    const { url, metaOnly = false } = body as { url?: string; metaOnly?: boolean };
+
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
@@ -397,304 +315,89 @@ export async function POST(request: Request) {
     if (!metaOnly && !apiKey) {
       return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
-    const ensuredApiKey = apiKey ?? "";
 
-    const cwd = process.cwd();
-    const outputDir = path.join(cwd, "tmp", "youtube");
-    await fs.mkdir(outputDir, { recursive: true });
+    const videoId = extractVideoId(url.trim());
+    const canonicalUrl = watchUrl(url.trim());
+    const domain = getDomain(canonicalUrl);
 
-    const scriptPath = path.join(cwd, "scripts", "youtube_import.py");
-    try {
-      await fs.access(scriptPath);
-    } catch {
-      return NextResponse.json(
-        {
-          error: "YouTube extractor script is missing",
-          details: scriptPath,
-        },
-        { status: 500 }
-      );
-    }
+    console.info("[youtube] import request", { url: url.trim(), videoId, metaOnly });
 
-    const pythonCandidates = Array.from(
-      new Set(
-        [
-          process.env.PYTHON_PATH,
-          "/usr/bin/python3",
-          "/usr/local/bin/python3",
-          "python3",
-          "python",
-        ].filter(Boolean) as string[]
-      )
-    );
+    // Step 1: scrape page for title + description + thumbnail
+    const pageData = videoId ? await scrapeYouTubePage(videoId) : null;
 
-    console.info("[youtube] request", {
-      url: url.trim(),
-      metaOnly,
-      outputDir,
-      scriptPath,
-      pythonCandidates,
-      ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
-    });
-
-    // Step 1: Extract metadata + subtitles (no audio)
-    let extraction = { code: 127, stdout: "", stderr: "Python not found" };
-    const attempts: Array<{ command: string; code: number; stderr: string }> = [];
-    let pythonUsed = "";
-    for (const candidate of pythonCandidates) {
-      const result = await runProcess(
-        candidate,
-        [scriptPath, "--url", url.trim(), "--output", outputDir],
-        cwd
-      );
-      logProcessResult("[youtube] extractor attempt", result);
-      attempts.push({
-        command: candidate,
-        code: result.code,
-        stderr: truncateLog(result.stderr, 300),
-      });
-      pythonUsed = candidate;
-      if (result.code === 0) {
-        extraction = result;
-        break;
-      }
-
-      if (!isInterpreterMissing(result) && parseStructuredFailure(result.stdout, result.stderr)) {
-        extraction = result;
-        break;
-      }
-
-      extraction = result;
-    }
-
-    if (extraction.code !== 0) {
-      logProcessResult("[youtube] extractor failed", extraction);
-      const structuredFailure = parseStructuredFailure(extraction.stdout, extraction.stderr);
-      if (metaOnly) {
-        const preview = await fetchYouTubePreview(url.trim());
-        if (preview) {
-          console.info("[youtube] metaOnly fallback preview", {
-            videoId: preview.video_id,
-            title: preview.title.slice(0, 60),
-            thumbnailUrl: preview.thumbnail_url || null,
-            uploader: preview.uploader || null,
-          });
-          return NextResponse.json(preview);
-        }
-      }
-      return NextResponse.json(
-        {
-          error: structuredFailure?.error || "YouTube extract failed",
-          details: structuredFailure?.details || extraction.stderr || extraction.stdout,
-          python: pythonUsed || pythonCandidates[0],
-          candidates: pythonCandidates,
-          attempts,
-        },
-        { status: 500 }
-      );
-    }
-
-    let extracted: YouTubeExtraction;
-    try {
-      extracted = JSON.parse(extraction.stdout.trim());
-    } catch {
-      logProcessResult("[youtube] extractor invalid json", extraction);
-      return NextResponse.json(
-        { error: "Invalid extractor response", details: extraction.stdout },
-        { status: 500 }
-      );
-    }
-
-    if ((extracted as any).error) {
-      return NextResponse.json({ error: (extracted as any).message || "Extraction failed" }, { status: 500 });
-    }
-
-    console.info("[youtube] extracted", {
-      videoId: extracted.video_id,
-      title: extracted.title?.slice(0, 60),
-      hasDescription: Boolean(extracted.description?.trim()),
-      hasSubtitles: Boolean(extracted.subtitles?.trim()),
-      thumbnailUrl: extracted.thumbnail_url || null,
-      uploader: extracted.uploader || null,
-    });
-
+    // metaOnly — just return preview, no GPT
     if (metaOnly) {
-      return NextResponse.json({
-        video_id: extracted.video_id,
-        title: extracted.title || "YouTube video",
-        thumbnail_url: extracted.thumbnail_url || null,
-        source_url: extracted.source_url,
-        uploader: extracted.uploader || null,
-      });
+      if (pageData?.title || pageData?.thumbnailUrl) {
+        return NextResponse.json({
+          video_id: videoId,
+          title: pageData.title || "YouTube",
+          thumbnail_url: pageData.thumbnailUrl,
+          source_url: canonicalUrl,
+        });
+      }
+      const oembed = await oEmbedFallback(url.trim());
+      if (oembed) {
+        return NextResponse.json({ video_id: videoId, ...oembed, source_url: canonicalUrl });
+      }
+      return NextResponse.json({ error: "Could not fetch video preview" }, { status: 500 });
     }
 
-    // Step 2: Try description + subtitles first
-    const descriptionText = (extracted.description || "").trim();
-    const subtitlesText = (extracted.subtitles || "").trim();
-    const combinedDescSubs = [
-      extracted.title ? `Название: ${extracted.title}` : "",
-      descriptionText ? `Описание:\n${descriptionText}` : "",
-      subtitlesText ? `Субтитры:\n${subtitlesText.slice(0, 5000)}` : "",
+    // Step 2: build input text for GPT
+    let title = pageData?.title ?? "";
+    let description = pageData?.description ?? "";
+    let thumbnailUrl = pageData?.thumbnailUrl ?? null;
+
+    // If page scrape got nothing, fall back to oEmbed for title/thumbnail only
+    if (!title && !description) {
+      const oembed = await oEmbedFallback(url.trim());
+      title = oembed?.title ?? "";
+      thumbnailUrl = oembed?.thumbnailUrl ?? thumbnailUrl;
+    }
+
+    const inputText = [
+      title ? `Название: ${title}` : "",
+      description ? `Описание:\n${description}` : "",
     ].filter(Boolean).join("\n\n").trim();
 
-    let recipeFromDescription: ImportedRecipe | null = null;
+    console.info("[youtube] scraped", {
+      videoId,
+      titleLen: title.length,
+      descLen: description.length,
+      hasThumbnail: Boolean(thumbnailUrl),
+    });
 
-    if (combinedDescSubs.length > 50) {
-      console.info("[youtube] trying description + subtitles parsing");
-      const descPrompt = buildPrompt(
-        combinedDescSubs,
-        extracted.source_url,
-        getDomain(extracted.source_url),
-        extracted.thumbnail_url || undefined
+    if (!inputText) {
+      return NextResponse.json(
+        { error: "Could not extract any text from the YouTube page" },
+        { status: 500 }
       );
-
-          const descAiResponse = await fetch(OPENAI_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${ensuredApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ model: MODEL, input: descPrompt, temperature: 0.2 }),
-      });
-
-      if (descAiResponse.ok) {
-        const descAiData = await descAiResponse.json();
-        const descAiText = descAiData?.output?.[0]?.content?.[0]?.text;
-        if (descAiText) {
-          try {
-            const parsed = JSON.parse(extractJson(descAiText));
-            const normalized = normalizeRecipe(parsed, {
-              title: extracted.title || descriptionText.split("\n")[0]?.trim(),
-              description: descriptionText.slice(0, 300),
-              imageUrl: extracted.thumbnail_url || undefined,
-              sourceUrl: extracted.source_url,
-              sourceDomain: getDomain(extracted.source_url),
-            });
-            if (normalized.confidence !== "low" && normalized.ingredients.length > 1) {
-              recipeFromDescription = normalized;
-            }
-          } catch {
-            // JSON parse failed
-          }
-        }
-      }
     }
 
-    if (recipeFromDescription) {
-      console.info("[youtube] recipe found from description + subtitles");
-      return NextResponse.json({
-        recipe: recipeFromDescription,
-        meta: {
-          method: "youtube+description+ai",
-          timestamp: new Date().toISOString(),
-        },
-      });
-    }
+    // Step 3: GPT structuring
+    const prompt = buildPrompt(inputText, canonicalUrl, domain, thumbnailUrl);
 
-    // Step 3: Fallback — download audio and transcribe
-    console.info("[youtube] description insufficient, downloading audio for transcription");
-
-    let audioExtraction = { code: 127, stdout: "", stderr: "Python not found" };
-    const audioAttempts: Array<{ command: string; code: number; stderr: string }> = [];
-    for (const candidate of pythonCandidates) {
-      const result = await runProcess(
-        candidate,
-        [scriptPath, "--url", url.trim(), "--output", outputDir, "--audio"],
-        cwd
-      );
-      logProcessResult("[youtube] audio extractor attempt", result);
-      audioAttempts.push({
-        command: candidate,
-        code: result.code,
-        stderr: truncateLog(result.stderr, 300),
-      });
-      if (result.code === 0) {
-        audioExtraction = result;
-        break;
-      }
-
-      if (!isInterpreterMissing(result) && parseStructuredFailure(result.stdout, result.stderr)) {
-        audioExtraction = result;
-        break;
-      }
-
-      audioExtraction = result;
-    }
-
-    if (audioExtraction.code !== 0) {
-      logProcessResult("[youtube] audio extractor failed", audioExtraction);
-      console.info("[youtube] audio extractor attempts", audioAttempts);
-    }
-
-    let audioExtracted: YouTubeExtraction | null = null;
-    if (audioExtraction.code === 0) {
-      try {
-        audioExtracted = JSON.parse(audioExtraction.stdout.trim());
-      } catch {
-        // continue
-      }
-    }
-
-    let transcript = "";
-    const audioPath = audioExtracted?.audio_path;
-
-    if (audioPath) {
-      // For long YouTube videos, we may need to trim audio to first 10 minutes
-      const ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
-      const trimmedPath = path.join(outputDir, `${extracted.video_id}_trimmed.mp3`);
-
-      const trimResult = await runProcess(
-        ffmpegPath,
-        ["-y", "-i", audioPath, "-t", "600", "-acodec", "mp3", trimmedPath],
-        cwd
-      );
-
-      const pathToTranscribe = trimResult.code === 0 ? trimmedPath : audioPath;
-      console.info("[youtube] transcribing audio", { path: pathToTranscribe });
-
-      try {
-        transcript = await transcribeAudio(ensuredApiKey, pathToTranscribe);
-        console.info("[youtube] transcript length", { length: transcript.length });
-      } catch (err) {
-        console.error("[youtube] transcription error", err);
-      }
-    }
-
-    // Step 4: Parse with AI using all available text
-    const allText = [
-      extracted.title ? `Название: ${extracted.title}` : "",
-      descriptionText ? `Описание:\n${descriptionText}` : "",
-      subtitlesText ? `Субтитры:\n${subtitlesText.slice(0, 3000)}` : "",
-      transcript ? `Транскрипция аудио:\n${transcript.slice(0, 5000)}` : "",
-    ].filter(Boolean).join("\n\n").trim();
-
-    if (!allText) {
-      return NextResponse.json({ error: "No text to parse" }, { status: 500 });
-    }
-
-    const prompt = buildPrompt(
-      allText,
-      extracted.source_url,
-      getDomain(extracted.source_url),
-      extracted.thumbnail_url || undefined
-    );
-
-    const aiResponse = await fetch(OPENAI_URL, {
+    const aiRes = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${ensuredApiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: MODEL, input: prompt, temperature: 0.2 }),
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        max_tokens: 1800,
+      }),
+      signal: AbortSignal.timeout(30_000),
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      return NextResponse.json({ error: "AI error", details: errorText }, { status: 500 });
+    if (!aiRes.ok) {
+      const txt = await aiRes.text();
+      return NextResponse.json({ error: "AI error", details: txt }, { status: 500 });
     }
 
-    const aiData = await aiResponse.json();
-    const aiText = aiData?.output?.[0]?.content?.[0]?.text;
+    const aiData = await aiRes.json();
+    const aiText: string | undefined = aiData?.choices?.[0]?.message?.content?.trim();
     if (!aiText) {
       return NextResponse.json({ error: "Empty AI response" }, { status: 500 });
     }
@@ -706,26 +409,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid JSON from AI", raw: aiText }, { status: 500 });
     }
 
-    const fallback: Partial<ImportedRecipe> = {
-      title: extracted.title || "YouTube recipe",
-      description: descriptionText.slice(0, 300),
-      imageUrl: extracted.thumbnail_url || undefined,
-      sourceUrl: extracted.source_url,
-      sourceDomain: getDomain(extracted.source_url),
-    };
-
-    const recipe = normalizeRecipe(parsed, fallback);
+    const recipe = normalizeRecipe(parsed, {
+      title: title || "YouTube recipe",
+      description: description.slice(0, 300),
+      imageUrl: thumbnailUrl ?? undefined,
+      sourceUrl: canonicalUrl,
+      sourceDomain: domain,
+    });
 
     return NextResponse.json({
       recipe,
-      meta: {
-        method: transcript ? "youtube+whisper+ai" : "youtube+description+ai",
-        timestamp: new Date().toISOString(),
-      },
+      meta: { method: "youtube+page+ai", timestamp: new Date().toISOString() },
     });
-  } catch (error) {
+  } catch (err) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
+      { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 500 }
     );
   }
