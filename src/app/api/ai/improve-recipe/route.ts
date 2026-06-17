@@ -301,7 +301,7 @@ async function saveRecipe(recipeId: string, data: ReturnType<typeof parseRespons
   await admin.from("recipe_steps").delete().eq("recipe_id", recipeId);
   if (data.steps.length > 0) {
     await admin.from("recipe_steps").insert(
-      data.steps.map((s, i) => ({ recipe_id: recipeId, text: s.text, order_index: i, timer_seconds: null }))
+      data.steps.map((s: { text: string }, i: number) => ({ recipe_id: recipeId, text: s.text, order_index: i, timer_seconds: null }))
     );
   }
 }
