@@ -253,16 +253,24 @@ function normalizeRecipe(parsed: any, fb: Partial<ImportedRecipe>): ImportedReci
   };
 }
 
-function buildPrompt(inputText: string, sourceUrl: string, sourceDomain: string, imageUrl?: string | null) {
+const LANG_NAMES: Record<string, string> = {
+  ru: "Russian", uk: "Ukrainian", en: "English", de: "German",
+  es: "Spanish", fr: "French", it: "Italian", "pt-BR": "Portuguese",
+};
+
+function buildPrompt(inputText: string, sourceUrl: string, sourceDomain: string, language = "ru", imageUrl?: string | null) {
+  const langName = LANG_NAMES[language] ?? "Russian";
   return `Extract recipe from YouTube video description. Return VALID JSON only, no markdown.
+
+OUTPUT LANGUAGE: ${langName}. Translate ALL text fields (title, description, ingredient names, step text) into ${langName}. Only keep untranslatable brand names or proper nouns as-is.
 
 INPUT:
 ${inputText}
 
 OUTPUT FORMAT:
 {
-  "title": "Recipe name",
-  "description": "Brief description",
+  "title": "Recipe name in ${langName}",
+  "description": "Brief description in ${langName}",
   "imageUrl": ${imageUrl ? `"${imageUrl}"` : "null"},
   "prepTime": 15, "cookTime": 30, "servings": 4,
   "cuisine": "international",
@@ -277,15 +285,15 @@ OUTPUT FORMAT:
   "goal_tags": ["balanced"],
   "kid_friendly": false,
   "spicy_level": 0,
-  "ingredients": [{"name":"ingredient","amount":"100","unit":"г","note":""}],
-  "steps": [{"text":"Step text"}],
+  "ingredients": [{"name":"ingredient name in ${langName}","amount":"100","unit":"г","note":""}],
+  "steps": [{"text":"Step text in ${langName}"}],
   "sourceUrl": "${sourceUrl}",
   "sourceDomain": "${sourceDomain}",
   "confidence": "medium"
 }
 
 RULES:
-1. Keep ORIGINAL language — do NOT translate Russian↔English.
+1. ALL user-visible text (title, description, ingredient names, step text, notes) MUST be in ${langName}.
 2. NEVER return empty arrays for ingredients or steps.
 3. confidence: "high" if full recipe found, "medium" if partially inferred, "low" if mostly guessed.
 4. tags: only from — quick, special occasion, light, hearty, breakfast, lunch, dinner, snack, vegetarian, vegan, gluten-free, dairy-free, soup, salad, pasta, grill, baking, raw.
@@ -305,7 +313,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { url, metaOnly = false } = body as { url?: string; metaOnly?: boolean };
+    const { url, metaOnly = false, language = "ru" } = body as { url?: string; metaOnly?: boolean; language?: string };
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -374,7 +382,7 @@ export async function POST(request: Request) {
     }
 
     // Step 3: GPT structuring
-    const prompt = buildPrompt(inputText, canonicalUrl, domain, thumbnailUrl);
+    const prompt = buildPrompt(inputText, canonicalUrl, domain, language, thumbnailUrl);
 
     const aiRes = await fetch(OPENAI_URL, {
       method: "POST",

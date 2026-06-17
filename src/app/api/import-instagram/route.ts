@@ -327,9 +327,10 @@ async function parseRecipeFromText(
   combinedText: string,
   sourceUrl: string,
   imageUrl: string | undefined,
-  fallback: Partial<ImportedRecipe>
+  fallback: Partial<ImportedRecipe>,
+  language = "ru"
 ): Promise<ImportedRecipe> {
-  const prompt = buildPrompt(combinedText, sourceUrl, getDomain(sourceUrl), imageUrl);
+  const prompt = buildPrompt(combinedText, sourceUrl, getDomain(sourceUrl), imageUrl, language);
 
   const aiResponse = await fetch(OPENAI_URL, {
     method: "POST",
@@ -395,8 +396,16 @@ async function cleanupOutputDir(outputDir: string | null) {
   }
 }
 
-function buildPrompt(inputText: string, sourceUrl: string, sourceDomain?: string, imageUrl?: string) {
+const LANG_NAMES: Record<string, string> = {
+  ru: "Russian", uk: "Ukrainian", en: "English", de: "German",
+  es: "Spanish", fr: "French", it: "Italian", "pt-BR": "Portuguese",
+};
+
+function buildPrompt(inputText: string, sourceUrl: string, sourceDomain?: string, imageUrl?: string, language = "ru") {
+  const langName = LANG_NAMES[language] ?? "Russian";
   return `Extract recipe from Instagram post (caption + speech transcript). Return VALID JSON only.
+
+OUTPUT LANGUAGE: ${langName}. Translate ALL user-visible text (title, description, ingredient names, step text, notes) into ${langName}. Keep only untranslatable proper nouns/brand names as-is.
 
 INPUT TEXT:
 ${inputText}
@@ -445,7 +454,7 @@ CRITICAL RULES:
    - servings: default to 4 if not mentioned
    - cuisine: "international" if unclear
 4. For ingredients without specific amounts: use "по вкусу", "1 шт", "100 г" etc.
-5. Keep ORIGINAL language - do NOT translate Russian to English or vice versa
+5. ALL user-visible text MUST be in ${langName} — translate if needed
 6. confidence: "high" if clear recipe, "medium" if inferred some data, "low" if mostly guessed
 7. Extract ALL mentioned food items as ingredients, even if amounts are not specified
 8. TAGS — choose only from this list (pick all that apply):
@@ -647,7 +656,7 @@ export async function POST(request: Request) {
   let fullExtractionOutputDir: string | null = null;
   try {
     const body = await request.json();
-    const { url, metaOnly = false, caption: clientCaption, thumbnail_url: clientThumbnail } = body;
+    const { url, metaOnly = false, caption: clientCaption, thumbnail_url: clientThumbnail, language = "ru" } = body;
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
@@ -711,7 +720,8 @@ export async function POST(request: Request) {
             imageUrl,
             sourceUrl: normalizedUrl,
             sourceDomain: getDomain(normalizedUrl),
-          }
+          },
+          language
         );
         if (shortcode) {
           await putCachedRecipe(shortcode, recipe, normalizedUrl);
@@ -829,7 +839,8 @@ export async function POST(request: Request) {
         imageUrl: imageUrl,
         sourceUrl: extracted.source_url,
         sourceDomain: getDomain(extracted.source_url),
-      }
+      },
+      language
     );
 
     if (shortcode) {
