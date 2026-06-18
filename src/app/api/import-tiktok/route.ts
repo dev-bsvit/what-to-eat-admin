@@ -1,576 +1,271 @@
 import { NextResponse } from "next/server";
-import { spawn } from "node:child_process";
-import { promises as fs } from "node:fs";
-import path from "node:path";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
-const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
-
-interface ImportedRecipe {
-  title: string;
-  description?: string;
-  imageUrl?: string;
-  prepTime?: number;
-  cookTime?: number;
-  servings?: number;
-  cuisine?: string;
-  tags: string[];
-  meal_role?: string[];
-  fridge_life_days?: number;
-  mood_tags?: string[];
-  main_ingredient?: string;
-  budget_level?: number;
-  season?: string[];
-  is_compound_safe?: boolean;
-  goal_tags?: string[];
-  kid_friendly?: boolean;
-  spicy_level?: number;
-  ingredients: Array<{
-    name: string;
-    amount: string;
-    unit: string;
-    note?: string;
-  }>;
-  steps: Array<{ text: string }>;
-  sourceUrl: string;
-  sourceDomain?: string;
-  confidence: "high" | "medium" | "low";
-}
-
-interface TikTokExtraction {
-  video_id: string;
-  caption: string;
-  thumbnail_url?: string | null;
-  video_path?: string | null;
-  source_url: string;
-  uploader?: string | null;
-  video_error?: string | null;
-}
-
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
-const TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
 
-function runProcess(command: string, args: string[], cwd: string) {
-  return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
-    let child;
-    try {
-      child = spawn(command, args, { cwd });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      resolve({ code: 127, stdout: "", stderr: message });
-      return;
-    }
-    let stdout = "";
-    let stderr = "";
+const LANG_NAMES: Record<string, string> = {
+  ru: "Russian", uk: "Ukrainian", en: "English", de: "German",
+  es: "Spanish", fr: "French", it: "Italian", "pt-BR": "Portuguese",
+};
 
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      resolve({ code: 127, stdout, stderr: error.message });
-    });
-    child.on("close", (code) => {
-      resolve({ code: code ?? 0, stdout, stderr });
-    });
-  });
+// ─── TikTok page scraper ──────────────────────────────────────────────────────
+
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Referer": "https://www.tiktok.com/",
+};
+
+interface TikTokPageData {
+  title: string;
+  description: string;
+  thumbnailUrl: string | null;
+  author: string | null;
 }
 
-function getDomain(url: string) {
+async function scrapeTikTokPage(url: string): Promise<TikTokPageData | null> {
   try {
-    return new URL(url).hostname;
+    const res = await fetch(url, {
+      headers: BROWSER_HEADERS,
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // og:description (contains video caption)
+    const descMatch = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]*)"/) ||
+                      html.match(/<meta[^>]+content="([^"]*)"[^>]+property="og:description"/);
+    const description = descMatch ? decodeHtmlEntities(descMatch[1]) : "";
+
+    // og:title
+    const titleMatch = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]*)"/) ||
+                       html.match(/<meta[^>]+content="([^"]*)"[^>]+property="og:title"/);
+    const title = titleMatch ? decodeHtmlEntities(titleMatch[1]) : "";
+
+    // og:image
+    const imgMatch = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]*)"/) ||
+                     html.match(/<meta[^>]+content="([^"]*)"[^>]+property="og:image"/);
+    const thumbnailUrl = imgMatch ? imgMatch[1] : null;
+
+    // author from title or page
+    const authorMatch = html.match(/"author"[^}]*"uniqueId":"([^"]+)"/) ||
+                        html.match(/@([A-Za-z0-9_.]+)/);
+    const author = authorMatch ? authorMatch[1] : null;
+
+    return { title, description, thumbnailUrl, author };
   } catch {
-    return undefined;
+    return null;
   }
 }
 
-function truncateLog(value: string | null | undefined, max = 1000) {
-  if (!value) return "";
-  return value.length > max ? `${value.slice(0, max)}...` : value;
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&nbsp;/g, " ");
 }
 
-function logProcessResult(label: string, result: { code: number; stdout: string; stderr: string }) {
-  console.info(label, {
-    code: result.code,
-    stdout: truncateLog(result.stdout, 300),
-    stderr: truncateLog(result.stderr, 1200),
-  });
+// ─── Normalise recipe JSON from GPT ──────────────────────────────────────────
+
+function extractJson(content: string): string {
+  const m = content.match(/\{[\s\S]*\}/);
+  return m ? m[0] : content;
 }
 
-function extractJson(content: string) {
-  const match = content.match(/\{[\s\S]*\}/);
-  return match ? match[0] : content;
+function normalizeArr(v: unknown, fb: string[] = []): string[] {
+  return Array.isArray(v) ? v.map((t) => String(t).trim()).filter(Boolean) : fb;
 }
 
-function normalizeTextArray(value: any, fallback: string[] = []) {
-  return Array.isArray(value) ? value.map((t: any) => String(t).trim()).filter(Boolean) : fallback;
+function normalizeNum(v: unknown, fb?: number): number | undefined {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fb;
 }
 
-function normalizeNumber(value: any, fallback?: number) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function normalizeText(value: any, fallback?: string) {
-  const text = value == null ? "" : String(value).trim();
-  return text || fallback;
-}
-
-function normalizeRecipe(parsed: any, fallback: Partial<ImportedRecipe>): ImportedRecipe {
-  const title = String(parsed.title || fallback.title || "Рецепт из TikTok").trim();
-
+function normalizeRecipe(parsed: any, sourceUrl: string, imageUrl?: string | null) {
   let ingredients = Array.isArray(parsed.ingredients)
     ? parsed.ingredients
-        .map((i: any) => ({
-          name: String(i.name || "").trim(),
-          amount: String(i.amount || "").trim(),
-          unit: String(i.unit || "").trim(),
-          note: i.note ? String(i.note).trim() : undefined,
-        }))
+        .map((i: any) => ({ name: String(i.name || "").trim(), amount: String(i.amount || "").trim(), unit: String(i.unit || "").trim(), note: i.note ? String(i.note).trim() : undefined }))
         .filter((i: any) => i.name.length > 0)
     : [];
-
   let steps = Array.isArray(parsed.steps)
-    ? parsed.steps
-        .map((s: any) => ({
-          text: String(s.text || s || "").trim(),
-        }))
-        .filter((s: any) => s.text.length > 0)
+    ? parsed.steps.map((s: any) => ({ text: String(s.text || s || "").trim() })).filter((s: any) => s.text.length > 0)
     : [];
 
-  if (ingredients.length === 0) {
-    ingredients = [
-      { name: "Основной ингредиент", amount: "по вкусу", unit: "", note: "Уточните по видео" }
-    ];
-  }
-
-  if (steps.length === 0) {
-    steps = [
-      { text: "Подготовьте ингредиенты согласно видео" },
-      { text: "Следуйте инструкциям из оригинального поста" }
-    ];
-  }
+  if (!ingredients.length) ingredients = [{ name: "Основной ингредиент", amount: "по вкусу", unit: "", note: "Уточните по видео" }];
+  if (!steps.length) steps = [{ text: "Следуйте инструкциям из видео" }];
 
   return {
-    title,
-    description: parsed.description ? String(parsed.description).trim() : fallback.description,
-    imageUrl: parsed.imageUrl || fallback.imageUrl,
-    prepTime: Number.isFinite(parsed.prepTime) ? parsed.prepTime : (fallback.prepTime || 15),
-    cookTime: Number.isFinite(parsed.cookTime) ? parsed.cookTime : (fallback.cookTime || 30),
-    servings: Number.isFinite(parsed.servings) ? parsed.servings : (fallback.servings || 4),
-    cuisine: parsed.cuisine ? String(parsed.cuisine).trim() : (fallback.cuisine || "international"),
-    tags: Array.isArray(parsed.tags) ? parsed.tags.map((t: any) => String(t).trim()).filter(Boolean) : [],
-    meal_role: normalizeTextArray(parsed.meal_role, fallback.meal_role),
-    fridge_life_days: normalizeNumber(parsed.fridge_life_days, fallback.fridge_life_days ?? 1),
-    mood_tags: normalizeTextArray(parsed.mood_tags, fallback.mood_tags),
-    main_ingredient: normalizeText(parsed.main_ingredient, fallback.main_ingredient),
-    budget_level: normalizeNumber(parsed.budget_level, fallback.budget_level),
-    season: normalizeTextArray(parsed.season, fallback.season ?? ["all"]),
-    is_compound_safe: typeof parsed.is_compound_safe === "boolean" ? parsed.is_compound_safe : (fallback.is_compound_safe ?? true),
-    goal_tags: normalizeTextArray(parsed.goal_tags, fallback.goal_tags ?? []),
-    kid_friendly: typeof parsed.kid_friendly === "boolean" ? parsed.kid_friendly : (fallback.kid_friendly ?? false),
-    spicy_level: normalizeNumber(parsed.spicy_level, fallback.spicy_level ?? 0),
+    title: String(parsed.title || "TikTok рецепт").trim(),
+    description: parsed.description ? String(parsed.description).trim() : undefined,
+    imageUrl: parsed.imageUrl || imageUrl || undefined,
+    prepTime: normalizeNum(parsed.prepTime, 15),
+    cookTime: normalizeNum(parsed.cookTime, 20),
+    servings: normalizeNum(parsed.servings, 2),
+    cuisine: parsed.cuisine ? String(parsed.cuisine).trim() : "international",
+    tags: normalizeArr(parsed.tags),
+    meal_role: normalizeArr(parsed.meal_role),
+    fridge_life_days: normalizeNum(parsed.fridge_life_days, 1),
+    mood_tags: normalizeArr(parsed.mood_tags),
+    main_ingredient: parsed.main_ingredient ? String(parsed.main_ingredient).trim() : undefined,
+    budget_level: normalizeNum(parsed.budget_level),
+    season: normalizeArr(parsed.season, ["all"]),
+    is_compound_safe: typeof parsed.is_compound_safe === "boolean" ? parsed.is_compound_safe : true,
+    goal_tags: normalizeArr(parsed.goal_tags),
+    kid_friendly: typeof parsed.kid_friendly === "boolean" ? parsed.kid_friendly : false,
+    spicy_level: normalizeNum(parsed.spicy_level, 0),
     ingredients,
     steps,
-    sourceUrl: String(parsed.sourceUrl || fallback.sourceUrl || "").trim(),
-    sourceDomain: parsed.sourceDomain || fallback.sourceDomain || "tiktok.com",
+    sourceUrl,
+    sourceDomain: "tiktok.com",
     confidence: ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "low",
   };
 }
 
-async function transcribeAudio(apiKey: string, audioPath: string) {
-  const audioBuffer = await fs.readFile(audioPath);
-  const form = new FormData();
-  form.append("file", new Blob([audioBuffer]), path.basename(audioPath));
-  form.append("model", TRANSCRIBE_MODEL);
+function buildPrompt(inputText: string, sourceUrl: string, langName: string, imageUrl?: string | null): string {
+  return `Extract recipe from TikTok video caption/description. Return VALID JSON only, no markdown.
 
-  const response = await fetch(TRANSCRIBE_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: form,
-  });
+OUTPUT LANGUAGE: ${langName}. Translate ALL user-visible text (title, ingredient names, steps, description) into ${langName}.
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Transcription failed");
-  }
-
-  const data = await response.json();
-  return data?.text ? String(data.text).trim() : "";
-}
-
-function buildPrompt(inputText: string, sourceUrl: string, sourceDomain?: string, imageUrl?: string) {
-  return `Extract recipe from TikTok video (caption + speech transcript). Return VALID JSON only.
-
-INPUT TEXT:
+INPUT:
 ${inputText}
 
-REQUIRED OUTPUT FORMAT (copy structure exactly):
+OUTPUT FORMAT:
 {
-  "title": "Recipe name from text or generate descriptive title",
-  "description": "Brief description or first line of caption",
+  "title": "Recipe name in ${langName}",
+  "description": "2-3 sentence description in ${langName}",
   "imageUrl": ${imageUrl ? `"${imageUrl}"` : "null"},
-  "prepTime": 15,
-  "cookTime": 30,
-  "servings": 4,
+  "prepTime": 10, "cookTime": 20, "servings": 2,
   "cuisine": "international",
-  "tags": ["quick", "dinner"],
+  "tags": ["quick","dinner"],
   "meal_role": ["dinner"],
   "fridge_life_days": 1,
-  "mood_tags": ["comfort", "quick"],
+  "mood_tags": ["quick"],
   "main_ingredient": "chicken",
   "budget_level": 2,
   "season": ["all"],
   "is_compound_safe": true,
   "goal_tags": ["balanced"],
   "kid_friendly": false,
-  "spicy_level": 1,
-  "ingredients": [
-    { "name": "ingredient name", "amount": "100", "unit": "г", "note": "" }
-  ],
-  "steps": [
-    { "text": "Step description" }
-  ],
+  "spicy_level": 0,
+  "ingredients": [{"name":"ingredient in ${langName}","amount":"100","unit":"г","note":""}],
+  "steps": [{"text":"Step in ${langName}"}],
   "sourceUrl": "${sourceUrl}",
-  "sourceDomain": "${sourceDomain || "tiktok.com"}",
+  "sourceDomain": "tiktok.com",
   "confidence": "medium"
 }
 
-CRITICAL RULES:
-1. ALWAYS return valid JSON - no markdown, no comments, no extra text
-2. NEVER return empty arrays for ingredients or steps - ALWAYS extract or infer:
-   - If cooking mentioned but amounts unclear: use "по вкусу" or estimate typical amounts (100г, 1 шт)
-   - If steps unclear: create logical cooking sequence based on mentioned ingredients/actions
-   - If only dish name known: infer typical ingredients and basic cooking steps
-3. ALWAYS fill required fields with defaults if unknown:
-   - title: extract from text OR create descriptive name like "Блюдо из [main ingredient]"
-   - prepTime: estimate 10-20 min if not mentioned
-   - cookTime: estimate 20-40 min if not mentioned
-   - servings: default to 4 if not mentioned
-   - cuisine: "international" if unclear
-4. For ingredients without specific amounts: use "по вкусу", "1 шт", "100 г" etc.
-5. Keep ORIGINAL language - do NOT translate Russian to English or vice versa
-6. confidence: "high" if clear recipe, "medium" if inferred some data, "low" if mostly guessed
-7. Extract ALL mentioned food items as ingredients, even if amounts are not specified
-8. TAGS — choose only from this list (pick all that apply):
-   Time: "quick" (≤20 min total), "special occasion" (>60 min total)
-   Calories: "light" (<300 kcal/serving), "hearty" (>650 kcal/serving)
-   Meal: "breakfast", "lunch", "dinner", "snack"
-   Diet: "vegetarian", "vegan", "gluten-free", "dairy-free"
-   Type: "soup", "salad", "pasta", "grill", "baking", "raw"
-   If total time unknown but dish looks quick → add "quick". Do NOT add tags not in this list.
-9. PLANNING FIELDS:
-   - meal_role: array from breakfast, lunch_main, lunch_side, dinner, snack, dessert
-   - fridge_life_days: 0 dressed salads/same-day, 1 default, 2 cutlets/casseroles, 3 soups/borscht/stews
-   - mood_tags: array from comfort, light, energizing, festive, quick, cozy
-   - main_ingredient: one of chicken, beef, fish, pasta, rice, vegetables, eggs, legumes
-   - budget_level: 1 cheap, 2 medium, 3 expensive
-   - season: array from spring, summer, autumn, winter, all
-   - is_compound_safe: false for self-contained soups/stews, true if dish can be paired with a side/salad
-   - goal_tags: array from weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep
-   - kid_friendly: boolean, true only for mild, non-spicy, child-appropriate dishes with no alcohol
-   - spicy_level: 0 none, 1 mild, 2 medium, 3 hot`;
+RULES:
+1. ALL user-visible text MUST be in ${langName}.
+2. NEVER return empty arrays for ingredients or steps.
+3. confidence: "high" if full recipe found, "medium" if partially inferred, "low" if mostly guessed.
+4. TikTok captions are often short — infer typical recipe steps and amounts from dish name.
+5. tags: quick, special occasion, light, hearty, breakfast, lunch, dinner, snack, vegetarian, vegan, gluten-free, dairy-free, soup, salad, pasta, grill, baking, raw.
+6. meal_role: breakfast, lunch_main, lunch_side, dinner, snack, dessert.
+7. mood_tags: comfort, light, energizing, festive, quick, cozy.
+8. main_ingredient: chicken, beef, fish, pasta, rice, vegetables, eggs, legumes.
+9. budget_level: 1 cheap, 2 medium, 3 expensive.
+10. goal_tags: weight_loss, muscle_gain, balanced, quick, budget, variety, meal_prep.`;
 }
 
-function looksLikeRecipe(text: string) {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  // Check for ingredient-like content
-  const hasIngredients =
-    lower.includes("ингредиенты") || lower.includes("ingredients") ||
-    text.split("\n").some((line) => {
-      const trimmed = line.trim();
-      if (/^[\-\u2022•]\s+/.test(trimmed)) return true;
-      return /\d+(\s?[-–]?\s?\d+)?\s?(г|гр|кг|мл|л|шт|ч\.?л\.?|ст\.?л\.?)/i.test(trimmed);
-    });
-  // Check for step-like content
-  const hasSteps =
-    lower.includes("приготовление") || lower.includes("способ приготовления") ||
-    lower.includes("шаг") ||
-    text.split("\n").some((line) => /^\d+[\.\)]\s+/.test(line.trim()));
+// ─── Route handler ────────────────────────────────────────────────────────────
 
-  return hasIngredients && hasSteps;
+export async function GET() {
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
-    }
+    if (!apiKey) return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
 
-    const { url } = await request.json();
+    const body = await request.json();
+    const { url, metaOnly = false, caption: clientCaption, thumbnail_url: clientThumbnail, language = "ru" } =
+      body as { url?: string; metaOnly?: boolean; caption?: string; thumbnail_url?: string; language?: string };
+
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
 
-    const cwd = process.cwd();
-    const outputDir = path.join(cwd, "tmp", "tiktok");
-    await fs.mkdir(outputDir, { recursive: true });
+    const langName = LANG_NAMES[language] ?? "Russian";
+    const sourceUrl = url.trim();
 
-    const scriptPath = path.join(cwd, "scripts", "tiktok_import.py");
-    const pythonCandidates = [
-      process.env.PYTHON_PATH,
-      "/usr/bin/python3",
-      "/usr/local/bin/python3",
-      "python3",
-      "python",
-    ].filter(Boolean) as string[];
+    console.info("[tiktok] import request", { url: sourceUrl, metaOnly, hasClientCaption: Boolean(clientCaption) });
 
-    console.info("[tiktok] request", {
-      url: url.trim(),
-      outputDir,
-      scriptPath,
-      pythonCandidates,
-      ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
-    });
+    // Step 1: get caption + thumbnail
+    // Priority: client-provided caption > scraped page
+    let caption = clientCaption?.trim() || "";
+    let thumbnailUrl: string | null = clientThumbnail?.trim() || null;
+    let title = "";
 
-    // Step 1: Extract metadata (caption only, no video download)
-    let extraction = { code: 127, stdout: "", stderr: "Python not found" };
-    let pythonUsed = "";
-    for (const candidate of pythonCandidates) {
-      const result = await runProcess(
-        candidate,
-        [scriptPath, "--url", url.trim(), "--output", outputDir],
-        cwd
-      );
-      logProcessResult("[tiktok] extractor attempt", result);
-      pythonUsed = candidate;
-      if (result.code === 0) {
-        extraction = result;
-        break;
-      }
-      extraction = result;
-    }
-
-    if (extraction.code !== 0) {
-      logProcessResult("[tiktok] extractor failed", extraction);
-      return NextResponse.json(
-        {
-          error: "TikTok extract failed",
-          details: extraction.stderr || extraction.stdout,
-          python: pythonUsed,
-        },
-        { status: 500 }
-      );
-    }
-
-    let extracted: TikTokExtraction;
-    try {
-      extracted = JSON.parse(extraction.stdout.trim());
-    } catch {
-      logProcessResult("[tiktok] extractor invalid json", extraction);
-      return NextResponse.json(
-        { error: "Invalid extractor response", details: extraction.stdout },
-        { status: 500 }
-      );
-    }
-
-    if ((extracted as any).error) {
-      return NextResponse.json({ error: (extracted as any).message || "Extraction failed" }, { status: 500 });
-    }
-
-    console.info("[tiktok] extracted", {
-      videoId: extracted.video_id,
-      hasCaption: Boolean(extracted.caption?.trim()),
-      thumbnailUrl: extracted.thumbnail_url || null,
-      uploader: extracted.uploader || null,
-    });
-
-    // Step 2: Try caption-only parsing first
-    const captionText = (extracted.caption || "").trim();
-    let recipeFromCaption: ImportedRecipe | null = null;
-
-    if (captionText && looksLikeRecipe(captionText)) {
-      console.info("[tiktok] caption looks like recipe, trying caption-only parsing");
-      const captionPrompt = buildPrompt(
-        captionText,
-        extracted.source_url,
-        getDomain(extracted.source_url),
-        extracted.thumbnail_url || undefined
-      );
-
-      const captionAiResponse = await fetch(OPENAI_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ model: MODEL, input: captionPrompt, temperature: 0.2 }),
-      });
-
-      if (captionAiResponse.ok) {
-        const captionAiData = await captionAiResponse.json();
-        const captionAiText = captionAiData?.output?.[0]?.content?.[0]?.text;
-        if (captionAiText) {
-          try {
-            const parsed = JSON.parse(extractJson(captionAiText));
-            const normalized = normalizeRecipe(parsed, {
-              title: captionText.split("\n")[0]?.trim(),
-              description: captionText,
-              imageUrl: extracted.thumbnail_url || undefined,
-              sourceUrl: extracted.source_url,
-              sourceDomain: getDomain(extracted.source_url),
-            });
-            // Check if AI found real ingredients (not just placeholders)
-            if (normalized.confidence !== "low" && normalized.ingredients.length > 1) {
-              recipeFromCaption = normalized;
-            }
-          } catch {
-            // JSON parse failed, continue to video fallback
-          }
-        }
+    if (!caption) {
+      const pageData = await scrapeTikTokPage(sourceUrl);
+      if (pageData) {
+        caption = pageData.description || pageData.title || "";
+        title = pageData.title || "";
+        thumbnailUrl = thumbnailUrl || pageData.thumbnailUrl;
       }
     }
 
-    if (recipeFromCaption) {
-      console.info("[tiktok] recipe found from caption only");
+    // metaOnly — just return preview info
+    if (metaOnly) {
       return NextResponse.json({
-        recipe: recipeFromCaption,
-        meta: {
-          method: "tiktok+caption+ai",
-          timestamp: new Date().toISOString(),
-        },
+        title: title || caption.split("\n")[0]?.slice(0, 80) || "TikTok",
+        thumbnail_url: thumbnailUrl,
+        source_url: sourceUrl,
       });
     }
 
-    // Step 3: Fallback — download video and transcribe
-    console.info("[tiktok] caption insufficient, downloading video for transcription");
+    const inputText = [
+      title ? `Название: ${title}` : "",
+      caption ? `Описание/подпись:\n${caption}` : "",
+    ].filter(Boolean).join("\n\n") || "TikTok рецепт (подробности из видео)";
 
-    let videoExtraction = { code: 127, stdout: "", stderr: "" };
-    for (const candidate of pythonCandidates) {
-      const result = await runProcess(
-        candidate,
-        [scriptPath, "--url", url.trim(), "--output", outputDir, "--video"],
-        cwd
-      );
-      logProcessResult("[tiktok] video extractor attempt", result);
-      if (result.code === 0) {
-        videoExtraction = result;
-        break;
-      }
-      videoExtraction = result;
-    }
+    console.info("[tiktok] scraped", { captionLen: caption.length, hasThumbnail: Boolean(thumbnailUrl) });
 
-    let videoExtracted: TikTokExtraction | null = null;
-    if (videoExtraction.code === 0) {
-      try {
-        videoExtracted = JSON.parse(videoExtraction.stdout.trim());
-      } catch {
-        // continue with caption only
-      }
-    }
+    // Step 2: GPT structuring
+    const prompt = buildPrompt(inputText, sourceUrl, langName, thumbnailUrl);
 
-    let transcript = "";
-    let coverDataUrl: string | null = null;
-    const videoPath = videoExtracted?.video_path || extracted.video_path;
-
-    if (videoPath) {
-      const audioPath = path.join(outputDir, `${extracted.video_id}.mp3`);
-      const ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
-
-      // Extract audio
-      const ffmpegResult = await runProcess(
-        ffmpegPath,
-        ["-y", "-i", videoPath, "-vn", "-acodec", "mp3", audioPath],
-        cwd
-      );
-
-      console.info("[tiktok] ffmpeg audio", {
-        code: ffmpegResult.code,
-        stderr: ffmpegResult.stderr?.slice(0, 300),
-      });
-
-      if (ffmpegResult.code === 0) {
-        transcript = await transcribeAudio(apiKey, audioPath);
-        console.info("[tiktok] transcript length", { length: transcript.length });
-      }
-
-      // Extract cover if no thumbnail
-      if (!extracted.thumbnail_url) {
-        const coverPath = path.join(outputDir, `${extracted.video_id}_cover.jpg`);
-        const coverResult = await runProcess(
-          ffmpegPath,
-          ["-y", "-ss", "00:00:01", "-i", videoPath, "-frames:v", "1", "-q:v", "2", coverPath],
-          cwd
-        );
-        if (coverResult.code === 0) {
-          const buffer = await fs.readFile(coverPath);
-          coverDataUrl = `data:image/jpeg;base64,${buffer.toString("base64")}`;
-        }
-      }
-    }
-
-    // Step 4: Parse with AI using caption + transcript
-    const combinedText = [captionText, transcript].filter(Boolean).join("\n\n").trim();
-    console.info("[tiktok] combinedText", { length: combinedText.length });
-
-    if (!combinedText) {
-      return NextResponse.json({ error: "No text to parse" }, { status: 500 });
-    }
-
-    const imageUrl = extracted.thumbnail_url || coverDataUrl || undefined;
-    const prompt = buildPrompt(
-      combinedText,
-      extracted.source_url,
-      getDomain(extracted.source_url),
-      imageUrl
-    );
-
-    const aiResponse = await fetch(OPENAI_URL, {
+    const aiRes = await fetch(OPENAI_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model: MODEL, input: prompt, temperature: 0.2 }),
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        max_tokens: 1800,
+      }),
+      signal: AbortSignal.timeout(30_000),
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      return NextResponse.json({ error: "AI error", details: errorText }, { status: 500 });
+    if (!aiRes.ok) {
+      const txt = await aiRes.text();
+      return NextResponse.json({ error: "AI error", details: txt }, { status: 502 });
     }
 
-    const aiData = await aiResponse.json();
-    const aiText = aiData?.output?.[0]?.content?.[0]?.text;
-    if (!aiText) {
-      return NextResponse.json({ error: "Empty AI response" }, { status: 500 });
-    }
+    const aiData = await aiRes.json();
+    const aiText: string | undefined = aiData?.choices?.[0]?.message?.content?.trim();
+    if (!aiText) return NextResponse.json({ error: "Empty AI response" }, { status: 502 });
 
     let parsed: any;
-    try {
-      parsed = JSON.parse(extractJson(aiText));
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON from AI", raw: aiText }, { status: 500 });
-    }
+    try { parsed = JSON.parse(extractJson(aiText)); }
+    catch { return NextResponse.json({ error: "Invalid JSON from AI", raw: aiText }, { status: 502 }); }
 
-    const fallback: Partial<ImportedRecipe> = {
-      title: captionText?.split("\n")[0]?.trim() || "TikTok recipe",
-      description: captionText,
-      imageUrl: imageUrl,
-      sourceUrl: extracted.source_url,
-      sourceDomain: getDomain(extracted.source_url),
-    };
-
-    const recipe = normalizeRecipe(parsed, fallback);
+    const recipe = normalizeRecipe(parsed, sourceUrl, thumbnailUrl);
 
     return NextResponse.json({
       recipe,
-      meta: {
-        method: transcript ? "tiktok+whisper+ai" : "tiktok+caption+ai",
-        timestamp: new Date().toISOString(),
-      },
+      meta: { method: "tiktok+page+ai", timestamp: new Date().toISOString() },
     });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
-    );
+  } catch (err) {
+    console.error("[tiktok] error:", err);
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
   }
 }
