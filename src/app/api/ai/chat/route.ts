@@ -124,18 +124,41 @@ async function getEmbedding(text: string, apiKey: string): Promise<number[] | nu
 
 // Map common English ingredient names to Russian for DB matching
 const EN_TO_RU: Record<string, string> = {
+  // Фрукты
   strawberry: "клубник", strawberries: "клубник",
   apple: "яблок", apples: "яблок",
-  chicken: "куриц", beef: "говядин", pork: "свинин",
-  potato: "картофел", potatoes: "картофел", tomato: "томат", tomatoes: "томат",
-  cheese: "сыр", egg: "яиц", eggs: "яиц", milk: "молок",
-  mushroom: "гриб", mushrooms: "гриб",
-  carrot: "морков", onion: "лук", garlic: "чеснок",
-  pasta: "паст", rice: "рис", salmon: "сёмг",
   lemon: "лимон", orange: "апельсин", banana: "банан",
+  peach: "персик", pear: "груш", grape: "виноград", grapes: "виноград",
+  cherry: "вишн", cherries: "вишн", plum: "слив", mango: "манго",
+  pineapple: "ананас", watermelon: "арбуз",
+  // Мясо и птица
+  chicken: "куриц", beef: "говядин", pork: "свинин",
+  lamb: "баранин", lamb2: "ягнен",
+  turkey: "индейк", duck: "утк", veal: "телятин",
+  rabbit: "кролик", venison: "оленин",
+  meat: "мяс", mince: "фарш", minced: "фарш",
+  // Рыба и морепродукты
+  salmon: "сёмг", tuna: "тунец", cod: "трески",
+  shrimp: "кревет", prawns: "кревет",
+  fish: "рыб", herring: "сельд", mackerel: "скумбри",
+  crab: "краб", squid: "кальмар", octopus: "осьминог",
+  // Овощи
+  potato: "картофел", potatoes: "картофел",
+  tomato: "томат", tomatoes: "томат",
+  carrot: "морков", onion: "лук", garlic: "чеснок",
   cabbage: "капуст", cucumber: "огурц", pepper: "перец",
-  shrimp: "кревет", tuna: "тунец", cod: "трески",
-  cottage: "творог", cream: "сливк", butter: "масл",
+  zucchini: "кабачк", eggplant: "баклажан", broccoli: "брокол",
+  spinach: "шпинат", beet: "свёкл", beets: "свёкл",
+  peas: "горош", beans: "фасол", lentil: "чечевиц", lentils: "чечевиц",
+  corn: "кукуруз",
+  // Молочное и яйца
+  cheese: "сыр", egg: "яиц", eggs: "яиц", milk: "молок",
+  cottage: "творог", cream: "сливк", butter: "масл", yogurt: "йогурт",
+  // Крупы и макароны
+  pasta: "паст", rice: "рис", oat: "овсян", oats: "овсян",
+  buckwheat: "гречк", semolina: "манн",
+  // Грибы
+  mushroom: "гриб", mushrooms: "гриб",
 };
 
 // Strip common Russian inflection suffixes for stem search
@@ -257,16 +280,8 @@ async function searchRecipes(query: string, apiKey: string, budget: number | nul
     if (data?.length) rows = data;
   }
 
-  // 3. Last resort: any recipes
-  if (!rows.length) {
-    let q = supabaseAdmin
-      .from("recipes")
-      .select("id, title, description, image_url, cook_time, difficulty, cuisine_id")
-      .eq("is_user_defined", false).not("image_url", "is", null);
-    if (budget) q = q.eq("budget_level", budget);
-    const { data } = await q.limit(5);
-    rows = data ?? [];
-  }
+  // Не делаем random fallback — лучше вернуть 0 результатов, чем нерелевантные рецепты
+  if (!rows.length) return [];
 
   const shaped = rows.map((r) => ({
     id: r.id, title: r.title, description: r.description ?? null,
@@ -425,6 +440,7 @@ export async function POST(request: Request) {
               // clean_text нужен чтобы iOS заменил стриминговый текст (с тегом) на чистый
               clean_text: cleanText,
               recipes: recipes.length > 0 ? recipes : [],
+              no_results: recipes.length === 0,
               done: true,
             })
           );
