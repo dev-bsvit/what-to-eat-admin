@@ -253,10 +253,9 @@ async function enrichWithAccess(
 }
 
 async function searchRecipes(query: string, apiKey: string, budget: number | null = null, isPremium = false, purchasedCatalogIds: string[] = []) {
-  // Extract words from query (e.g. "strawberry cake recipes" → ["strawberry","cake","recipes"])
   const queryWords = query.toLowerCase().replace(/[^a-zа-яёa-z\s]/gi, " ").split(/\s+/).filter(w => w.length > 2);
 
-  // 1. Try ingredient-based search first (most precise)
+  // 1. Ingredient-based search (точный поиск по продуктам)
   const ingredientRows = await searchByIngredient(queryWords, budget);
   if (ingredientRows.length >= 2) {
     const shaped = ingredientRows.map((r) => ({
@@ -264,11 +263,44 @@ async function searchRecipes(query: string, apiKey: string, budget: number | nul
       image_url: r.image_url ?? null, cook_time: r.cook_time ?? null,
       difficulty: r.difficulty ?? null, cuisine_id: r.cuisine_id ?? null,
     }));
-    const enriched = await enrichWithAccess(shaped, isPremium, purchasedCatalogIds);
-    return enriched;
+    return await enrichWithAccess(shaped, isPremium, purchasedCatalogIds);
   }
 
-  // 2. Fall back to embedding search
+  // 2. Title/description text search — для случаев когда ингредиент есть в названии рецепта
+  const ruStems = queryWords
+    .flatMap(w => {
+      const mapped = EN_TO_RU[w.toLowerCase()];
+      return mapped ? [mapped] : [stemRu(w.toLowerCase())].filter(s => s.length >= 3);
+    });
+  if (ruStems.length > 0) {
+    const orFilter = ruStems.flatMap(s => [
+      `title.ilike.%${s}%`,
+      `description.ilike.%${s}%`,
+    ]).join(",");
+    let titleQuery = supabaseAdmin
+      .from("recipes")
+      .select("id, title, description, image_url, cook_time, difficulty, cuisine_id")
+      .eq("is_user_defined", false)
+      .not("image_url", "is", null)
+      .or(orFilter);
+    if (budget) titleQuery = titleQuery.eq("budget_level", budget);
+    const { data: titleRows } = await titleQuery.limit(5);
+    if (titleRows && titleRows.length > 0) {
+      const shaped = titleRows.map((r: any) => ({
+        id: r.id, title: r.title, description: r.description ?? null,
+        image_url: r.image_url ?? null, cook_time: r.cook_time ?? null,
+        difficulty: r.difficulty ?? null, cuisine_id: r.cuisine_id ?? null,
+      }));
+      return await enrichWithAccess(shaped, isPremium, purchasedCatalogIds);
+    }
+  }
+
+  // Если запрос содержит конкретный ингредиент из словаря — не используем embedding.
+  // Embedding вернёт "ближайшее по векторам" (вареники вместо баранины) — это хуже чем ничего.
+  const hasKnownIngredient = queryWords.some(w => EN_TO_RU[w.toLowerCase()]);
+  if (hasKnownIngredient) return [];
+
+  // 3. Embedding search — только для общих запросов без конкретного ингредиента
   const embedding = await getEmbedding(query, apiKey);
   let rows: any[] = [];
   if (embedding) {
@@ -280,7 +312,6 @@ async function searchRecipes(query: string, apiKey: string, budget: number | nul
     if (data?.length) rows = data;
   }
 
-  // Не делаем random fallback — лучше вернуть 0 результатов, чем нерелевантные рецепты
   if (!rows.length) return [];
 
   const shaped = rows.map((r) => ({
