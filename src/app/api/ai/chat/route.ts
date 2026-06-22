@@ -88,6 +88,12 @@ const SYSTEM_PROMPT = `Ты кулинарный ассистент прилож
 ФОРМАТ ОТВЕТА ДЛЯ ВСЕГО ОСТАЛЬНОГО (техника, советы, информация):
 Пиши кратко и по делу. Можно использовать нумерованный список или маркеры.
 
+РЕЖИМ «AI ПРИДУМЫВАЕТ» (без поиска в базе):
+Если пользователь говорит «придумай», «создай сам», «не ищи в базе», «что-то своё», «оригинальный рецепт» — переходи в творческий режим:
+1. Задай 2-3 уточняющих вопроса одним сообщением (что любит, ограничения по питанию, на сколько человек, сколько времени)
+2. После ответов — создай оригинальный рецепт с ингредиентами и шагами приготовления
+3. [SEARCH: ...] в этом режиме НЕ добавляй — ты шеф, который придумывает, а не ищет
+
 Отвечай на языке пользователя. Будь дружелюбным, кратким и конкретным.`;
 
 // Регулярное выражение для извлечения тега [SEARCH: ...]
@@ -287,6 +293,7 @@ interface RequestBody {
   messages: ChatMessage[];
   pantry_items?: string[];
   language?: string;
+  hour_of_day?: number; // Локальный час пользователя (0-23), передаётся с клиента
 }
 
 export async function POST(request: Request) {
@@ -314,7 +321,17 @@ export async function POST(request: Request) {
     return new Response(JSON.stringify({ error: "Bad request" }), { status: 400 });
   }
 
-  const { messages = [], pantry_items = [], language = "ru" } = body;
+  const { messages = [], pantry_items = [], language = "ru", hour_of_day } = body;
+
+  // Контекст времени суток
+  const hour = typeof hour_of_day === "number" ? hour_of_day : new Date().getHours();
+  const mealTime =
+    hour >= 5  && hour < 11 ? "утро (завтрак)" :
+    hour >= 11 && hour < 15 ? "день (обед)" :
+    hour >= 15 && hour < 18 ? "полдник / перекус" :
+    hour >= 18 && hour < 23 ? "вечер (ужин)" :
+    "поздний вечер";
+  const timeInstruction = `\n\n[Сейчас у пользователя: ${mealTime}. Если он не уточнил приём пищи — предлагай блюда, подходящие для этого времени суток.]`;
 
   // Системный промт + контекст холодильника и подписки
   const languageInstruction =
@@ -328,7 +345,7 @@ export async function POST(request: Request) {
     ? `\n\n[Контекст холодильника пользователя: ${pantry_items.slice(0, 15).join(", ")}. Используй ТОЛЬКО если пользователь явно просит рецепты из того что есть дома.]`
     : "";
 
-  const systemContent = SYSTEM_PROMPT + languageInstruction + subscriptionInstruction + pantryInstruction;
+  const systemContent = SYSTEM_PROMPT + languageInstruction + timeInstruction + subscriptionInstruction + pantryInstruction;
 
   const userMessages = messages.filter((m) => m.role !== "system");
   const chatMessages: ChatMessage[] = [
