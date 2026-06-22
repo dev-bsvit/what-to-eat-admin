@@ -10,6 +10,7 @@ export interface VerifiedUser {
   userId: string;
   subscriptionStatus: SubscriptionStatus;
   isPremium: boolean;
+  purchasedCatalogIds: string[];
 }
 
 // Лимиты бесплатного тарифа (зеркало из iOS Subscription.swift)
@@ -49,7 +50,7 @@ export async function verifyUser(request: Request): Promise<VerifiedUser> {
 
   const { data: profile } = await adminClient
     .from("profiles")
-    .select("subscription_status, subscription_expires_at")
+    .select("subscription_status, subscription_expires_at, purchased_catalogs")
     .eq("id", user.id)
     .single();
 
@@ -71,8 +72,11 @@ export async function verifyUser(request: Request): Promise<VerifiedUser> {
   }
 
   const isPremium = subscriptionStatus !== "free";
+  const purchasedCatalogIds: string[] = Array.isArray(profile?.purchased_catalogs)
+    ? (profile.purchased_catalogs as string[])
+    : [];
 
-  return { userId: user.id, subscriptionStatus, isPremium };
+  return { userId: user.id, subscriptionStatus, isPremium, purchasedCatalogIds };
 }
 
 // Проверяет и инкрементирует счётчик AI-запросов для free пользователей.

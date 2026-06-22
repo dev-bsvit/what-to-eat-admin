@@ -85,6 +85,9 @@ const SYSTEM_PROMPT = `Ты кулинарный ассистент прилож
    - Короткое описание или шаги
 Не склеивай нумерованный список в один абзац.
 
+БАЗА РЕЦЕПТОВ ПРИЛОЖЕНИЯ:
+Когда ты используешь тег [SEARCH: ...], система автоматически ищет рецепты в базе данных приложения и показывает их карточками ниже твоего ответа. Не нужно перечислять рецепты текстом — карточки покажут всё визуально. Упомяни 1-2 ключевых момента о найденных блюдах и предложи выбрать из карточек.
+
 Отвечай на языке пользователя. Будь дружелюбным, кратким и конкретным.`;
 
 // Регулярное выражение для извлечения тега [SEARCH: ...]
@@ -193,18 +196,51 @@ function detectBudgetLevel(text: string): number | null {
   return null;
 }
 
-async function searchRecipes(query: string, apiKey: string, budget: number | null = null) {
+// Помечает рецепты флагом isAccessible на основе типа каталога и подписки пользователя.
+// Добавляет поле, не убирает рецепты — iOS сам решает как показывать недоступные.
+async function enrichWithAccess(
+  recipes: any[],
+  isPremium: boolean,
+  purchasedCatalogIds: string[]
+): Promise<any[]> {
+  if (isPremium) return recipes.map((r) => ({ ...r, isAccessible: true }));
+
+  const cuisineIds = [...new Set(recipes.map((r) => r.cuisine_id).filter(Boolean))];
+  if (!cuisineIds.length) return recipes.map((r) => ({ ...r, isAccessible: true }));
+
+  const { data: cuisines } = await supabaseAdmin
+    .from("cuisines")
+    .select("id, type")
+    .in("id", cuisineIds);
+
+  const typeMap: Record<string, string> = {};
+  for (const c of cuisines ?? []) typeMap[c.id] = c.type;
+
+  const FREE_TYPES = new Set(["free", "gift", "languageGift"]);
+
+  return recipes.map((r) => {
+    const cuisineType = typeMap[r.cuisine_id ?? ""] ?? "free";
+    const isAccessible =
+      FREE_TYPES.has(cuisineType) ||
+      purchasedCatalogIds.includes(r.cuisine_id ?? "");
+    return { ...r, isAccessible };
+  });
+}
+
+async function searchRecipes(query: string, apiKey: string, budget: number | null = null, isPremium = false, purchasedCatalogIds: string[] = []) {
   // Extract words from query (e.g. "strawberry cake recipes" → ["strawberry","cake","recipes"])
   const queryWords = query.toLowerCase().replace(/[^a-zа-яёa-z\s]/gi, " ").split(/\s+/).filter(w => w.length > 2);
 
   // 1. Try ingredient-based search first (most precise)
   const ingredientRows = await searchByIngredient(queryWords, budget);
   if (ingredientRows.length >= 2) {
-    return ingredientRows.map((r) => ({
+    const shaped = ingredientRows.map((r) => ({
       id: r.id, title: r.title, description: r.description ?? null,
       image_url: r.image_url ?? null, cook_time: r.cook_time ?? null,
       difficulty: r.difficulty ?? null, cuisine_id: r.cuisine_id ?? null,
     }));
+    const enriched = await enrichWithAccess(shaped, isPremium, purchasedCatalogIds);
+    return enriched;
   }
 
   // 2. Fall back to embedding search
@@ -230,11 +266,12 @@ async function searchRecipes(query: string, apiKey: string, budget: number | nul
     rows = data ?? [];
   }
 
-  return rows.map((r) => ({
+  const shaped = rows.map((r) => ({
     id: r.id, title: r.title, description: r.description ?? null,
     image_url: r.image_url ?? null, cook_time: r.cook_time ?? null,
     difficulty: r.difficulty ?? null, cuisine_id: r.cuisine_id ?? null,
   }));
+  return await enrichWithAccess(shaped, isPremium, purchasedCatalogIds);
 }
 
 function sseChunk(payload: object): Uint8Array {
@@ -279,14 +316,19 @@ export async function POST(request: Request) {
 
   const { messages = [], pantry_items = [], language = "ru" } = body;
 
-  // Системный промт + контекст холодильника (один раз, не дублируем в каждом сообщении)
+  // Системный промт + контекст холодильника и подписки
   const languageInstruction =
     `\n\nЯзык интерфейса пользователя: ${language}. Отвечай на этом языке, если пользователь явно не попросил другой язык.`;
-  const systemContent =
-    pantry_items.length > 0
-      ? SYSTEM_PROMPT + languageInstruction +
-        `\n\n[Контекст холодильника пользователя: ${pantry_items.slice(0, 15).join(", ")}. Используй ТОЛЬКО если пользователь явно просит рецепты из того что есть дома.]`
-      : SYSTEM_PROMPT + languageInstruction;
+
+  const subscriptionInstruction = user.isPremium
+    ? `\n\n[Статус пользователя: Premium. Все каталоги рецептов доступны.]`
+    : `\n\n[Статус пользователя: Free. Если система покажет карточку рецепта с пометкой недоступен — упомяни в ответе, что есть похожие варианты в доступных рецептах, и предложи поискать ещё.]`;
+
+  const pantryInstruction = pantry_items.length > 0
+    ? `\n\n[Контекст холодильника пользователя: ${pantry_items.slice(0, 15).join(", ")}. Используй ТОЛЬКО если пользователь явно просит рецепты из того что есть дома.]`
+    : "";
+
+  const systemContent = SYSTEM_PROMPT + languageInstruction + subscriptionInstruction + pantryInstruction;
 
   const userMessages = messages.filter((m) => m.role !== "system");
   const chatMessages: ChatMessage[] = [
@@ -364,7 +406,7 @@ export async function POST(request: Request) {
           // Бюджет берём из последнего сообщения пользователя + поискового запроса
           const lastUserText = [...userMessages].reverse().find((m) => m.role === "user")?.content ?? "";
           const budget = detectBudgetLevel(`${lastUserText} ${searchQuery}`);
-          const recipes = await searchRecipes(searchQuery, apiKey, budget);
+          const recipes = await searchRecipes(searchQuery, apiKey, budget, user.isPremium, user.purchasedCatalogIds);
           controller.enqueue(
             sseChunk({
               // clean_text нужен чтобы iOS заменил стриминговый текст (с тегом) на чистый
