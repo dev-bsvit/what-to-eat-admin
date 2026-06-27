@@ -3,6 +3,13 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { cleanIngredientName } from "@/lib/stringUtils";
 import {
+  clampNumber,
+  normalizeDifficulty,
+  normalizeGoalTags,
+  normalizeMainIngredient,
+  normalizeMealRoles,
+  normalizeMoodTags,
+  normalizeSeasons,
   normalizeText,
   parseBoolean,
   parseJson,
@@ -19,6 +26,9 @@ const isUuid = (value: string | null | undefined) => {
   if (!value) return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 };
+
+const isRecipeConstraintError = (error: { message?: string } | null) =>
+  Boolean(error?.message?.includes("violates check constraint \"recipes_"));
 
 const resolveProductId = async (name: string | null | undefined) => {
   const raw = (name || "").trim();
@@ -183,16 +193,16 @@ export async function POST(request: Request) {
       cuisine_id: cuisineId,
       dish_type: normalizeText(body.dish_type),
       course: normalizeText(body.course),
-      meal_role: parseTextArray(body.meal_role),
-      fridge_life_days: parseNumber(body.fridge_life_days),
-      mood_tags: parseTextArray(body.mood_tags),
-      main_ingredient: normalizeText(body.main_ingredient),
-      budget_level: parseNumber(body.budget_level),
-      season: parseTextArray(body.season),
+      meal_role: normalizeMealRoles(body.meal_role),
+      fridge_life_days: Math.max(0, parseNumber(body.fridge_life_days) ?? 1),
+      mood_tags: normalizeMoodTags(body.mood_tags),
+      main_ingredient: normalizeMainIngredient(body.main_ingredient),
+      budget_level: clampNumber(body.budget_level, 1, 3, 2),
+      season: normalizeSeasons(body.season),
       is_compound_safe: parseBoolean(body.is_compound_safe) ?? true,
-      goal_tags: parseTextArray(body.goal_tags),
+      goal_tags: normalizeGoalTags(body.goal_tags),
       kid_friendly: parseBoolean(body.kid_friendly) ?? false,
-      spicy_level: parseNumber(body.spicy_level) ?? 0,
+      spicy_level: clampNumber(body.spicy_level, 0, 3, 0),
       owner_id: ownerId,
       is_user_defined: isUserDefined,
       author: normalizeText(body.author),
@@ -200,7 +210,7 @@ export async function POST(request: Request) {
       servings: parseNumber(body.servings),
       prep_time: parseNumber(body.prep_time),
       cook_time: parseNumber(body.cook_time),
-      difficulty: normalizeText(body.difficulty),
+      difficulty: normalizeDifficulty(body.difficulty),
       tags: parseTextArray(body.tags),
       diet_tags: parseTextArray(body.diet_tags),
       allergen_tags: parseTextArray(body.allergen_tags),
@@ -229,8 +239,8 @@ export async function POST(request: Request) {
       translations: parseJson(body.translations),
     };
 
-    const payloadWithId = recipeId ? { ...payload, id: recipeId } : payload;
-    const { data, error } = recipeId
+    let payloadWithId = recipeId ? { ...payload, id: recipeId } : payload;
+    let { data, error } = recipeId
       ? await supabaseAdmin
           .from("recipes")
           .upsert(payloadWithId, { onConflict: "id" })
@@ -241,6 +251,34 @@ export async function POST(request: Request) {
           .insert(payloadWithId)
           .select()
           .single();
+
+    if (isRecipeConstraintError(error)) {
+      payloadWithId = {
+        ...payloadWithId,
+        difficulty: "medium",
+        meal_role: [],
+        fridge_life_days: 1,
+        mood_tags: ["comfort"],
+        main_ingredient: "vegetables",
+        budget_level: 2,
+        season: ["all"],
+        goal_tags: [],
+        spicy_level: 0,
+      };
+      const retry = recipeId
+        ? await supabaseAdmin
+            .from("recipes")
+            .upsert(payloadWithId, { onConflict: "id" })
+            .select()
+            .single()
+        : await supabaseAdmin
+            .from("recipes")
+            .insert(payloadWithId)
+            .select()
+            .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });

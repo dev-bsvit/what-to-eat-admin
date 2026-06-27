@@ -4,6 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Clock3, Download, Languages, Save, Upload, UsersRound } from "lucide-react";
 import RecipeIngredientsEditor from "@/components/RecipeIngredientsEditor";
+import RecipeImageUploader from "@/components/RecipeImageUploader";
+import {
+  clampNumber,
+  normalizeDifficulty,
+  normalizeGoalTags,
+  normalizeMainIngredient,
+  normalizeMealRoles,
+  normalizeMoodTags,
+  normalizeSeasons,
+} from "@/lib/parseFields";
 import styles from "../catalogs/catalogs-blueprint.module.css";
 
 interface Ingredient {
@@ -502,8 +512,10 @@ function buildRecipeImportPrompt({
 
   contextLines.push(`- is_user_defined: ${form.is_user_defined === "true" ? "true" : "false"}.`);
 
+  const normalizedFormDifficulty = normalizeDifficulty(form.difficulty);
+
   if (form.difficulty.trim()) {
-    contextLines.push(`- difficulty по умолчанию в текущей форме: "${form.difficulty.trim()}".`);
+    contextLines.push(`- difficulty по умолчанию в текущей форме: "${normalizedFormDifficulty}".`);
   }
 
   if (form.dish_type.trim()) {
@@ -560,7 +572,7 @@ function buildRecipeImportPrompt({
   const ownerPlaceholder = form.owner_id.trim() || null;
   const commentsEnabledPlaceholder = form.comments_enabled === "true";
   const servingsPlaceholder = form.servings > 0 ? form.servings : 4;
-  const difficultyPlaceholder = form.difficulty.trim() || "medium";
+  const difficultyPlaceholder = normalizedFormDifficulty;
   const dishTypePlaceholder = form.dish_type.trim() || "soup";
   const coursePlaceholder = form.course.trim() || "main";
   const mealRolePlaceholder = parseTagsField(form.meal_role);
@@ -599,6 +611,7 @@ ${availableCuisines}
 - Используй только языки: ${languagesLine}.
 - Для units используй только: ${unitsLine}.
 - tags — обязательный массив строк. Выбери из: quick, special occasion, light, hearty, breakfast, lunch, dinner, snack, vegetarian, vegan, gluten-free, dairy-free, soup, salad, pasta, grill, baking, raw. Правила: quick если totalTime ≤ 20 мин; special occasion если > 60 мин или праздничное блюдо; light если < 300 ккал; hearty если > 650 ккал; breakfast/lunch/dinner/snack — тип приёма пищи (обязателен хотя бы один). Пример: ["dinner","hearty","soup"].
+- difficulty — строго одно из трёх значений: "easy", "medium", "hard". Нельзя писать "легко", "средне", "simple", "normal" или другие варианты.
 - meal_role — массив из: breakfast, lunch_main, lunch_side, dinner, snack, dessert. Это точная роль в рационе, не путай с грубым dish_type.
 - fridge_life_days — число дней хранения в холодильнике: 0 для салатов с заправкой, 1 по умолчанию, 2 для котлет/запеканок, 3 для борща/супов.
 - mood_tags — массив из: comfort, light, energizing, festive, quick, cozy.
@@ -1050,20 +1063,20 @@ export default function RecipesPage() {
       title: normalized.title || prev.title,
       description: toText(normalized.description),
       image_url: options.preserveImageUrl ? prev.image_url : toText(normalized.image_url || normalized.imageUrl),
-      cuisine_id: normalized.cuisine_id || prev.cuisine_id,
+      cuisine_id: cuisineId || normalized.cuisine_id || prev.cuisine_id,
       source_language: toText(normalized.source_language || prev.source_language || "ru"),
       dish_type: toText(normalized.dish_type),
       course: toText(normalized.course),
-      meal_role: Array.isArray(normalized.meal_role) ? normalized.meal_role.join(", ") : toText(normalized.meal_role),
+      meal_role: normalizeMealRoles(normalized.meal_role).join(", "),
       fridge_life_days: toText(normalized.fridge_life_days ?? prev.fridge_life_days ?? "1"),
-      mood_tags: Array.isArray(normalized.mood_tags) ? normalized.mood_tags.join(", ") : toText(normalized.mood_tags),
-      main_ingredient: toText(normalized.main_ingredient),
-      budget_level: toText(normalized.budget_level),
-      season: Array.isArray(normalized.season) ? normalized.season.join(", ") : toText(normalized.season || prev.season || "all"),
+      mood_tags: normalizeMoodTags(normalized.mood_tags).join(", "),
+      main_ingredient: normalizeMainIngredient(normalized.main_ingredient) || "",
+      budget_level: toText(clampNumber(normalized.budget_level, 1, 3, 2)),
+      season: normalizeSeasons(normalized.season).join(", "),
       is_compound_safe: String(normalized.is_compound_safe ?? true),
-      goal_tags: Array.isArray(normalized.goal_tags) ? normalized.goal_tags.join(", ") : toText(normalized.goal_tags),
+      goal_tags: normalizeGoalTags(normalized.goal_tags).join(", "),
       kid_friendly: String(normalized.kid_friendly ?? false),
-      spicy_level: toText(normalized.spicy_level ?? "0"),
+      spicy_level: toText(clampNumber(normalized.spicy_level, 0, 3, 0)),
       owner_id: toText(normalized.owner_id),
       is_user_defined: String(normalized.is_user_defined ?? false),
       author: toText(normalized.author),
@@ -1071,7 +1084,7 @@ export default function RecipesPage() {
       servings: normalized.servings ?? prev.servings,
       prep_time: toText(normalized.prep_time ?? normalized.prepTime),
       cook_time: toText(normalized.cook_time ?? normalized.cookTime),
-      difficulty: normalized.difficulty || prev.difficulty,
+      difficulty: normalized.difficulty ? normalizeDifficulty(normalized.difficulty) : prev.difficulty,
       diet_tags: Array.isArray(normalized.diet_tags) ? normalized.diet_tags.join(", ") : toText(normalized.diet_tags),
       allergen_tags: Array.isArray(normalized.allergen_tags) ? normalized.allergen_tags.join(", ") : toText(normalized.allergen_tags),
       tags: (() => {
@@ -1306,7 +1319,7 @@ export default function RecipesPage() {
           servings: recipe.servings || 4,
           prep_time: recipe.prep_time?.toString() || "",
           cook_time: recipe.cook_time?.toString() || "",
-          difficulty: recipe.difficulty || "medium",
+          difficulty: normalizeDifficulty(recipe.difficulty),
           tags: parseTagsField(recipe.tags),
           diet_tags: Array.isArray(recipe.diet_tags) ? recipe.diet_tags.join(", ") : "",
           allergen_tags: Array.isArray(recipe.allergen_tags) ? recipe.allergen_tags.join(", ") : "",
@@ -1494,19 +1507,19 @@ export default function RecipesPage() {
         description: form.description || null,
         image_url: form.image_url || null,
         step_images: stepImagesJson.length ? JSON.stringify(stepImagesJson) : null,
-        cuisine_id: form.cuisine_id,
+        cuisine_id: cuisineId || form.cuisine_id,
         dish_type: form.dish_type || null,
         course: form.course || null,
-        meal_role: form.meal_role ? form.meal_role.split(",").map(t => t.trim()).filter(Boolean) : [],
-        fridge_life_days: form.fridge_life_days ? parseInt(form.fridge_life_days) : 1,
-        mood_tags: form.mood_tags ? form.mood_tags.split(",").map(t => t.trim()).filter(Boolean) : [],
-        main_ingredient: form.main_ingredient || null,
-        budget_level: form.budget_level ? parseInt(form.budget_level) : null,
-        season: form.season ? form.season.split(",").map(t => t.trim()).filter(Boolean) : ["all"],
+        meal_role: normalizeMealRoles(form.meal_role),
+        fridge_life_days: Math.max(0, form.fridge_life_days ? parseInt(form.fridge_life_days) : 1),
+        mood_tags: normalizeMoodTags(form.mood_tags),
+        main_ingredient: normalizeMainIngredient(form.main_ingredient),
+        budget_level: clampNumber(form.budget_level, 1, 3, 2),
+        season: normalizeSeasons(form.season),
         is_compound_safe: form.is_compound_safe === "true",
-        goal_tags: form.goal_tags ? form.goal_tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+        goal_tags: normalizeGoalTags(form.goal_tags),
         kid_friendly: form.kid_friendly === "true",
-        spicy_level: form.spicy_level ? parseInt(form.spicy_level) : 0,
+        spicy_level: clampNumber(form.spicy_level, 0, 3, 0),
         owner_id: form.owner_id || null,
         is_user_defined: form.is_user_defined === "true",
         author: form.author || null,
@@ -1514,7 +1527,7 @@ export default function RecipesPage() {
         servings: form.servings,
         prep_time: form.prep_time ? parseInt(form.prep_time) : null,
         cook_time: form.cook_time ? parseInt(form.cook_time) : null,
-        difficulty: form.difficulty,
+        difficulty: normalizeDifficulty(form.difficulty),
         tags: form.tags,
         diet_tags: form.diet_tags ? form.diet_tags.split(",").map(t => t.trim()) : [],
         allergen_tags: form.allergen_tags ? form.allergen_tags.split(",").map(t => t.trim()) : [],
@@ -1959,24 +1972,13 @@ export default function RecipesPage() {
           gap: 'var(--spacing-lg)',
           alignItems: 'end',
         }}>
-          <div>
-            <label style={{
-              display: 'block',
-              fontSize: '13px',
-              fontWeight: 600,
-              marginBottom: 'var(--spacing-xs)',
-              color: 'var(--text-primary)',
-            }}>
-              Ссылка на фото
-            </label>
-            <input
-              type="text"
-              className="input"
-              placeholder="https://example.com/photo.webp"
-              value={form.image_url}
-              onChange={(e) => setForm({ ...form, image_url: e.target.value })}
-            />
-          </div>
+          <RecipeImageUploader
+            value={form.image_url}
+            onChange={(imageUrl) => setForm((prev) => ({ ...prev, image_url: imageUrl }))}
+            cuisineId={form.cuisine_id}
+            recipeTitle={form.title}
+            label="Фото рецепта"
+          />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'end' }}>
             <div>
@@ -3328,27 +3330,18 @@ export default function RecipesPage() {
                           rows={3}
                         />
                       </div>
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          fontSize: '13px',
-                          fontWeight: 500,
-                          marginBottom: 'var(--spacing-xs)',
-                          color: 'var(--text-primary)',
-                        }}>
-                          URL изображения шага
-                        </label>
-                        <input
-                          className="input"
-                          type="text"
-                          placeholder="https://example.com/step.jpg"
-                          value={step.imageUrl}
-                          onChange={(e) => {
-                            const updated = steps.map(s => s.id === step.id ? { ...s, imageUrl: e.target.value } : s);
-                            setSteps(updated);
-                          }}
-                        />
-                      </div>
+                      <RecipeImageUploader
+                        value={step.imageUrl}
+                        onChange={(imageUrl) => {
+                          const updated = steps.map(s => s.id === step.id ? { ...s, imageUrl } : s);
+                          setSteps(updated);
+                        }}
+                        cuisineId={form.cuisine_id}
+                        recipeTitle={form.title}
+                        kind="step"
+                        stepNumber={index + 1}
+                        label={`Фото шага ${index + 1}`}
+                      />
                       <div>
                         <label style={{
                           display: 'block',

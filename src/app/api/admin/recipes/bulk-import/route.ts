@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { cleanIngredientName, isUuid } from "@/lib/stringUtils";
-import { normalizeText, parseBoolean, parseNumber, parseTextArray } from "@/lib/parseFields";
+import {
+  clampNumber,
+  normalizeDifficulty,
+  normalizeGoalTags,
+  normalizeMainIngredient,
+  normalizeMealRoles,
+  normalizeMoodTags,
+  normalizeSeasons,
+  normalizeText,
+  parseBoolean,
+  parseNumber,
+  parseTextArray,
+} from "@/lib/parseFields";
 
 const resolveProductId = async (name: string | null | undefined): Promise<string | null> => {
   const raw = (name || "").trim();
@@ -48,6 +60,9 @@ const ensureProductId = async (name: string | null | undefined): Promise<string 
   return data?.id || null;
 };
 
+const isRecipeConstraintError = (error: { message?: string } | null) =>
+  Boolean(error?.message?.includes("violates check constraint \"recipes_"));
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -80,13 +95,17 @@ export async function POST(request: Request) {
           prep_time: parseNumber(r.prep_time),
           cook_time: parseNumber(r.cook_time),
           servings: parseNumber(r.servings),
-          difficulty: normalizeText(r.difficulty) || "medium",
+          difficulty: normalizeDifficulty(r.difficulty),
           tags: parseTextArray(r.tags),
-          meal_role: parseTextArray(r.meal_role),
-          main_ingredient: normalizeText(r.main_ingredient),
-          budget_level: parseNumber(r.budget_level),
+          meal_role: normalizeMealRoles(r.meal_role),
+          fridge_life_days: Math.max(0, parseNumber(r.fridge_life_days) ?? 1),
+          mood_tags: normalizeMoodTags(r.mood_tags),
+          main_ingredient: normalizeMainIngredient(r.main_ingredient),
+          budget_level: clampNumber(r.budget_level, 1, 3, 2),
+          season: normalizeSeasons(r.season),
+          goal_tags: normalizeGoalTags(r.goal_tags),
           kid_friendly: parseBoolean(r.kid_friendly) ?? false,
-          spicy_level: parseNumber(r.spicy_level) ?? 0,
+          spicy_level: clampNumber(r.spicy_level, 0, 3, 0),
           calories: parseNumber(r.calories),
           protein: parseNumber(r.protein),
           carbs: parseNumber(r.carbs),
@@ -100,11 +119,32 @@ export async function POST(request: Request) {
           is_public: r.is_public !== false,
         };
 
-        const { data: recipeData, error: recipeError } = await supabaseAdmin
+        let { data: recipeData, error: recipeError } = await supabaseAdmin
           .from("recipes")
           .insert(payload)
           .select("id")
           .single();
+
+        if (isRecipeConstraintError(recipeError)) {
+          const retry = await supabaseAdmin
+            .from("recipes")
+            .insert({
+              ...payload,
+              difficulty: "medium",
+              meal_role: [],
+              fridge_life_days: 1,
+              mood_tags: ["comfort"],
+              main_ingredient: "vegetables",
+              budget_level: 2,
+              season: ["all"],
+              goal_tags: [],
+              spicy_level: 0,
+            })
+            .select("id")
+            .single();
+          recipeData = retry.data;
+          recipeError = retry.error;
+        }
 
         if (recipeError || !recipeData) {
           errors.push({ index: i, title, error: recipeError?.message || "DB insert error" });
