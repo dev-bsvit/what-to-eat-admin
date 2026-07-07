@@ -14,6 +14,12 @@
   "dependencies": {
     "@parse/node-apn": "^8.0.0",
     "@supabase/supabase-js": "^2.89.0",
+    "@tiptap/extension-image": "^2.27.2",
+    "@tiptap/extension-link": "^2.27.2",
+    "@tiptap/extension-placeholder": "^2.27.2",
+    "@tiptap/pm": "^2.27.2",
+    "@tiptap/react": "^2.27.2",
+    "@tiptap/starter-kit": "^2.27.2",
     "cheerio": "^1.1.2",
     "next": "^15.5.9",
     "puppeteer": "^24.35.0",

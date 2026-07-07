@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ThemeToggle from "./ThemeToggle";
-import { HomeIcon, PackageIcon, BookOpenIcon, DatabaseIcon } from "./Icons";
+import { HomeIcon, PackageIcon, BookOpenIcon, DatabaseIcon, NewspaperIcon } from "./Icons";
 
 const navigation = [
   { name: "Обзор", href: "/", icon: HomeIcon },
   { name: "Продукты", href: "/products", icon: PackageIcon },
   { name: "Рецепты", href: "/recipes", icon: BookOpenIcon },
+  { name: "Блог", href: "/blog", icon: NewspaperIcon },
   { name: "Отзывы", href: "/reviews-moderation", icon: BookOpenIcon },
   { name: "Схема БД", href: "/schema", icon: DatabaseIcon },
   { name: "Рекомендации", href: "/recommend-setup", icon: BookOpenIcon },
