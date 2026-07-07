@@ -222,3 +222,38 @@
   color: var(--text-muted);
   pointer-events: none;
 }
+
+.coverUpload {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 160px;
+  border: 1.5px dashed var(--border-input);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--bg-hover);
+}
+
+.coverUpload:hover {
+  border-color: var(--border-input-hover);
+  color: var(--text-primary);
+}
+
+.coverPreview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-hover);
+}
+
+.coverPreviewImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -10,21 +11,25 @@ import styles from "@/app/blog/blog.module.css";
 interface BlogEditorProps {
   content: JSONContent | null;
   onChange: (json: JSONContent, html: string) => void;
+  slugHint?: string;
 }
 
 function ToolbarButton({
   onClick,
   active,
   label,
+  disabled,
 }: {
   onClick: () => void;
   active?: boolean;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`${styles.editorToolbarButton} ${active ? styles.isActive : ""}`}
     >
       {label}
@@ -32,7 +37,10 @@ function ToolbarButton({
   );
 }
 
-export default function BlogEditor({ content, onChange }: BlogEditorProps) {
+export default function BlogEditor({ content, onChange, slugHint }: BlogEditorProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
@@ -57,6 +65,24 @@ export default function BlogEditor({ content, onChange }: BlogEditorProps) {
     },
   });
 
+  const handleImageFile = async (file: File) => {
+    if (!editor) return;
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("kind", "content");
+      formData.append("slug_hint", slugHint || "post");
+      const res = await fetch("/api/admin/blog/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        editor.chain().focus().setImage({ src: data.url }).run();
+      }
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   if (!editor) return null;
 
   return (
@@ -75,6 +101,22 @@ export default function BlogEditor({ content, onChange }: BlogEditorProps) {
           onClick={() => {
             const url = window.prompt("URL ссылки");
             if (url) editor.chain().focus().setLink({ href: url }).run();
+          }}
+        />
+        <ToolbarButton
+          label={uploadingImage ? "Загружаем…" : "Изображение"}
+          disabled={uploadingImage}
+          onClick={() => fileInputRef.current?.click()}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleImageFile(file);
+            e.target.value = "";
           }}
         />
       </div>

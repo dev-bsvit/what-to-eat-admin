@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { JSONContent } from "@tiptap/react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ImageUp, X } from "lucide-react";
 import styles from "../blog.module.css";
 
 const BlogEditor = dynamic(() => import("@/components/BlogEditor"), { ssr: false });
@@ -27,6 +27,7 @@ interface PostDetail {
   status: string;
   source: string;
   category_id: string | null;
+  cover_image_url: string | null;
   translations: Translation[];
 }
 
@@ -60,6 +61,7 @@ export default function BlogPostEditorPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,7 +89,7 @@ export default function BlogPostEditorPage() {
     setDraft(existing ?? emptyTranslation(languageCode));
   };
 
-  const save = async (overrides?: Partial<{ status: string }>) => {
+  const save = async (overrides?: Partial<{ status: string; cover_image_url: string | null }>) => {
     if (!draft) return;
     setSaving(true);
     try {
@@ -108,10 +110,27 @@ export default function BlogPostEditorPage() {
       });
       if (res.ok) {
         setSavedAt(new Date());
-        if (overrides?.status) await load();
+        if (overrides) await load();
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCoverUpload = async (file: File) => {
+    setUploadingCover(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("kind", "cover");
+      formData.append("slug_hint", draft?.slug || "post");
+      const res = await fetch("/api/admin/blog/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        await save({ cover_image_url: data.url });
+      }
+    } finally {
+      setUploadingCover(false);
     }
   };
 
@@ -160,6 +179,39 @@ export default function BlogPostEditorPage() {
       </div>
 
       <div className="form-group">
+        {post.cover_image_url ? (
+          <div className={styles.coverPreview}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={post.cover_image_url} alt="Обложка статьи" className={styles.coverPreviewImg} />
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => save({ cover_image_url: null })}
+              aria-label="Удалить обложку"
+              style={{ position: "absolute", top: 8, right: 8 }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ) : (
+          <label className={styles.coverUpload}>
+            <ImageUp size={20} />
+            {uploadingCover ? "Загружаем…" : "Загрузить обложку"}
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              disabled={uploadingCover}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleCoverUpload(file);
+              }}
+            />
+          </label>
+        )}
+      </div>
+
+      <div className="form-group">
         <input
           className={`input ${styles.editorTitleInput}`}
           value={draft.title}
@@ -190,6 +242,7 @@ export default function BlogPostEditorPage() {
       <BlogEditor
         content={draft.content_json}
         onChange={(json, html) => setDraft((prev) => (prev ? { ...prev, content_json: json, content_html: html } : prev))}
+        slugHint={draft.slug}
       />
 
       <div className={styles.metaGrid}>
