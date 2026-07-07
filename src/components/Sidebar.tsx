@@ -9,6 +9,7 @@ const sections = [
     items: [
       { name: "Каталоги", href: "/catalogs", icon: "□" },
       { name: "Продукты", href: "/products", icon: "◇", productHub: true },
+      { name: "Блог", href: "/blog", icon: "≡" },
       { name: "Отзывы", href: "/reviews-moderation", icon: "!" },
       { name: "Пользователи", href: "/users", icon: "○" },
     ],
