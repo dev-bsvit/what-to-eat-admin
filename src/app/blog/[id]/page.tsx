@@ -16,6 +16,7 @@ interface Translation {
   title: string;
   excerpt: string | null;
   content_json: JSONContent;
+  content_html: string | null;
   meta_title: string | null;
   meta_description: string | null;
   is_machine_translated: boolean;
@@ -43,6 +44,7 @@ function emptyTranslation(languageCode: string): Translation {
     title: "",
     excerpt: null,
     content_json: {},
+    content_html: null,
     meta_title: null,
     meta_description: null,
     is_machine_translated: false,
@@ -98,6 +100,7 @@ export default function BlogPostEditorPage() {
           slug: draft.slug,
           excerpt: draft.excerpt,
           content_json: draft.content_json,
+          content_html: draft.content_html,
           meta_title: draft.meta_title,
           meta_description: draft.meta_description,
           ...overrides,
@@ -186,7 +189,7 @@ export default function BlogPostEditorPage() {
 
       <BlogEditor
         content={draft.content_json}
-        onChange={(json) => setDraft((prev) => (prev ? { ...prev, content_json: json } : prev))}
+        onChange={(json, html) => setDraft((prev) => (prev ? { ...prev, content_json: json, content_html: html } : prev))}
       />
 
       <div className={styles.metaGrid}>
