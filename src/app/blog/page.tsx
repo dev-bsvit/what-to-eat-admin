@@ -79,10 +79,15 @@ export default function BlogListPage() {
             Статьи кулинарного блога — ручное создание. AI-генерация появится на следующем этапе.
           </p>
         </div>
-        <Link href="/blog/new" className="btn btn-primary">
-          <Plus size={18} />
-          Новая статья
-        </Link>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link href="/blog/categories" className="btn btn-secondary">
+            Категории
+          </Link>
+          <Link href="/blog/new" className="btn btn-primary">
+            <Plus size={18} />
+            Новая статья
+          </Link>
+        </div>
       </div>
 
       <div className={styles.toolbar}>

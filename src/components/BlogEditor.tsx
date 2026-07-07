@@ -50,6 +50,11 @@ export default function BlogEditor({ content, onChange }: BlogEditorProps) {
     onUpdate: ({ editor }) => {
       onChange(editor.getJSON(), editor.getHTML());
     },
+    onCreate: ({ editor }) => {
+      // Ensures content_html is populated even if the user saves without
+      // making any further edits (onUpdate only fires on actual changes).
+      onChange(editor.getJSON(), editor.getHTML());
+    },
   });
 
   if (!editor) return null;
