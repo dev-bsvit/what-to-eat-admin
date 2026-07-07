@@ -27,7 +27,7 @@ function ToolbarButton({
       className={`px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
         active
           ? "bg-pink-500 text-white"
-          : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+          : "text-gray-600 hover:bg-gray-100"
       }`}
     >
       {label}
@@ -48,7 +48,7 @@ export default function BlogEditor({ content, onChange }: BlogEditorProps) {
     editorProps: {
       attributes: {
         class:
-          "prose prose-neutral dark:prose-invert max-w-none min-h-[400px] focus:outline-none px-4 py-3",
+          "prose prose-neutral max-w-none min-h-[400px] focus:outline-none px-4 py-3",
       },
     },
     onUpdate: ({ editor }) => {
@@ -59,8 +59,8 @@ export default function BlogEditor({ content, onChange }: BlogEditorProps) {
   if (!editor) return null;
 
   return (
-    <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
-      <div className="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-800 px-2 py-2 bg-gray-50 dark:bg-gray-950">
+    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+      <div className="flex flex-wrap gap-1 border-b border-gray-200 px-2 py-2 bg-gray-50">
         <ToolbarButton label="H2" active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
         <ToolbarButton label="H3" active={editor.isActive("heading", { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
         <ToolbarButton label="Жирный" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} />

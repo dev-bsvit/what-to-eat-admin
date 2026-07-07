@@ -82,18 +82,18 @@ export default function NewBlogPostPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Новая статья</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">Новая статья</h1>
+      <p className="text-sm text-gray-500 mb-6">
         Заполните основное — текст и SEO допишете на следующем экране.
       </p>
 
-      <form onSubmit={handleSubmit} className="space-y-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+      <form onSubmit={handleSubmit} className="space-y-4 bg-white border border-gray-200 rounded-xl p-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Язык публикации</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Язык публикации</label>
           <select
             value={languageCode}
             onChange={(e) => setLanguageCode(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-sm"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
           >
             {languages.map((l) => (
               <option key={l.code} value={l.code}>
@@ -104,17 +104,17 @@ export default function NewBlogPostPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Заголовок</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Заголовок</label>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Как приготовить идеальный борщ"
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-sm"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Slug (URL)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Slug (URL)</label>
           <input
             value={slug}
             onChange={(e) => {
@@ -122,16 +122,16 @@ export default function NewBlogPostPage() {
               setSlug(e.target.value);
             }}
             placeholder="kak-prigotovit-borsch"
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-sm font-mono"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-mono"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Категория</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Категория</label>
           <select
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-sm"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
           >
             <option value="">Без категории</option>
             {categories.map((c) => (

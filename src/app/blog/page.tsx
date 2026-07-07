@@ -16,11 +16,11 @@ interface BlogPostRow {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  draft: { label: "Черновик", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
-  in_review: { label: "На проверке", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
-  scheduled: { label: "Запланирована", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
-  published: { label: "Опубликована", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
-  archived: { label: "В архиве", className: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
+  draft: { label: "Черновик", className: "bg-gray-100 text-gray-600" },
+  in_review: { label: "На проверке", className: "bg-amber-100 text-amber-700" },
+  scheduled: { label: "Запланирована", className: "bg-blue-100 text-blue-700" },
+  published: { label: "Опубликована", className: "bg-emerald-100 text-emerald-700" },
+  archived: { label: "В архиве", className: "bg-gray-100 text-gray-500" },
 };
 
 function formatDate(value: string) {
@@ -73,8 +73,8 @@ export default function BlogListPage() {
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Блог</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900">Блог</h1>
+          <p className="text-sm text-gray-500 mt-1">
             Статьи кулинарного блога — ручное создание. AI-генерация появится на следующем этапе.
           </p>
         </div>
@@ -93,13 +93,13 @@ export default function BlogListPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск по заголовку…"
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
           />
         </form>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm"
+          className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
         >
           <option value="">Все статусы</option>
           {Object.entries(statusLabels).map(([value, { label }]) => (
@@ -110,9 +110,9 @@ export default function BlogListPage() {
         </select>
       </div>
 
-      <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+      <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 dark:bg-gray-950 text-left text-gray-500 dark:text-gray-400">
+          <thead className="bg-gray-50 text-left text-gray-500">
             <tr>
               <th className="px-4 py-3 font-medium">Заголовок</th>
               <th className="px-4 py-3 font-medium">Статус</th>
@@ -121,7 +121,7 @@ export default function BlogListPage() {
               <th className="px-4 py-3 font-medium text-right">Действия</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          <tbody className="divide-y divide-gray-100">
             {loading && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
@@ -139,9 +139,9 @@ export default function BlogListPage() {
             {posts.map((post) => {
               const status = statusLabels[post.status] ?? statusLabels.draft;
               return (
-                <tr key={post.id} className="hover:bg-gray-50 dark:hover:bg-gray-950/60">
+                <tr key={post.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <Link href={`/blog/${post.id}`} className="font-medium text-gray-900 dark:text-white hover:text-pink-500">
+                    <Link href={`/blog/${post.id}`} className="font-medium text-gray-900 hover:text-pink-500">
                       {post.title}
                     </Link>
                   </td>
@@ -150,21 +150,21 @@ export default function BlogListPage() {
                       {status.label}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 uppercase text-xs tracking-wide">
+                  <td className="px-4 py-3 text-gray-500 uppercase text-xs tracking-wide">
                     {post.available_languages.join(", ") || "—"}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{formatDate(post.updated_at)}</td>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(post.updated_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <Link
                         href={`/blog/${post.id}`}
-                        className="p-2 rounded-lg text-gray-400 hover:text-pink-500 hover:bg-pink-50 dark:hover:bg-pink-950/30"
+                        className="p-2 rounded-lg text-gray-400 hover:text-pink-500 hover:bg-pink-50"
                       >
                         <EditIcon className="w-4 h-4" />
                       </Link>
                       <button
                         onClick={() => handleDelete(post.id)}
-                        className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                        className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"
                       >
                         <TrashIcon className="w-4 h-4" />
                       </button>

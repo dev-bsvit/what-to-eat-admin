@@ -130,7 +130,7 @@ export default function BlogPostEditorPage() {
               className={`px-3 py-1.5 rounded-lg text-sm font-medium uppercase ${
                 activeLanguage === t.language_code
                   ? "bg-pink-500 text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+                  : "bg-gray-100 text-gray-500"
               }`}
             >
               {t.language_code}
@@ -143,7 +143,7 @@ export default function BlogPostEditorPage() {
           <select
             value={post.status}
             onChange={(e) => save({ status: e.target.value })}
-            className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm"
+            className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
           >
             {statusOptions.map((s) => (
               <option key={s.value} value={s.value}>
@@ -166,14 +166,14 @@ export default function BlogPostEditorPage() {
           value={draft.title}
           onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           placeholder="Заголовок"
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-xl font-semibold"
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-xl font-semibold"
         />
 
         <input
           value={draft.slug}
           onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
           placeholder="slug"
-          className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm font-mono text-gray-500"
+          className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-mono text-gray-500"
         />
 
         <textarea
@@ -181,7 +181,7 @@ export default function BlogPostEditorPage() {
           onChange={(e) => setDraft({ ...draft, excerpt: e.target.value })}
           placeholder="Краткое описание (excerpt) — используется в ленте и превью"
           rows={2}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm"
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm"
         />
 
         <BlogEditor
@@ -196,7 +196,7 @@ export default function BlogPostEditorPage() {
               value={draft.meta_title ?? ""}
               onChange={(e) => setDraft({ ...draft, meta_title: e.target.value })}
               maxLength={60}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm"
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
             />
             <span className="text-xs text-gray-400">{(draft.meta_title ?? "").length}/60</span>
           </div>
@@ -206,7 +206,7 @@ export default function BlogPostEditorPage() {
               value={draft.meta_description ?? ""}
               onChange={(e) => setDraft({ ...draft, meta_description: e.target.value })}
               maxLength={160}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm"
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
             />
             <span className="text-xs text-gray-400">{(draft.meta_description ?? "").length}/160</span>
           </div>
