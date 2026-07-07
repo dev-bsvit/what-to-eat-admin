@@ -3,6 +3,16 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const DEFAULT_LANGUAGE = "ru";
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9а-яё\s-]/gi, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 // GET /api/admin/blog/posts?status=draft&category_id=...&language_code=ru&search=...
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -67,7 +77,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const languageCode: string = body.language_code || DEFAULT_LANGUAGE;
   const title: string = (body.title || "").trim();
-  const slug: string = (body.slug || "").trim();
+  const slug: string = slugify(body.slug || "") || slugify(title);
 
   if (!title || !slug) {
     return NextResponse.json({ error: "title and slug are required" }, { status: 400 });

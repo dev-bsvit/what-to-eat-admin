@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9а-яё\s-]/gi, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 // GET /api/admin/blog/posts/:id — вся статья со всеми переводами
 export async function GET(
   request: Request,
@@ -67,6 +77,10 @@ export async function PATCH(
     "faq_json",
   ] as const) {
     if (key in body) translationFields[key] = body[key];
+  }
+
+  if (typeof translationFields.slug === "string") {
+    translationFields.slug = slugify(translationFields.slug) || slugify(String(body.title || ""));
   }
 
   if (Object.keys(translationFields).length > 0) {
