@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 const languages = [
   { code: "ru", label: "Русский" },
@@ -81,20 +83,23 @@ export default function NewBlogPostPage() {
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Новая статья</h1>
-      <p className="text-sm text-gray-500 mb-6">
-        Заполните основное — текст и SEO допишете на следующем экране.
-      </p>
+    <div style={{ maxWidth: 560 }}>
+      <Link href="/blog" className="breadcrumb-item" style={{ marginBottom: 16 }}>
+        <ArrowLeft size={16} />
+        К списку статей
+      </Link>
 
-      <form onSubmit={handleSubmit} className="space-y-4 bg-white border border-gray-200 rounded-xl p-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Язык публикации</label>
-          <select
-            value={languageCode}
-            onChange={(e) => setLanguageCode(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
-          >
+      <div className="section-header">
+        <h1 className="section-title">Новая статья</h1>
+        <p className="section-subtitle">Заполните основное — текст и SEO допишете на следующем экране.</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="app-card" style={{ cursor: "default" }}>
+        {error && <div className="form-error">{error}</div>}
+
+        <div className="form-group">
+          <label className="form-label">Язык публикации</label>
+          <select className="input" value={languageCode} onChange={(e) => setLanguageCode(e.target.value)}>
             {languages.map((l) => (
               <option key={l.code} value={l.code}>
                 {l.label}
@@ -103,36 +108,33 @@ export default function NewBlogPostPage() {
           </select>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Заголовок</label>
+        <div className="form-group">
+          <label className="form-label">Заголовок</label>
           <input
+            className="input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Как приготовить идеальный борщ"
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Slug (URL)</label>
+        <div className="form-group">
+          <label className="form-label">Slug (URL)</label>
           <input
+            className="input"
+            style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 13 }}
             value={slug}
             onChange={(e) => {
               setSlugTouched(true);
               setSlug(e.target.value);
             }}
             placeholder="kak-prigotovit-borsch"
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-mono"
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Категория</label>
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
-          >
+        <div className="form-group">
+          <label className="form-label">Категория</label>
+          <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">Без категории</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -142,13 +144,7 @@ export default function NewBlogPostPage() {
           </select>
         </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-4 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg font-medium shadow-lg shadow-pink-500/25 hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
+        <button type="submit" className="btn btn-primary" disabled={saving} style={{ width: "100%" }}>
           {saving ? "Создаём…" : "Создать и продолжить"}
         </button>
       </form>

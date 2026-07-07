@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { PlusIcon, TrashIcon, EditIcon } from "@/app/components/Icons";
+import { Newspaper, Pencil, Plus, Trash2 } from "lucide-react";
+import styles from "./blog.module.css";
 
 interface BlogPostRow {
   id: string;
@@ -16,11 +17,11 @@ interface BlogPostRow {
 }
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  draft: { label: "Черновик", className: "bg-gray-100 text-gray-600" },
-  in_review: { label: "На проверке", className: "bg-amber-100 text-amber-700" },
-  scheduled: { label: "Запланирована", className: "bg-blue-100 text-blue-700" },
-  published: { label: "Опубликована", className: "bg-emerald-100 text-emerald-700" },
-  archived: { label: "В архиве", className: "bg-gray-100 text-gray-500" },
+  draft: { label: "Черновик", className: styles.pillNeutral },
+  in_review: { label: "На проверке", className: "warning" },
+  scheduled: { label: "Запланирована", className: styles.pillInfo },
+  published: { label: "Опубликована", className: "success" },
+  archived: { label: "В архиве", className: styles.pillNeutral },
 };
 
 function formatDate(value: string) {
@@ -70,37 +71,30 @@ export default function BlogListPage() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Блог</h1>
-          <p className="text-sm text-gray-500 mt-1">
+    <div style={{ maxWidth: 1100 }}>
+      <div className="page-header">
+        <div className="section-header">
+          <h1 className="section-title">Блог</h1>
+          <p className="section-subtitle">
             Статьи кулинарного блога — ручное создание. AI-генерация появится на следующем этапе.
           </p>
         </div>
-        <Link
-          href="/blog/new"
-          className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg font-medium shadow-lg shadow-pink-500/25 hover:opacity-90 transition-opacity"
-        >
-          <PlusIcon className="w-5 h-5" />
+        <Link href="/blog/new" className="btn btn-primary">
+          <Plus size={18} />
           Новая статья
         </Link>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <form onSubmit={handleSearch} className="flex-1 min-w-[220px]">
+      <div className={styles.toolbar}>
+        <form onSubmit={handleSearch} style={{ flex: 1, maxWidth: 320 }}>
           <input
+            className="input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск по заголовку…"
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
           />
         </form>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
-        >
+        <select className="input" style={{ maxWidth: 220 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">Все статусы</option>
           {Object.entries(statusLabels).map(([value, { label }]) => (
             <option key={value} value={value}>
@@ -110,72 +104,72 @@ export default function BlogListPage() {
         </select>
       </div>
 
-      <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-gray-500">
-            <tr>
-              <th className="px-4 py-3 font-medium">Заголовок</th>
-              <th className="px-4 py-3 font-medium">Статус</th>
-              <th className="px-4 py-3 font-medium">Языки</th>
-              <th className="px-4 py-3 font-medium">Обновлено</th>
-              <th className="px-4 py-3 font-medium text-right">Действия</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading && (
+      {!loading && posts.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <Newspaper size={40} style={{ opacity: 0.5 }} />
+          </div>
+          <div className="empty-state-title">Пока нет статей</div>
+          <div className="empty-state-description">Создайте первую статью вручную или из рецепта.</div>
+          <Link href="/blog/new" className="btn btn-primary">
+            <Plus size={18} />
+            Новая статья
+          </Link>
+        </div>
+      ) : (
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                  Загрузка…
-                </td>
+                <th>Заголовок</th>
+                <th>Статус</th>
+                <th>Языки</th>
+                <th>Обновлено</th>
+                <th></th>
               </tr>
-            )}
-            {!loading && posts.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                  Пока нет статей — создайте первую.
-                </td>
-              </tr>
-            )}
-            {posts.map((post) => {
-              const status = statusLabels[post.status] ?? statusLabels.draft;
-              return (
-                <tr key={post.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <Link href={`/blog/${post.id}`} className="font-medium text-gray-900 hover:text-pink-500">
-                      {post.title}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${status.className}`}>
-                      {status.label}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 uppercase text-xs tracking-wide">
-                    {post.available_languages.join(", ") || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">{formatDate(post.updated_at)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <Link
-                        href={`/blog/${post.id}`}
-                        className="p-2 rounded-lg text-gray-400 hover:text-pink-500 hover:bg-pink-50"
-                      >
-                        <EditIcon className="w-4 h-4" />
-                      </Link>
-                      <button
-                        onClick={() => handleDelete(post.id)}
-                        className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    </div>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={5} className={styles.emptyCell}>
+                    Загрузка…
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              )}
+              {!loading &&
+                posts.map((post) => {
+                  const status = statusLabels[post.status] ?? statusLabels.draft;
+                  return (
+                    <tr key={post.id}>
+                      <td>
+                        <Link href={`/blog/${post.id}`} className={styles.titleLink}>
+                          {post.title}
+                        </Link>
+                      </td>
+                      <td>
+                        <span className={`status-pill ${status.className}`}>{status.label}</span>
+                      </td>
+                      <td style={{ color: "var(--text-secondary)", fontSize: 12, textTransform: "uppercase" }}>
+                        {post.available_languages.join(", ") || "—"}
+                      </td>
+                      <td style={{ color: "var(--text-secondary)" }}>{formatDate(post.updated_at)}</td>
+                      <td>
+                        <div className={styles.rowActions}>
+                          <Link href={`/blog/${post.id}`} className="icon-button" aria-label="Редактировать">
+                            <Pencil size={16} />
+                          </Link>
+                          <button onClick={() => handleDelete(post.id)} className="icon-button" aria-label="Удалить">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
+import styles from "@/app/blog/blog.module.css";
 
 interface BlogEditorProps {
   content: JSONContent | null;
@@ -24,11 +25,7 @@ function ToolbarButton({
     <button
       type="button"
       onClick={onClick}
-      className={`px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
-        active
-          ? "bg-pink-500 text-white"
-          : "text-gray-600 hover:bg-gray-100"
-      }`}
+      className={`${styles.editorToolbarButton} ${active ? styles.isActive : ""}`}
     >
       {label}
     </button>
@@ -47,8 +44,7 @@ export default function BlogEditor({ content, onChange }: BlogEditorProps) {
     content: content && Object.keys(content).length > 0 ? content : "",
     editorProps: {
       attributes: {
-        class:
-          "prose prose-neutral max-w-none min-h-[400px] focus:outline-none px-4 py-3",
+        class: styles.editorContent,
       },
     },
     onUpdate: ({ editor }) => {
@@ -59,8 +55,8 @@ export default function BlogEditor({ content, onChange }: BlogEditorProps) {
   if (!editor) return null;
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-      <div className="flex flex-wrap gap-1 border-b border-gray-200 px-2 py-2 bg-gray-50">
+    <div className={styles.editorShell}>
+      <div className={styles.editorToolbar}>
         <ToolbarButton label="H2" active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} />
         <ToolbarButton label="H3" active={editor.isActive("heading", { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} />
         <ToolbarButton label="Жирный" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} />

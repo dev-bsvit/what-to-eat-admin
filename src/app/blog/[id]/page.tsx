@@ -6,6 +6,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { JSONContent } from "@tiptap/react";
 import { ArrowLeft } from "lucide-react";
+import styles from "../blog.module.css";
 
 const BlogEditor = dynamic(() => import("@/components/BlogEditor"), { ssr: false });
 
@@ -112,104 +113,102 @@ export default function BlogPostEditorPage() {
   };
 
   if (loading || !post || !draft) {
-    return <div className="p-6 text-gray-400">Загрузка…</div>;
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 400, color: "var(--text-secondary)" }}>
+        Загрузка...
+      </div>
+    );
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <Link href="/blog" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-pink-500 mb-4">
-        <ArrowLeft className="w-4 h-4" />К списку статей
+    <div style={{ maxWidth: 860 }}>
+      <Link href="/blog" className="breadcrumb-item" style={{ marginBottom: 16 }}>
+        <ArrowLeft size={16} />
+        К списку статей
       </Link>
 
-      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
+      <div className={styles.editorBar}>
+        <div className={styles.langTabs}>
           {post.translations.map((t) => (
             <button
               key={t.language_code}
+              type="button"
+              className={`${styles.langTab} ${activeLanguage === t.language_code ? styles.isActive : ""}`}
               onClick={() => switchLanguage(t.language_code)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium uppercase ${
-                activeLanguage === t.language_code
-                  ? "bg-pink-500 text-white"
-                  : "bg-gray-100 text-gray-500"
-              }`}
             >
               {t.language_code}
             </button>
           ))}
         </div>
 
-        <div className="flex items-center gap-3">
-          {savedAt && <span className="text-xs text-gray-400">Сохранено в {savedAt.toLocaleTimeString("ru-RU")}</span>}
-          <select
-            value={post.status}
-            onChange={(e) => save({ status: e.target.value })}
-            className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
-          >
+        <div className={styles.editorBarActions}>
+          {savedAt && <span className={styles.savedHint}>Сохранено в {savedAt.toLocaleTimeString("ru-RU")}</span>}
+          <select className="input" style={{ width: "auto", height: 38 }} value={post.status} onChange={(e) => save({ status: e.target.value })}>
             {statusOptions.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
               </option>
             ))}
           </select>
-          <button
-            onClick={() => save()}
-            disabled={saving}
-            className="px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg font-medium shadow-lg shadow-pink-500/25 hover:opacity-90 disabled:opacity-50"
-          >
+          <button type="button" className="btn btn-primary" onClick={() => save()} disabled={saving}>
             {saving ? "Сохраняем…" : "Сохранить"}
           </button>
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="form-group">
         <input
+          className={`input ${styles.editorTitleInput}`}
           value={draft.title}
           onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           placeholder="Заголовок"
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-xl font-semibold"
         />
+      </div>
 
+      <div className="form-group">
         <input
+          className={`input ${styles.editorSlugInput}`}
           value={draft.slug}
           onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
           placeholder="slug"
-          className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-mono text-gray-500"
         />
+      </div>
 
+      <div className="form-group">
         <textarea
+          className="input"
           value={draft.excerpt ?? ""}
           onChange={(e) => setDraft({ ...draft, excerpt: e.target.value })}
           placeholder="Краткое описание (excerpt) — используется в ленте и превью"
           rows={2}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm"
         />
+      </div>
 
-        <BlogEditor
-          content={draft.content_json}
-          onChange={(json) => setDraft((prev) => (prev ? { ...prev, content_json: json } : prev))}
-        />
+      <BlogEditor
+        content={draft.content_json}
+        onChange={(json) => setDraft((prev) => (prev ? { ...prev, content_json: json } : prev))}
+      />
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Meta title (SEO)</label>
-            <input
-              value={draft.meta_title ?? ""}
-              onChange={(e) => setDraft({ ...draft, meta_title: e.target.value })}
-              maxLength={60}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
-            />
-            <span className="text-xs text-gray-400">{(draft.meta_title ?? "").length}/60</span>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Meta description (SEO)</label>
-            <input
-              value={draft.meta_description ?? ""}
-              onChange={(e) => setDraft({ ...draft, meta_description: e.target.value })}
-              maxLength={160}
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm"
-            />
-            <span className="text-xs text-gray-400">{(draft.meta_description ?? "").length}/160</span>
-          </div>
+      <div className={styles.metaGrid}>
+        <div className="form-group">
+          <label className="form-label">Meta title (SEO)</label>
+          <input
+            className="input"
+            value={draft.meta_title ?? ""}
+            onChange={(e) => setDraft({ ...draft, meta_title: e.target.value })}
+            maxLength={60}
+          />
+          <span className={styles.charCount}>{(draft.meta_title ?? "").length}/60</span>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Meta description (SEO)</label>
+          <input
+            className="input"
+            value={draft.meta_description ?? ""}
+            onChange={(e) => setDraft({ ...draft, meta_description: e.target.value })}
+            maxLength={160}
+          />
+          <span className={styles.charCount}>{(draft.meta_description ?? "").length}/160</span>
         </div>
       </div>
     </div>
