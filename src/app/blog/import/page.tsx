@@ -167,13 +167,65 @@ function buildPrompt(exampleJson: string) {
 ${exampleJson}`;
 }
 
+const ARTICLE_TYPE_OPTIONS: Array<{ value: "guide" | "recipe" | "collection"; label: string }> = [
+  { value: "guide", label: "Обычная статья (без рецепта)" },
+  { value: "recipe", label: "Статья про один рецепт" },
+  { value: "collection", label: "Подборка рецептов" },
+];
+
 export default function BlogImportPage() {
   const exampleJson = useMemo(() => JSON.stringify(exampleImport, null, 2), []);
-  const prompt = useMemo(() => buildPrompt(exampleJson), [exampleJson]);
+  const fallbackPrompt = useMemo(() => buildPrompt(exampleJson), [exampleJson]);
   const [importText, setImportText] = useState(exampleJson);
   const [status, setStatus] = useState<string | null>(null);
-  const [result, setResult] = useState<{ id?: string; public_url?: string | null; error?: string } | null>(null);
+  const [result, setResult] = useState<{ id?: string; public_url?: string | null; error?: string; warnings?: string[] } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [topic, setTopic] = useState("");
+  const [articleType, setArticleType] = useState<"guide" | "recipe" | "collection">("guide");
+  const [allLanguages, setAllLanguages] = useState(false);
+  const [preparedPrompt, setPreparedPrompt] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [prepareInfo, setPrepareInfo] = useState<string | null>(null);
+
+  const prompt = preparedPrompt ?? fallbackPrompt;
+
+  const preparePrompt = async () => {
+    if (!topic.trim()) {
+      setPrepareInfo("Сначала укажите тему статьи.");
+      return;
+    }
+    setPreparing(true);
+    setPrepareInfo(null);
+    try {
+      const res = await fetch("/api/admin/blog/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          article_type: articleType,
+          languages: allLanguages ? APP_LANGUAGES : ["ru"],
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPrepareInfo(data.error || "Не удалось подготовить промпт.");
+        return;
+      }
+      setPreparedPrompt(data.prompt);
+      if (articleType !== "guide") {
+        setPrepareInfo(
+          data.matched_recipes > 0
+            ? `Найдено рецептов по теме в базе: ${data.matched_recipes}. Промпт использует только их id.`
+            : "По теме не нашлось подходящих рецептов в базе — AI получит инструкцию не выдумывать рецепт."
+        );
+      } else {
+        setPrepareInfo("Промпт готов.");
+      }
+    } finally {
+      setPreparing(false);
+    }
+  };
 
   const importArticle = async () => {
     setStatus(null);
@@ -223,11 +275,54 @@ export default function BlogImportPage() {
         </div>
       </div>
 
+      <div className="app-card" style={{ marginBottom: 24 }}>
+        <h2 className={styles.importPanelTitle}>1. Тема статьи</h2>
+        <p className={styles.importPanelText}>
+          Опишите тему — сервер подставит в промпт реальные рецепты, категории и теги из базы, чтобы AI не выдумывал названия.
+        </p>
+        <div className={styles.metaGrid}>
+          <div className="form-group">
+            <label className="form-label">Тема / бриф</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="например: быстрые ужины на 20 минут"
+              value={topic}
+              onChange={(event) => setTopic(event.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Тип статьи</label>
+            <select className="input" value={articleType} onChange={(event) => setArticleType(event.target.value as typeof articleType)}>
+              {ARTICLE_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+          <input type="checkbox" checked={allLanguages} onChange={(event) => setAllLanguages(event.target.checked)} />
+          Заполнить все языки приложения ({APP_LANGUAGES.length}), а не только русский
+        </label>
+        <div style={{ marginTop: 12 }}>
+          <button type="button" className="btn btn-primary" onClick={preparePrompt} disabled={preparing}>
+            {preparing ? "Готовим…" : "Подготовить промпт"}
+          </button>
+          {prepareInfo && <span style={{ marginLeft: 12, fontSize: 13, opacity: 0.8 }}>{prepareInfo}</span>}
+        </div>
+      </div>
+
       <div className={styles.importGrid}>
         <section className={styles.importPanel}>
           <div>
-            <h2 className={styles.importPanelTitle}>Промпт для AI</h2>
-            <p className={styles.importPanelText}>Скопируйте промпт, добавьте название или данные рецепта и верните сюда готовый JSON.</p>
+            <h2 className={styles.importPanelTitle}>2. Промпт для AI</h2>
+            <p className={styles.importPanelText}>
+              {preparedPrompt
+                ? "Промпт собран по теме выше с реальными рецептами/категориями/тегами из базы. Скопируйте и вставьте в ChatGPT."
+                : "Промпт-заготовка без темы. Заполните тему выше и нажмите «Подготовить промпт», чтобы подставить реальные рецепты из базы."}
+            </p>
           </div>
           <textarea className={styles.codeTextarea} readOnly rows={24} value={prompt} spellCheck={false} />
           <button type="button" className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(prompt)}>
@@ -238,7 +333,7 @@ export default function BlogImportPage() {
 
         <section className={styles.importPanel}>
           <div>
-            <h2 className={styles.importPanelTitle}>JSON статьи</h2>
+            <h2 className={styles.importPanelTitle}>3. JSON статьи</h2>
             <p className={styles.importPanelText}>Вставьте JSON или загрузите файл. Повторный импорт с тем же slug обновит статью.</p>
           </div>
           <textarea
@@ -276,6 +371,13 @@ export default function BlogImportPage() {
                 </>
               )}
             </div>
+          )}
+          {result?.warnings && result.warnings.length > 0 && (
+            <ul style={{ marginTop: 8, fontSize: 13, opacity: 0.85, paddingLeft: 18 }}>
+              {result.warnings.map((warning, index) => (
+                <li key={index}>{warning}</li>
+              ))}
+            </ul>
           )}
         </section>
       </div>
