@@ -50,7 +50,7 @@ export async function PATCH(
   const languageCode: string = body.language_code || "ru";
 
   const postFields: Record<string, unknown> = {};
-  for (const key of ["category_id", "recipe_id", "cover_image_url", "cover_image_alt", "status"] as const) {
+  for (const key of ["category_id", "author_id", "recipe_id", "cover_image_url", "cover_image_alt", "status"] as const) {
     if (key in body) postFields[key] = body[key];
   }
 

@@ -257,3 +257,43 @@
   height: 100%;
   object-fit: cover;
 }
+
+.recipeSearch {
+  position: relative;
+}
+
+.recipeSearchResults {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.recipeSearchResultItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.recipeSearchResultItem:hover {
+  background: var(--bg-hover);
+}
+
+.recipeSearchEmpty {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}

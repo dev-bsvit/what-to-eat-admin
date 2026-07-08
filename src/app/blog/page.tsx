@@ -83,6 +83,9 @@ export default function BlogListPage() {
           <Link href="/blog/categories" className="btn btn-secondary">
             Категории
           </Link>
+          <Link href="/blog/authors" className="btn btn-secondary">
+            Авторы
+          </Link>
           <Link href="/blog/new" className="btn btn-primary">
             <Plus size={18} />
             Новая статья

@@ -27,8 +27,25 @@ interface PostDetail {
   status: string;
   source: string;
   category_id: string | null;
+  author_id: string | null;
+  recipe_id: string | null;
   cover_image_url: string | null;
   translations: Translation[];
+}
+
+interface Category {
+  id: string;
+  name: string;
+}
+
+interface Author {
+  id: string;
+  name: string;
+}
+
+interface RecipeOption {
+  id: string;
+  title: string;
 }
 
 const statusOptions = [
@@ -62,6 +79,12 @@ export default function BlogPostEditorPage() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [authors, setAuthors] = useState<Author[]>([]);
+  const [linkedRecipe, setLinkedRecipe] = useState<RecipeOption | null>(null);
+  const [recipeQuery, setRecipeQuery] = useState("");
+  const [recipeResults, setRecipeResults] = useState<RecipeOption[]>([]);
+  const [recipeSearching, setRecipeSearching] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +96,15 @@ export default function BlogPostEditorPage() {
         const first = data.post.translations?.[0]?.language_code ?? "ru";
         setActiveLanguage(first);
         setDraft(data.post.translations?.find((t: Translation) => t.language_code === first) ?? emptyTranslation(first));
+
+        if (data.post.recipe_id) {
+          const recipeRes = await fetch(`/api/admin/recipes?id=${data.post.recipe_id}`);
+          const recipeData = await recipeRes.json();
+          const recipe = Array.isArray(recipeData?.data) ? recipeData.data[0] : null;
+          if (recipe?.id) setLinkedRecipe({ id: recipe.id, title: recipe.title });
+        } else {
+          setLinkedRecipe(null);
+        }
       }
     } finally {
       setLoading(false);
@@ -83,13 +115,50 @@ export default function BlogPostEditorPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    fetch("/api/admin/blog/categories")
+      .then((res) => res.json())
+      .then((data) => setCategories(data.categories ?? []))
+      .catch(() => setCategories([]));
+    fetch("/api/admin/blog/authors")
+      .then((res) => res.json())
+      .then((data) => setAuthors(data.authors ?? []))
+      .catch(() => setAuthors([]));
+  }, []);
+
+  useEffect(() => {
+    if (!recipeQuery.trim()) {
+      setRecipeResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setRecipeSearching(true);
+      try {
+        const res = await fetch(`/api/admin/recipes/list?title=${encodeURIComponent(recipeQuery)}&limit=8`);
+        const data = await res.json();
+        setRecipeResults(Array.isArray(data) ? data : []);
+      } finally {
+        setRecipeSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [recipeQuery]);
+
   const switchLanguage = (languageCode: string) => {
     setActiveLanguage(languageCode);
     const existing = post?.translations.find((t) => t.language_code === languageCode);
     setDraft(existing ?? emptyTranslation(languageCode));
   };
 
-  const save = async (overrides?: Partial<{ status: string; cover_image_url: string | null }>) => {
+  const save = async (
+    overrides?: Partial<{
+      status: string;
+      cover_image_url: string | null;
+      category_id: string | null;
+      author_id: string | null;
+      recipe_id: string | null;
+    }>
+  ) => {
     if (!draft) return;
     setSaving(true);
     try {
@@ -208,6 +277,94 @@ export default function BlogPostEditorPage() {
               }}
             />
           </label>
+        )}
+      </div>
+
+      <div className={styles.metaGrid} style={{ marginBottom: 0 }}>
+        <div className="form-group">
+          <label className="form-label">Категория</label>
+          <select
+            className="input"
+            value={post.category_id ?? ""}
+            onChange={(e) => save({ category_id: e.target.value || null })}
+          >
+            <option value="">Без категории</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Автор</label>
+          <select
+            className="input"
+            value={post.author_id ?? ""}
+            onChange={(e) => save({ author_id: e.target.value || null })}
+          >
+            <option value="">Без указания автора</option>
+            {authors.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Связанный рецепт (для Recipe-разметки в schema.org)</label>
+        {linkedRecipe ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="input" style={{ display: "flex", alignItems: "center", flex: 1 }}>
+              {linkedRecipe.title}
+            </div>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => {
+                setLinkedRecipe(null);
+                save({ recipe_id: null });
+              }}
+              aria-label="Отвязать рецепт"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ) : (
+          <div className={styles.recipeSearch}>
+            <input
+              className="input"
+              value={recipeQuery}
+              onChange={(e) => setRecipeQuery(e.target.value)}
+              placeholder="Поиск рецепта по названию…"
+            />
+            {recipeQuery.trim() && (
+              <div className={styles.recipeSearchResults}>
+                {recipeSearching && <div className={styles.recipeSearchEmpty}>Ищем…</div>}
+                {!recipeSearching && recipeResults.length === 0 && (
+                  <div className={styles.recipeSearchEmpty}>Ничего не найдено</div>
+                )}
+                {!recipeSearching &&
+                  recipeResults.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className={styles.recipeSearchResultItem}
+                      onClick={() => {
+                        setLinkedRecipe(r);
+                        setRecipeQuery("");
+                        setRecipeResults([]);
+                        save({ recipe_id: r.id });
+                      }}
+                    >
+                      {r.title}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

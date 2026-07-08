@@ -89,6 +89,7 @@ export async function POST(request: Request) {
       status: "draft",
       source: "manual",
       category_id: body.category_id || null,
+      author_id: body.author_id || null,
       recipe_id: body.recipe_id || null,
       cover_image_url: body.cover_image_url || null,
       cover_image_alt: body.cover_image_alt || null,

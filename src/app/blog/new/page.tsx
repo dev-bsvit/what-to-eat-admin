@@ -30,6 +30,11 @@ interface Category {
   name: string;
 }
 
+interface Author {
+  id: string;
+  name: string;
+}
+
 export default function NewBlogPostPage() {
   const router = useRouter();
   const [languageCode, setLanguageCode] = useState("ru");
@@ -38,6 +43,8 @@ export default function NewBlogPostPage() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [categoryId, setCategoryId] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
+  const [authorId, setAuthorId] = useState("");
+  const [authors, setAuthors] = useState<Author[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +54,13 @@ export default function NewBlogPostPage() {
       .then((data) => setCategories(data.categories ?? []))
       .catch(() => setCategories([]));
   }, [languageCode]);
+
+  useEffect(() => {
+    fetch("/api/admin/blog/authors")
+      .then((res) => res.json())
+      .then((data) => setAuthors(data.authors ?? []))
+      .catch(() => setAuthors([]));
+  }, []);
 
   useEffect(() => {
     if (!slugTouched) setSlug(slugify(title));
@@ -69,6 +83,7 @@ export default function NewBlogPostPage() {
           title,
           slug,
           category_id: categoryId || null,
+          author_id: authorId || null,
         }),
       });
       const data = await res.json();
@@ -142,6 +157,23 @@ export default function NewBlogPostPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Автор</label>
+          <select className="input" value={authorId} onChange={(e) => setAuthorId(e.target.value)}>
+            <option value="">Без указания автора</option>
+            {authors.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          {authors.length === 0 && (
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+              Авторов пока нет — создайте на странице «Авторы».
+            </p>
+          )}
         </div>
 
         <button type="submit" className="btn btn-primary" disabled={saving} style={{ width: "100%" }}>
