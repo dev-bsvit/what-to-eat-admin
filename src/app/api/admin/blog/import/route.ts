@@ -143,11 +143,28 @@ function renderSections(sections: ImportSection[]) {
   };
 }
 
-async function ensureCategory(category: unknown, languageCode: string) {
+function renderArticleContent(article: JsonRecord) {
+  const sections = normalizeSections(article.sections);
+  const rendered = sections.length > 0 ? renderSections(sections) : null;
+  const contentJson = isRecord(article.content_json) ? article.content_json : rendered?.content_json ?? { type: "doc", content: [] };
+  const contentHtml = asString(article.content_html) || rendered?.content_html || null;
+  return { contentJson, contentHtml };
+}
+
+// category.translations: { [language_code]: { name, description? } }
+// Falls back to a single category.name/category.slug pair for the primary language.
+async function ensureCategory(category: unknown, primaryLanguage: string) {
   if (!isRecord(category)) return null;
-  const name = asString(category.name);
-  const slug = slugify(asString(category.slug) || name);
-  if (!slug || !name) return null;
+
+  const translationsInput = isRecord(category.translations)
+    ? (category.translations as Record<string, unknown>)
+    : { [primaryLanguage]: { name: category.name, description: category.description } };
+
+  const primaryName = asString(
+    isRecord(translationsInput[primaryLanguage]) ? (translationsInput[primaryLanguage] as JsonRecord).name : category.name
+  );
+  const slug = slugify(asString(category.slug) || primaryName);
+  if (!slug) return null;
 
   const { data, error } = await supabaseAdmin
     .from("blog_categories")
@@ -164,20 +181,28 @@ async function ensureCategory(category: unknown, languageCode: string) {
 
   if (error || !data) throw new Error(error?.message || "Failed to create category");
 
-  const { error: translationError } = await supabaseAdmin.from("blog_category_translations").upsert(
-    {
+  const rows = Object.entries(translationsInput)
+    .filter(([, value]) => isRecord(value))
+    .map(([languageCode, value]) => ({
       category_id: data.id,
       language_code: languageCode,
-      name,
-      description: asNullableString(category.description),
-    },
-    { onConflict: "category_id,language_code" }
-  );
-  if (translationError) throw new Error(translationError.message);
+      name: asString((value as JsonRecord).name),
+      description: asNullableString((value as JsonRecord).description),
+    }))
+    .filter((row) => row.language_code && row.name);
+
+  if (rows.length > 0) {
+    const { error: translationError } = await supabaseAdmin
+      .from("blog_category_translations")
+      .upsert(rows, { onConflict: "category_id,language_code" });
+    if (translationError) throw new Error(translationError.message);
+  }
 
   return data as { id: string; slug: string };
 }
 
+// Note: blog_authors has no per-language columns yet — name/bio/title are
+// stored once regardless of how many article languages are imported.
 async function ensureAuthor(author: unknown) {
   if (!isRecord(author)) return null;
 
@@ -207,13 +232,12 @@ async function ensureAuthor(author: unknown) {
   return data.id as string;
 }
 
-async function resolveRecipe(body: JsonRecord, article: JsonRecord) {
+async function resolveRecipe(body: JsonRecord) {
   const recipe = isRecord(body.recipe) ? body.recipe : {};
-  const articleRecipe = isRecord(article.recipe) ? article.recipe : {};
-  const recipeId = asString(body.recipe_id) || asString(article.recipe_id) || asString(recipe.id) || asString(articleRecipe.id);
+  const recipeId = asString(body.recipe_id) || asString(recipe.id);
   if (isUuid(recipeId)) return recipeId;
 
-  const recipeTitle = asString(body.recipe_title) || asString(article.recipe_title) || asString(recipe.title) || asString(articleRecipe.title);
+  const recipeTitle = asString(body.recipe_title) || asString(recipe.title);
   if (!recipeTitle) return null;
 
   const { data, error } = await supabaseAdmin.from("recipes").select("id").ilike("title", recipeTitle).limit(1).maybeSingle();
@@ -252,7 +276,9 @@ async function resolveRelatedRecipes(value: unknown) {
   return recipes;
 }
 
-async function ensureTags(tags: unknown, languageCode: string) {
+// tag.translations: { [language_code]: name }. Falls back to a single
+// tag.name/tag.slug pair for the primary language.
+async function ensureTags(tags: unknown, primaryLanguage: string) {
   if (!Array.isArray(tags)) return [];
 
   const result: Array<{ id: string; slug: string }> = [];
@@ -260,15 +286,17 @@ async function ensureTags(tags: unknown, languageCode: string) {
     const tag = typeof rawTag === "string" ? { slug: rawTag, name: rawTag } : rawTag;
     if (!isRecord(tag)) continue;
 
-    const name = asString(tag.name) || asString(tag.slug);
-    const slug = slugify(asString(tag.slug) || name);
-    if (!slug || !name) continue;
+    const translationsInput = isRecord(tag.translations)
+      ? (tag.translations as Record<string, unknown>)
+      : { [primaryLanguage]: tag.name ?? tag.slug };
+    const primaryName = asString(translationsInput[primaryLanguage]) || asString(tag.name);
+    const slug = slugify(asString(tag.slug) || primaryName);
+    if (!slug) continue;
 
     const { data, error } = await supabaseAdmin.from("blog_tags").upsert({ slug }, { onConflict: "slug" }).select("id, slug").single();
     if (error || !data) throw new Error(error?.message || "Failed to create tag");
 
-    const translations = isRecord(tag.translations) ? tag.translations : { [languageCode]: name };
-    const rows = Object.entries(translations)
+    const rows = Object.entries(translationsInput)
       .map(([code, value]) => ({ tag_id: data.id, language_code: code, name: asString(value) }))
       .filter((row) => row.language_code && row.name);
 
@@ -285,69 +313,113 @@ async function ensureTags(tags: unknown, languageCode: string) {
   return result;
 }
 
+// POST /api/admin/blog/import
+// Body shape (see /blog/import in the admin UI for the full prompt + example):
+// {
+//   status, source, article_type, cover_image_url, cover_image_alt, reading_time_min,
+//   category: { slug, translations: { ru: {name, description}, en: {...} } },
+//   author: { name, title, bio, avatar_url, profile_url, same_as } | { id },
+//   tags: [{ slug, translations: { ru: "...", en: "..." } }],
+//   recipe_title | recipe_id,            // article_type "recipe"
+//   related_recipes: [...],              // article_type "collection"
+//   translations: {
+//     ru: { slug, title, excerpt, tldr, meta_title, meta_description, cover_image_alt,
+//           og_image_url, sections: [...], faq_json: [...] },
+//     en: { ... same shape ... },
+//     ...
+//   }
+// }
+// Legacy single-language shape ({ language_code, article: {...} }) is still
+// accepted and normalized into translations[language_code].
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     if (!isRecord(body)) return NextResponse.json({ error: "JSON object is required" }, { status: 400 });
 
-    const article = isRecord(body.article) ? body.article : isRecord(body.post) ? body.post : body;
-    const languageCode = asString(body.language_code) || asString(article.language_code) || DEFAULT_LANGUAGE;
-    const title = asString(article.title);
-    const slug = slugify(asString(article.slug) || title);
-    const articleTypeRaw = asString(body.article_type) || asString(article.article_type);
-    const articleType = VALID_ARTICLE_TYPES.has(articleTypeRaw) ? articleTypeRaw : "guide";
+    const legacyArticle = isRecord(body.article) ? body.article : isRecord(body.post) ? body.post : null;
+    const translationsInput: Record<string, unknown> = isRecord(body.translations)
+      ? (body.translations as Record<string, unknown>)
+      : legacyArticle
+        ? { [asString(body.language_code) || DEFAULT_LANGUAGE]: legacyArticle }
+        : {};
 
-    if (!title || !slug) {
-      return NextResponse.json({ error: "article.title and article.slug are required" }, { status: 400 });
+    const languageCodes = Object.keys(translationsInput).filter((code) => isRecord(translationsInput[code]));
+    if (languageCodes.length === 0) {
+      return NextResponse.json({ error: "translations object with at least one language is required" }, { status: 400 });
     }
 
-    const recipeId = await resolveRecipe(body, article);
-    const relatedRecipes = await resolveRelatedRecipes(body.related_recipes ?? article.related_recipes);
-    if ((articleType === "recipe" || body.recipe_required === true || article.recipe_required === true) && !recipeId) {
+    const primaryLanguage = languageCodes.includes(DEFAULT_LANGUAGE) ? DEFAULT_LANGUAGE : languageCodes[0];
+    const primaryArticle = translationsInput[primaryLanguage] as JsonRecord;
+
+    const articleTypeRaw = asString(body.article_type);
+    const articleType = VALID_ARTICLE_TYPES.has(articleTypeRaw) ? articleTypeRaw : "guide";
+
+    // Validate every language has a title/slug before writing anything.
+    const perLanguage: Record<string, { title: string; slug: string; article: JsonRecord }> = {};
+    for (const languageCode of languageCodes) {
+      const article = translationsInput[languageCode] as JsonRecord;
+      const title = asString(article.title);
+      const slug = slugify(asString(article.slug) || title);
+      if (!title || !slug) {
+        return NextResponse.json({ error: `translations.${languageCode}.title and .slug are required` }, { status: 400 });
+      }
+      perLanguage[languageCode] = { title, slug, article };
+    }
+
+    const recipeId = await resolveRecipe(body);
+    const relatedRecipes = await resolveRelatedRecipes(body.related_recipes);
+    if ((articleType === "recipe" || body.recipe_required === true) && !recipeId) {
       return NextResponse.json({ error: "Recipe was required but was not found by recipe_id or recipe_title" }, { status: 400 });
     }
     if (articleType === "collection" && relatedRecipes.length === 0) {
       return NextResponse.json({ error: "Collection articles require related_recipes with recipe_id or exact recipe_title" }, { status: 400 });
     }
 
-    const category = await ensureCategory(body.category ?? article.category, languageCode);
-    const authorId = await ensureAuthor(body.author ?? article.author);
-    const tags = await ensureTags(body.tags ?? article.tags, languageCode);
-
-    const sections = normalizeSections(article.sections);
-    const rendered = sections.length > 0 ? renderSections(sections) : null;
-    const contentJson = isRecord(article.content_json) ? article.content_json : rendered?.content_json ?? { type: "doc", content: [] };
-    const contentHtml = asString(article.content_html) || rendered?.content_html || null;
+    const category = await ensureCategory(body.category, primaryLanguage);
+    const authorId = await ensureAuthor(body.author);
+    const tags = await ensureTags(body.tags, primaryLanguage);
 
     const status = VALID_STATUSES.has(asString(body.status)) ? asString(body.status) : "draft";
     const source = VALID_SOURCES.has(asString(body.source)) ? asString(body.source) : "ai_assisted";
     const now = new Date().toISOString();
 
-    const { data: existingTranslation } = await supabaseAdmin
-      .from("blog_post_translations")
-      .select("post_id")
-      .eq("language_code", languageCode)
-      .eq("slug", slug)
-      .maybeSingle();
+    // Resolve which post this import targets: explicit post_id, else an
+    // existing post matched by any language's (slug, language_code), else new.
+    let postId = isUuid(asString(body.post_id)) ? asString(body.post_id) : undefined;
+    if (!postId) {
+      for (const languageCode of languageCodes) {
+        const { data: existingTranslation } = await supabaseAdmin
+          .from("blog_post_translations")
+          .select("post_id")
+          .eq("language_code", languageCode)
+          .eq("slug", perLanguage[languageCode].slug)
+          .maybeSingle();
+        if (existingTranslation?.post_id) {
+          postId = existingTranslation.post_id as string;
+          break;
+        }
+      }
+    }
 
-    let postId = existingTranslation?.post_id as string | undefined;
-    let existingPublishedAt: string | null = null;
+    const postFields = {
+      status,
+      source,
+      article_type: articleType,
+      recipe_id: recipeId,
+      category_id: category?.id ?? null,
+      author_id: authorId,
+      cover_image_url: asNullableString(body.cover_image_url),
+      cover_image_alt: asNullableString(body.cover_image_alt ?? primaryArticle.cover_image_alt),
+      reading_time_min: asNumber(body.reading_time_min),
+    };
 
     if (postId) {
       const { data: existingPost } = await supabaseAdmin.from("blog_posts").select("published_at").eq("id", postId).single();
-      existingPublishedAt = (existingPost?.published_at as string | null) ?? null;
+      const existingPublishedAt = (existingPost?.published_at as string | null) ?? null;
       const { error } = await supabaseAdmin
         .from("blog_posts")
         .update({
-          status,
-          source,
-          article_type: articleType,
-          recipe_id: recipeId,
-          category_id: category?.id ?? null,
-          author_id: authorId,
-          cover_image_url: asNullableString(body.cover_image_url ?? article.cover_image_url),
-          cover_image_alt: asNullableString(body.cover_image_alt ?? article.cover_image_alt),
-          reading_time_min: asNumber(body.reading_time_min ?? article.reading_time_min),
+          ...postFields,
           published_at: status === "published" ? existingPublishedAt ?? now : null,
           updated_at: now,
         })
@@ -356,18 +428,7 @@ export async function POST(request: Request) {
     } else {
       const { data: post, error } = await supabaseAdmin
         .from("blog_posts")
-        .insert({
-          status,
-          source,
-          article_type: articleType,
-          recipe_id: recipeId,
-          category_id: category?.id ?? null,
-          author_id: authorId,
-          cover_image_url: asNullableString(body.cover_image_url ?? article.cover_image_url),
-          cover_image_alt: asNullableString(body.cover_image_alt ?? article.cover_image_alt),
-          reading_time_min: asNumber(body.reading_time_min ?? article.reading_time_min),
-          published_at: status === "published" ? now : null,
-        })
+        .insert({ ...postFields, published_at: status === "published" ? now : null })
         .select("id")
         .single();
       if (error || !post) throw new Error(error?.message || "Failed to create post");
@@ -375,8 +436,10 @@ export async function POST(request: Request) {
     }
     if (!postId) throw new Error("Failed to resolve post id");
 
-    const { error: translationError } = await supabaseAdmin.from("blog_post_translations").upsert(
-      {
+    const translationRows = languageCodes.map((languageCode) => {
+      const { title, slug, article } = perLanguage[languageCode];
+      const { contentJson, contentHtml } = renderArticleContent(article);
+      return {
         post_id: postId,
         language_code: languageCode,
         slug,
@@ -387,12 +450,16 @@ export async function POST(request: Request) {
         content_html: contentHtml,
         meta_title: asNullableString(article.meta_title),
         meta_description: asNullableString(article.meta_description),
-        og_image_url: asNullableString(article.og_image_url ?? body.og_image_url),
+        og_image_url: asNullableString(article.og_image_url),
         faq_json: Array.isArray(article.faq_json) ? article.faq_json : null,
+        is_machine_translated: languageCode !== primaryLanguage && Boolean(body.machine_translated),
         updated_at: now,
-      },
-      { onConflict: "post_id,language_code" }
-    );
+      };
+    });
+
+    const { error: translationError } = await supabaseAdmin
+      .from("blog_post_translations")
+      .upsert(translationRows, { onConflict: "post_id,language_code" });
     if (translationError) throw new Error(translationError.message);
 
     await supabaseAdmin.from("blog_post_tags").delete().eq("post_id", postId);
@@ -417,7 +484,11 @@ export async function POST(request: Request) {
       if (relatedError) throw new Error(relatedError.message);
     }
 
-    const paths = new Set<string>(["/", `/${slug}`]);
+    // The public frontend only serves the "ru" locale today, so only its
+    // path is worth busting — other-language slugs aren't routable yet.
+    const paths = new Set<string>(["/"]);
+    const ruSlug = perLanguage[DEFAULT_LANGUAGE]?.slug;
+    if (ruSlug) paths.add(`/${ruSlug}`);
     if (category?.slug) paths.add(`/category/${category.slug}`);
     for (const tag of tags) paths.add(`/tag/${tag.slug}`);
     await revalidateBlogPaths(Array.from(paths));
@@ -425,10 +496,10 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       id: postId,
-      slug,
       status,
       article_type: articleType,
-      public_url: status === "published" ? `https://dishday.online/blog/${slug}` : null,
+      languages: languageCodes,
+      public_url: status === "published" && ruSlug ? `https://dishday.online/blog/${ruSlug}` : null,
       recipe_id: recipeId,
       related_recipe_ids: relatedRecipes.map((recipe) => recipe.id),
       category_id: category?.id ?? null,
