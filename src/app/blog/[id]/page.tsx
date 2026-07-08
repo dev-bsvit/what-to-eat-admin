@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { JSONContent } from "@tiptap/react";
-import { ArrowLeft, ImageUp, X } from "lucide-react";
+import { ArrowLeft, ImageUp, Plus, X } from "lucide-react";
 import styles from "../blog.module.css";
 
 const BlogEditor = dynamic(() => import("@/components/BlogEditor"), { ssr: false });
@@ -20,6 +20,7 @@ interface Translation {
   content_html: string | null;
   meta_title: string | null;
   meta_description: string | null;
+  faq_json: { q: string; a: string }[] | null;
   is_machine_translated: boolean;
 }
 
@@ -74,6 +75,7 @@ function emptyTranslation(languageCode: string): Translation {
     content_html: null,
     meta_title: null,
     meta_description: null,
+    faq_json: null,
     is_machine_translated: false,
   };
 }
@@ -193,6 +195,7 @@ export default function BlogPostEditorPage() {
           slug: draft.slug,
           excerpt: draft.excerpt,
           tldr: draft.tldr,
+          faq_json: draft.faq_json,
           content_json: draft.content_json,
           content_html: draft.content_html,
           meta_title: draft.meta_title,
@@ -488,6 +491,66 @@ export default function BlogPostEditorPage() {
           placeholder="Короткий прямой ответ на вопрос из заголовка — этот блок чаще всего цитируют AI-поисковики и попадает в блоки ответов Google"
           rows={2}
         />
+      </div>
+
+      <div className="form-group">
+        <div className={styles.fieldHeader}>
+          <label className="form-label">FAQ (для FAQPage-разметки)</label>
+          <button
+            type="button"
+            className={styles.inlineAction}
+            onClick={() =>
+              setDraft({ ...draft, faq_json: [...(draft.faq_json ?? []), { q: "", a: "" }] })
+            }
+          >
+            <Plus size={14} style={{ verticalAlign: "-2px" }} /> Добавить вопрос
+          </button>
+        </div>
+        {!draft.faq_json || draft.faq_json.length === 0 ? (
+          <div className={styles.emptyTagSelector}>Вопросов пока нет.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {draft.faq_json.map((item, index) => (
+              <div key={index} className="app-card" style={{ cursor: "default", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <input
+                    className="input"
+                    value={item.q}
+                    onChange={(e) => {
+                      const next = [...(draft.faq_json ?? [])];
+                      next[index] = { ...next[index], q: e.target.value };
+                      setDraft({ ...draft, faq_json: next });
+                    }}
+                    placeholder="Вопрос"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Удалить вопрос"
+                    onClick={() => {
+                      const next = (draft.faq_json ?? []).filter((_, i) => i !== index);
+                      setDraft({ ...draft, faq_json: next });
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <textarea
+                  className="input"
+                  value={item.a}
+                  onChange={(e) => {
+                    const next = [...(draft.faq_json ?? [])];
+                    next[index] = { ...next[index], a: e.target.value };
+                    setDraft({ ...draft, faq_json: next });
+                  }}
+                  placeholder="Ответ"
+                  rows={2}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <BlogEditor
