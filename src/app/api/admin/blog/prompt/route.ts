@@ -8,6 +8,7 @@ import {
   listCategoryOptions,
   listTagOptions,
   searchRecipeCandidates,
+  type RecipeCandidate,
 } from "@/lib/blogContent";
 
 // POST /api/admin/blog/prompt
@@ -57,7 +58,7 @@ function buildGroundedPrompt(input: {
   topic: string;
   articleType: string;
   languages: string[];
-  recipeCandidates: Array<{ id: string; title: string }>;
+  recipeCandidates: RecipeCandidate[];
   categories: Array<{ slug: string; name: string }>;
   tags: Array<{ slug: string; name: string }>;
 }) {
@@ -70,11 +71,21 @@ function buildGroundedPrompt(input: {
         ? `Тип статьи: "collection" — подборка из нескольких рецептов. related_recipes обязателен: каждый элемент должен использовать recipe_id ТОЛЬКО из списка "Реальные рецепты из базы" ниже (не recipe_title, не выдуманные названия). Если подходящих рецептов в списке меньше 2 — сократи подборку до тех, что реально есть, не добавляй несуществующие.`
         : `Тип статьи: "guide" — обычная статья без привязки к конкретному рецепту. НЕ указывай recipe_id, recipe_title и related_recipes вообще — эти поля должны отсутствовать или быть пустыми.`;
 
+  const recipeFacts = (r: { prepTimeMin: number | null; cookTimeMin: number | null; servings: number | null }) => {
+    const parts: string[] = [];
+    if (r.prepTimeMin) parts.push(`подготовка ${r.prepTimeMin} мин`);
+    if (r.cookTimeMin) parts.push(`готовка ${r.cookTimeMin} мин`);
+    const total = (r.prepTimeMin || 0) + (r.cookTimeMin || 0);
+    if (total > 0) parts.push(`итого ${total} мин`);
+    if (r.servings) parts.push(`${r.servings} порц.`);
+    return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  };
+
   const recipesBlock =
     articleType === "guide"
       ? "Рецепты не нужны для этого типа статьи."
       : recipeCandidates.length > 0
-        ? recipeCandidates.map((r) => `- id: ${r.id} | title: ${r.title}`).join("\n")
+        ? recipeCandidates.map((r) => `- id: ${r.id} | title: ${r.title}${recipeFacts(r)}`).join("\n")
         : "В базе не нашлось рецептов, явно совпадающих с темой. Не изобретай рецепт — либо сузь/измени тему, либо сделай article_type: \"guide\".";
 
   const categoriesBlock = categories.length > 0 ? categories.map((c) => `- slug: ${c.slug} | ${c.name}`).join("\n") : "(категорий пока нет)";
@@ -116,10 +127,11 @@ ${tagsBlock}
 - meta_description: до 155 символов.
 - cover_image_alt: конкретно описывает готовое блюдо, на языке перевода.
 - sections: 5-8 блоков на каждом языке. Используй только type: "p", "h2", "h3", "ul", "ol", "blockquote", "image".
-- В sections обязательно должны быть: краткое вступление, что важно для результата, пошаговый план, частые ошибки, подача/хранение или вариации.
+- В sections обязательно должны быть: краткое вступление, что важно для результата, частые ошибки, подача/хранение или вариации. НЕ пиши в sections список ингредиентов и нумерованные шаги готовки — они уже берутся из реальных данных привязанного рецепта и рендерятся на странице отдельным блоком автоматически. sections — это только вступление, советы, ошибки, варианты подачи.
 - faq_json: 3-5 вопросов на каждом языке, ответы короткие и конкретные.
 - Не вставляй HTML в sections. Только текст и массивы.
 - Не используй trailing commas.
+- ЕДИНОЕ ВРЕМЯ: если статья привязана к рецепту (recipe_id/related_recipes), у него в списке "Реальные рецепты из базы" указано реальное время (подготовка/готовка/итого). Используй ИМЕННО это число — одинаковое — в title, meta_title, excerpt и tldr. Не придумывай своё время и не указывай в разных полях разные цифры (например "15 минут" в одном поле и "20 минут" в другом) — это одна из главных ошибок, которую нужно избегать.
 
 Формат ответа (пример структуры, замени содержимое реальными данными по теме выше):
 {

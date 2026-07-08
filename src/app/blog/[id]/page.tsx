@@ -218,7 +218,11 @@ export default function BlogPostEditorPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("kind", "cover");
-      formData.append("slug_hint", draft?.slug || "post");
+      // cover_image_url is one field shared by every language translation —
+      // must not depend on draft.slug (the *currently active tab's* slug),
+      // or the filename ends up in whichever language happened to be open
+      // at upload time. The post id is language-independent and stable.
+      formData.append("slug_hint", params.id || "post");
       const res = await fetch("/api/admin/blog/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (res.ok && data.url) {

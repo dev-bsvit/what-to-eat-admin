@@ -1,5 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { revalidateBlogPaths } from "@/lib/revalidateBlog";
+import { slugify } from "@/lib/slug";
+
+export { slugify };
 
 export const DEFAULT_LANGUAGE = "ru";
 export const APP_LANGUAGES = ["ru", "en", "de", "it", "fr", "es", "pt-BR", "uk"] as const;
@@ -32,16 +35,6 @@ export function asNullableString(value: unknown) {
 
 export function asNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-export function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9а-яё\s-]/gi, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 export function isUuid(value: string | null | undefined) {
@@ -489,11 +482,17 @@ export async function upsertBlogPost(input: UpsertPostInput) {
 export interface RecipeCandidate {
   id: string;
   title: string;
+  prepTimeMin: number | null;
+  cookTimeMin: number | null;
+  servings: number | null;
 }
 
 // Real recipes whose title overlaps with a free-text topic, ranked by word
 // overlap. Used to ground an AI prompt in actual DB rows so it can only pick
-// real recipe_id values instead of inventing plausible-sounding titles.
+// real recipe_id values instead of inventing plausible-sounding titles — and
+// carries real prep/cook time + servings so the prompt can force the AI to
+// quote ONE real time value everywhere instead of inventing its own number
+// that then disagrees with the recipe card rendered from this same data.
 export async function searchRecipeCandidates(topic: string, limit = 15): Promise<RecipeCandidate[]> {
   const words = topic
     .toLowerCase()
@@ -503,17 +502,28 @@ export async function searchRecipeCandidates(topic: string, limit = 15): Promise
   if (words.length === 0) return [];
 
   const orFilter = words.map((word) => `title.ilike.%${word}%`).join(",");
-  const { data, error } = await supabaseAdmin.from("recipes").select("id, title").or(orFilter).limit(limit * 3);
+  const { data, error } = await supabaseAdmin
+    .from("recipes")
+    .select("id, title, prep_time, cook_time, servings")
+    .or(orFilter)
+    .limit(limit * 3);
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) return [];
 
   const scored = data.map((row) => {
     const title = String(row.title).toLowerCase();
     const score = words.filter((word) => title.includes(word)).length;
-    return { id: row.id as string, title: row.title as string, score };
+    return {
+      id: row.id as string,
+      title: row.title as string,
+      prepTimeMin: (row.prep_time as number) ?? null,
+      cookTimeMin: (row.cook_time as number) ?? null,
+      servings: (row.servings as number) ?? null,
+      score,
+    };
   });
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit).map(({ id, title }) => ({ id, title }));
+  return scored.slice(0, limit).map(({ id, title, prepTimeMin, cookTimeMin, servings }) => ({ id, title, prepTimeMin, cookTimeMin, servings }));
 }
 
 export interface TaxonomyOption {

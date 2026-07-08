@@ -1,21 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { revalidateBlogPaths } from "@/lib/revalidateBlog";
+import { slugify } from "@/lib/slug";
 
 interface RevalidatePostShape {
   category?: { slug: string }[] | { slug: string } | null;
   translations?: Array<{ slug: string; language_code: string }> | null;
   tags?: Array<{ tag: { slug: string }[] | { slug: string } | null }> | null;
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9а-яё\s-]/gi, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 function pathsForPost(post: RevalidatePostShape | null | undefined, languageCode = "ru") {
@@ -107,6 +98,20 @@ export async function PATCH(
 
   if (typeof translationFields.slug === "string") {
     translationFields.slug = slugify(translationFields.slug) || slugify(String(body.title || ""));
+
+    const { data: current } = await supabaseAdmin
+      .from("blog_post_translations")
+      .select("slug, previous_slugs")
+      .eq("post_id", id)
+      .eq("language_code", languageCode)
+      .maybeSingle();
+
+    if (current?.slug && current.slug !== translationFields.slug) {
+      const history = new Set<string>((current.previous_slugs as string[]) ?? []);
+      history.add(current.slug);
+      history.delete(translationFields.slug as string);
+      translationFields.previous_slugs = Array.from(history);
+    }
   }
 
   if (Object.keys(translationFields).length > 0) {
