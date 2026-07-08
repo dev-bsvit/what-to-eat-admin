@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { revalidateBlogPaths } from "@/lib/revalidateBlog";
+
+interface RevalidatePostShape {
+  category?: { slug: string }[] | { slug: string } | null;
+  translations?: Array<{ slug: string; language_code: string }> | null;
+  tags?: Array<{ tag: { slug: string }[] | { slug: string } | null }> | null;
+}
 
 function slugify(value: string) {
   return value
@@ -9,6 +16,24 @@ function slugify(value: string) {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function pathsForPost(post: RevalidatePostShape | null | undefined, languageCode = "ru") {
+  const paths = new Set<string>(["/"]);
+  const slug = post?.translations?.find((t) => t.language_code === languageCode)?.slug ?? post?.translations?.[0]?.slug;
+  if (slug) paths.add(`/${slug}`);
+
+  const rawCategory = post?.category;
+  const categorySlug = Array.isArray(rawCategory) ? rawCategory[0]?.slug : rawCategory?.slug;
+  if (categorySlug) paths.add(`/category/${categorySlug}`);
+
+  for (const item of post?.tags ?? []) {
+    const rawTag = item.tag;
+    const tagSlug = Array.isArray(rawTag) ? rawTag[0]?.slug : rawTag?.slug;
+    if (tagSlug) paths.add(`/tag/${tagSlug}`);
+  }
+
+  return Array.from(paths);
 }
 
 // GET /api/admin/blog/posts/:id — вся статья со всеми переводами
@@ -69,6 +94,7 @@ export async function PATCH(
     "slug",
     "title",
     "excerpt",
+    "tldr",
     "content_json",
     "content_html",
     "meta_title",
@@ -93,6 +119,20 @@ export async function PATCH(
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
+  const { data: fresh } = await supabaseAdmin
+    .from("blog_posts")
+    .select(
+      `
+      category:blog_categories(slug),
+      translations:blog_post_translations(slug, language_code),
+      tags:blog_post_tags(tag:blog_tags(slug))
+      `
+    )
+    .eq("id", id)
+    .single();
+
+  await revalidateBlogPaths(pathsForPost(fresh as RevalidatePostShape | null, languageCode));
+
   return NextResponse.json({ ok: true });
 }
 
@@ -102,7 +142,20 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const { data: existing } = await supabaseAdmin
+    .from("blog_posts")
+    .select(
+      `
+      category:blog_categories(slug),
+      translations:blog_post_translations(slug, language_code),
+      tags:blog_post_tags(tag:blog_tags(slug))
+      `
+    )
+    .eq("id", id)
+    .single();
+
   const { error } = await supabaseAdmin.from("blog_posts").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  await revalidateBlogPaths(pathsForPost(existing as RevalidatePostShape | null));
   return NextResponse.json({ ok: true });
 }

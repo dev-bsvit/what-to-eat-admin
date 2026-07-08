@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { revalidateBlogPaths } from "@/lib/revalidateBlog";
 
 // GET /api/admin/blog/tags?language_code=ru
 export async function GET(request: Request) {
@@ -57,5 +58,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: translationsError.message }, { status: 400 });
   }
 
+  await revalidateBlogPaths(["/"]);
   return NextResponse.json({ id: tag.id }, { status: 201 });
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Newspaper, Pencil, Plus, Trash2 } from "lucide-react";
+import { Newspaper, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import styles from "./blog.module.css";
 
 interface BlogPostRow {
@@ -85,6 +85,13 @@ export default function BlogListPage() {
           </Link>
           <Link href="/blog/authors" className="btn btn-secondary">
             Авторы
+          </Link>
+          <Link href="/blog/tags" className="btn btn-secondary">
+            Теги
+          </Link>
+          <Link href="/blog/import" className="btn btn-secondary">
+            <Upload size={18} />
+            Импорт JSON
           </Link>
           <Link href="/blog/new" className="btn btn-primary">
             <Plus size={18} />

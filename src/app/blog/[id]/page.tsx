@@ -15,6 +15,7 @@ interface Translation {
   slug: string;
   title: string;
   excerpt: string | null;
+  tldr: string | null;
   content_json: JSONContent;
   content_html: string | null;
   meta_title: string | null;
@@ -31,6 +32,7 @@ interface PostDetail {
   recipe_id: string | null;
   cover_image_url: string | null;
   translations: Translation[];
+  tags?: { tag_id: string }[];
 }
 
 interface Category {
@@ -48,6 +50,12 @@ interface RecipeOption {
   title: string;
 }
 
+interface BlogTag {
+  id: string;
+  slug: string;
+  name: string;
+}
+
 const statusOptions = [
   { value: "draft", label: "Черновик" },
   { value: "in_review", label: "На проверке" },
@@ -61,6 +69,7 @@ function emptyTranslation(languageCode: string): Translation {
     slug: "",
     title: "",
     excerpt: null,
+    tldr: null,
     content_json: {},
     content_html: null,
     meta_title: null,
@@ -81,6 +90,10 @@ export default function BlogPostEditorPage() {
   const [uploadingCover, setUploadingCover] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [authors, setAuthors] = useState<Author[]>([]);
+  const [tags, setTags] = useState<BlogTag[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [savingTags, setSavingTags] = useState(false);
+  const [tagError, setTagError] = useState<string | null>(null);
   const [linkedRecipe, setLinkedRecipe] = useState<RecipeOption | null>(null);
   const [recipeQuery, setRecipeQuery] = useState("");
   const [recipeResults, setRecipeResults] = useState<RecipeOption[]>([]);
@@ -93,6 +106,11 @@ export default function BlogPostEditorPage() {
       const data = await res.json();
       if (res.ok) {
         setPost(data.post);
+        setSelectedTagIds(
+          Array.isArray(data.post.tags)
+            ? data.post.tags.map((tag: { tag_id?: string }) => tag.tag_id).filter((tagId: string | undefined): tagId is string => Boolean(tagId))
+            : []
+        );
         const first = data.post.translations?.[0]?.language_code ?? "ru";
         setActiveLanguage(first);
         setDraft(data.post.translations?.find((t: Translation) => t.language_code === first) ?? emptyTranslation(first));
@@ -124,6 +142,10 @@ export default function BlogPostEditorPage() {
       .then((res) => res.json())
       .then((data) => setAuthors(data.authors ?? []))
       .catch(() => setAuthors([]));
+    fetch("/api/admin/blog/tags")
+      .then((res) => res.json())
+      .then((data) => setTags(data.tags ?? []))
+      .catch(() => setTags([]));
   }, []);
 
   useEffect(() => {
@@ -170,6 +192,7 @@ export default function BlogPostEditorPage() {
           title: draft.title,
           slug: draft.slug,
           excerpt: draft.excerpt,
+          tldr: draft.tldr,
           content_json: draft.content_json,
           content_html: draft.content_html,
           meta_title: draft.meta_title,
@@ -201,6 +224,36 @@ export default function BlogPostEditorPage() {
     } finally {
       setUploadingCover(false);
     }
+  };
+
+  const saveTags = async (nextTagIds: string[]) => {
+    setTagError(null);
+    const previousTagIds = selectedTagIds;
+    setSelectedTagIds(nextTagIds);
+    setSavingTags(true);
+    try {
+      const res = await fetch(`/api/admin/blog/posts/${params.id}/tags`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tag_ids: nextTagIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSelectedTagIds(previousTagIds);
+        setTagError(data.error || "Не удалось сохранить теги");
+        return;
+      }
+      setSavedAt(new Date());
+    } finally {
+      setSavingTags(false);
+    }
+  };
+
+  const toggleTag = (tagId: string) => {
+    const nextTagIds = selectedTagIds.includes(tagId)
+      ? selectedTagIds.filter((id) => id !== tagId)
+      : [...selectedTagIds, tagId];
+    saveTags(nextTagIds);
   };
 
   if (loading || !post || !draft) {
@@ -369,6 +422,36 @@ export default function BlogPostEditorPage() {
       </div>
 
       <div className="form-group">
+        <div className={styles.fieldHeader}>
+          <label className="form-label">Теги</label>
+          <Link href="/blog/tags" className={styles.inlineAction}>
+            Управлять тегами
+          </Link>
+        </div>
+        {tags.length === 0 ? (
+          <div className={styles.emptyTagSelector}>Тегов пока нет. Создайте первый тег на странице управления.</div>
+        ) : (
+          <div className={styles.tagSelector} aria-label="Теги статьи">
+            {tags.map((tag) => (
+              <label key={tag.id} className={styles.tagOption}>
+                <input
+                  type="checkbox"
+                  checked={selectedTagIds.includes(tag.id)}
+                  disabled={savingTags}
+                  onChange={() => toggleTag(tag.id)}
+                />
+                <span>{tag.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <div className={styles.fieldHint}>
+          {savingTags ? "Сохраняем теги…" : selectedTagIds.length > 0 ? `Выбрано: ${selectedTagIds.length}` : "Теги не выбраны"}
+        </div>
+        {tagError && <div className="form-error">{tagError}</div>}
+      </div>
+
+      <div className="form-group">
         <input
           className={`input ${styles.editorTitleInput}`}
           value={draft.title}
@@ -392,6 +475,17 @@ export default function BlogPostEditorPage() {
           value={draft.excerpt ?? ""}
           onChange={(e) => setDraft({ ...draft, excerpt: e.target.value })}
           placeholder="Краткое описание (excerpt) — используется в ленте и превью"
+          rows={2}
+        />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">TL;DR (прямой ответ в 2-3 предложения)</label>
+        <textarea
+          className="input"
+          value={draft.tldr ?? ""}
+          onChange={(e) => setDraft({ ...draft, tldr: e.target.value })}
+          placeholder="Короткий прямой ответ на вопрос из заголовка — этот блок чаще всего цитируют AI-поисковики и попадает в блоки ответов Google"
           rows={2}
         />
       </div>
