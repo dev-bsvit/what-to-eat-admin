@@ -166,6 +166,25 @@ export function normalizeRecipeJson(value: unknown): JsonRecord | null {
   };
 }
 
+// translations.<lang>.recipes: array of full recipes embedded directly in a
+// translation, for a "collection" article whose recipes aren't in the
+// recipes table — each needs its own title (unlike the singular `recipe`
+// field, which implicitly is the article itself). Alternative to
+// related_recipes; both can coexist but usually only one is used.
+export function normalizeRecipeList(value: unknown): JsonRecord[] {
+  if (!Array.isArray(value)) return [];
+
+  const recipes: JsonRecord[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw)) continue;
+    const base = normalizeRecipeJson(raw);
+    const title = asString(raw.title);
+    if (!base || !title) continue;
+    recipes.push({ ...base, title, label: asNullableString(raw.label), note: asNullableString(raw.note) });
+  }
+  return recipes;
+}
+
 // category.translations: { [language_code]: { name, description? } }
 export async function ensureCategory(category: unknown, primaryLanguage: string) {
   if (!isRecord(category)) return null;
@@ -467,6 +486,10 @@ export async function upsertBlogPost(input: UpsertPostInput) {
       og_image_url: asNullableString(article.og_image_url),
       faq_json: Array.isArray(article.faq_json) ? article.faq_json : null,
       recipe_json: normalizeRecipeJson(article.recipe),
+      recipes_json: (() => {
+        const list = normalizeRecipeList(article.recipes);
+        return list.length > 0 ? list : null;
+      })(),
       is_machine_translated: Boolean(article.is_machine_translated),
       updated_at: now,
     };

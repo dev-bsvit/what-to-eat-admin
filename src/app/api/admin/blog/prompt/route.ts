@@ -70,7 +70,9 @@ function buildGroundedPrompt(input: {
 1) Если рецепт есть в списке "Реальные рецепты из базы" ниже — укажи recipe_id (не recipe_title) ТОЛЬКО из этого списка.
 2) Если подходящего рецепта в списке нет — НЕ выдумывай recipe_id и НЕ пиши recipe_title. Вместо этого заполни поле translations.<lang>.recipe (см. формат ниже) реальными данными рецепта, который ты описываешь в статье: ингредиенты с граммовками, шаги, время, порции. Это поле само по себе даёт карточку рецепта и Recipe-разметку — привязка к базе не обязательна.`
       : articleType === "collection"
-        ? `Тип статьи: "collection" — подборка из нескольких рецептов. related_recipes обязателен: каждый элемент должен использовать recipe_id ТОЛЬКО из списка "Реальные рецепты из базы" ниже (не recipe_title, не выдуманные названия). Если подходящих рецептов в списке меньше 2 — сократи подборку до тех, что реально есть, не добавляй несуществующие.`
+        ? `Тип статьи: "collection" — подборка из нескольких рецептов. Два варианта:
+1) Если в списке "Реальные рецепты из базы" ниже есть 2+ подходящих — используй related_recipes с recipe_id ТОЛЬКО из этого списка (не recipe_title, не выдуманные названия).
+2) Если подходящих рецептов в списке меньше 2 (или совсем нет) — заполни translations.<lang>.recipes массивом из 2-5 объектов (см. формат ниже), каждый со своим title, ингредиентами с граммовками, шагами, временем и порциями. Каждый рецепт в массиве получит свою полную карточку и Recipe-разметку на странице — привязка к базе не обязательна.`
         : `Тип статьи: "guide" — обычная статья. Если она НЕ о конкретном блюде — НЕ указывай recipe_id и не заполняй translations.<lang>.recipe. Если статья всё же построена вокруг одного блюда (например "что приготовить на ужин" с одним топ-рецептом внутри подборки идей) — можно заполнить translations.<lang>.recipe реальными данными этого блюда (ингредиенты, шаги, время, порции), тогда статья получит карточку рецепта и Recipe-разметку, оставаясь article_type "guide".`;
 
   const recipeFacts = (r: { prepTimeMin: number | null; cookTimeMin: number | null; servings: number | null }) => {
@@ -130,7 +132,8 @@ ${tagsBlock}
 - cover_image_alt: конкретно описывает готовое блюдо, на языке перевода.
 - sections: 5-8 блоков на каждом языке. Используй только type: "p", "h2", "h3", "ul", "ol", "blockquote", "image".
 - В sections обязательно должны быть: краткое вступление, что важно для результата, частые ошибки, подача/хранение или вариации. НЕ пиши в sections список ингредиентов и нумерованные шаги готовки — если у статьи есть recipe_id или заполнено translations.<lang>.recipe, они уже рендерятся на странице отдельным блоком автоматически. sections — это только вступление, советы, ошибки, варианты подачи.
-- translations.<lang>.recipe (опционально, см. правила типа статьи выше): { "prep_time_min": число, "cook_time_min": число, "servings": число, "difficulty": "easy"|"medium"|"hard", "cuisine": "строка на языке перевода", "ingredients": ["300 г курячого філе", ...], "instructions": ["Наріжте філе кубиками...", ...], "nutrition": { "calories": число, "protein": число, "fat": число, "carbs": число } }. ingredients и instructions — на языке перевода, с реальными количествами и понятными шагами. Если рецепт не главный герой статьи — не заполняй это поле.
+- translations.<lang>.recipe (опционально, для article_type "recipe"/"guide", см. правила выше): { "prep_time_min": число, "cook_time_min": число, "servings": число, "difficulty": "easy"|"medium"|"hard", "cuisine": "строка на языке перевода", "ingredients": ["300 г курячого філе", ...], "instructions": ["Наріжте філе кубиками...", ...], "nutrition": { "calories": число, "protein": число, "fat": число, "carbs": число } }. ingredients и instructions — на языке перевода, с реальными количествами и понятными шагами. Если рецепт не главный герой статьи — не заполняй это поле.
+- translations.<lang>.recipes (опционально, для article_type "collection", см. правила выше): массив из 2-5 объектов той же формы, что и recipe выше, но у каждого ЕЩЁ ОБЯЗАТЕЛЬНО есть "title" (название этого рецепта на языке перевода), и опционально "label"/"note" (короткая подпись, например "Самый быстрый вариант").
 - faq_json: 3-5 вопросов на каждом языке, ответы короткие и конкретные.
 - Не вставляй HTML в sections. Только текст и массивы.
 - Не используй trailing commas.
@@ -153,9 +156,9 @@ ${tagsBlock}
       .map(
         (l) =>
           `"${l}": { "slug": "...", "title": "...", "excerpt": "...", "tldr": "...", "meta_title": "...", "meta_description": "...", "cover_image_alt": "...", "sections": [ { "type": "p", "text": "..." } ], "faq_json": [ { "q": "...", "a": "..." } ]${
-            articleType !== "collection"
-              ? `, "recipe": { "prep_time_min": 5, "cook_time_min": 15, "servings": 4, "difficulty": "easy", "cuisine": "...", "ingredients": ["..."], "instructions": ["..."], "nutrition": { "calories": 0, "protein": 0, "fat": 0, "carbs": 0 } }`
-              : ""
+            articleType === "collection"
+              ? `, "recipes": [ { "title": "...", "label": "...", "note": "...", "prep_time_min": 5, "cook_time_min": 15, "servings": 4, "difficulty": "easy", "cuisine": "...", "ingredients": ["..."], "instructions": ["..."], "nutrition": { "calories": 0, "protein": 0, "fat": 0, "carbs": 0 } } ]`
+              : `, "recipe": { "prep_time_min": 5, "cook_time_min": 15, "servings": 4, "difficulty": "easy", "cuisine": "...", "ingredients": ["..."], "instructions": ["..."], "nutrition": { "calories": 0, "protein": 0, "fat": 0, "carbs": 0 } }`
           } }`
       )
       .join(",\n    ")}

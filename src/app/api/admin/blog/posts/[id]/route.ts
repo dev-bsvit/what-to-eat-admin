@@ -100,6 +100,7 @@ export async function PATCH(
     "og_image_url",
     "faq_json",
     "recipe_json",
+    "recipes_json",
   ] as const) {
     if (key in body) translationFields[key] = body[key];
   }

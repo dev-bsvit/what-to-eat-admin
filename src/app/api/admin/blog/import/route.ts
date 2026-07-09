@@ -13,6 +13,7 @@ import {
   isRecord,
   isUuid,
   normalizeRecipeJson,
+  normalizeRecipeList,
   resolveRecipeByTitleOrId,
   resolveRelatedRecipes,
   slugify,
@@ -98,9 +99,17 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (articleType === "collection" && relatedRecipes.length === 0) {
+    // A "collection" article can be satisfied either by real related_recipes
+    // (DB-linked, lightweight cards) or by a translation carrying its own
+    // recipes_json array (full ingredients/steps per recipe, see
+    // normalizeRecipeList) — same idea as the "recipe" type's fallback above.
+    const hasInlineRecipes = languageCodes.some((code) => normalizeRecipeList((translationsInput[code] as JsonRecord).recipes).length > 0);
+    if (articleType === "collection" && relatedRecipes.length === 0 && !hasInlineRecipes) {
       return NextResponse.json(
-        { error: "Collection articles require related_recipes with recipe_id or a recognizable recipe_title" },
+        {
+          error:
+            "Collection articles require related_recipes with recipe_id/recipe_title, or a translation with a recipes array",
+        },
         { status: 400 }
       );
     }
