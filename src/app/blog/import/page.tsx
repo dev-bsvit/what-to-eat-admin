@@ -7,91 +7,120 @@ import styles from "../blog.module.css";
 
 const APP_LANGUAGES = ["ru", "en", "de", "it", "fr", "es", "pt-BR", "uk"];
 
+const exampleRecipeRu = {
+  prep_time_min: 5,
+  cook_time_min: 15,
+  servings: 4,
+  difficulty: "easy",
+  cuisine: "Итальянская",
+  ingredients: ["Паста пенне — 350 г", "Куриное филе — 400 г", "Сливки 20% — 200 мл", "Чеснок — 3 зубчика", "Пармезан — 50 г"],
+  instructions: [
+    "Отварите пасту до аль денте, сохранив 100 мл воды из-под неё.",
+    "Обжарьте нарезанное кубиками филе до золотистой корочки.",
+    "Добавьте чеснок, затем сливки, сыр и воду от пасты, прогрейте не доводя до кипения.",
+    "Смешайте с пастой и прогрейте 1-2 минуты до загустения соуса.",
+  ],
+  nutrition: { calories: 520, protein: 35, fat: 22, carbs: 45 },
+};
+
 const exampleArticleRu = {
-  slug: "bystrye-uzhiny-na-20-minut",
-  title: "Быстрые ужины за 20 минут: подборка рецептов для буднего вечера",
+  slug: "bystryy-uzhin-pasta-s-kuritsey-20-minut",
+  title: "Быстрый ужин за 20 минут: сливочная паста с курицей",
   excerpt:
-    "Собрали быстрые ужины, которые реально приготовить после работы: паста, боулы, супы и простые тарелки без долгой подготовки.",
+    "Сливочная паста с курицей — сытный ужин за 20 минут в одной сковороде: понятные шаги, реальные граммовки и советы, чтобы соус не свернулся.",
   tldr:
-    "Для быстрого ужина выбирайте блюда, где основа готовится параллельно с соусом или вообще не требует долгой термообработки. В подборку лучше включать рецепты с понятным временем, простыми продуктами и разными сценариями: паста, суп, боул и блюдо без готовки.",
-  meta_title: "Быстрые ужины за 20 минут: подборка",
-  meta_description:
-    "Подборка быстрых ужинов за 20 минут: паста, суп, боулы и простые блюда для буднего вечера без долгой подготовки.",
-  cover_image_alt: "Несколько быстрых домашних ужинов на столе",
+    "Готовится 20 минут на 4 порции. Главный секрет густого соуса — крахмальная вода из-под пасты и сливки, которые нельзя доводить до кипения.",
+  meta_title: "Быстрый ужин за 20 минут: паста с курицей",
+  meta_description: "Рецепт сливочной пасты с курицей за 20 минут: реальные граммовки, пошаговый план и частые ошибки. Ужин в одной сковороде.",
+  cover_image_alt: "Сливочная паста с курицей и пармезаном на тарелке",
   og_image_url: "https://example.com/recipe-og.jpg",
   sections: [
     {
       type: "p",
-      text: "Когда времени мало, хороший ужин строится не на сложной технике, а на правильной комбинации: быстрая основа, готовый белок, понятный соус и свежий акцент.",
+      text: "После рабочего дня хочется сытный ужин без долгой готовки. Сливочная паста с курицей закрывает это за 20 минут в одной сковороде.",
     },
-    { type: "h2", text: "Как выбирать рецепты для быстрых ужинов" },
+    { type: "h2", text: "Что важно для результата" },
     {
       type: "ul",
       items: [
-        "Время активной готовки должно быть коротким: нарезка, разогрев, смешивание или варка пасты.",
-        "Белок лучше брать готовый или быстро готовящийся: тунец, яйца, чечевица, курица гриль, творог.",
-        "Вкус собирается соусом, специями, зеленью или кислым акцентом, а не долгим тушением.",
-      ],
-    },
-    { type: "h2", text: "Что включить в подборку" },
-    {
-      type: "ol",
-      items: [
-        "Один сытный рецепт с крупой или пастой.",
-        "Один легкий вариант с овощами или салатом.",
-        "Один горячий суп или блюдо в одной кастрюле.",
-        "Один вариант почти без готовки для дней, когда совсем нет сил.",
+        "Крахмальная вода из-под пасты — природный эмульгатор, она не даёт соусу расслоиться.",
+        "Сливки нельзя кипятить — только прогревать, иначе они свернутся.",
+        "Жарьте курицу порциями: если выложить всё мясо разом, оно потушится, а не подрумянится.",
       ],
     },
     { type: "h2", text: "Частые ошибки" },
     {
       type: "p",
-      text: "Главная ошибка быстрых ужинов — выбирать блюда, которые выглядят простыми, но требуют много параллельной подготовки. В подборке лучше честно указывать время, сложность и продукты, которые можно держать дома заранее.",
+      text: "Главная ошибка — бурное кипячение соуса. Держите огонь на минимуме после того, как влили сливки.",
+    },
+    { type: "h2", text: "Варианты" },
+    {
+      type: "ul",
+      items: ["С грибами: обжарьте 200 г шампиньонов перед курицей.", "Без молочных продуктов: замените сливки на кокосовое молоко."],
     },
   ],
   faq_json: [
-    {
-      q: "Что считается быстрым ужином?",
-      a: "Обычно это блюдо с активной готовкой до 20 минут и без долгого маринования, выпекания или сложной подготовки.",
-    },
-    {
-      q: "Можно ли делать подборку без одного главного рецепта?",
-      a: "Да. Для подборки используйте article_type: collection и заполните related_recipes точными названиями или UUID рецептов.",
-    },
-    {
-      q: "Нужно ли указывать recipe_id?",
-      a: "Для одиночной recipe-статьи лучше указать recipe_id. Для подборки можно указать несколько рецептов в related_recipes.",
-    },
+    { q: "Можно ли использовать сливки 10%?", a: "Да, но соус будет более жидким и легче свернётся — смешайте их с ложкой крахмала." },
+    { q: "Как загустить соус, если он жидкий?", a: "Прогрейте чуть дольше на слабом огне — паста впитает лишнюю жидкость." },
   ],
+  recipe: exampleRecipeRu,
 };
 
 const exampleArticleEn = {
-  slug: "20-minute-dinners",
-  title: "20-Minute Dinners: Fast Recipes for Weeknights",
-  excerpt: "Fast dinners you can actually cook after work: pasta, bowls, soups and simple plates with no long prep.",
-  tldr:
-    "For a fast dinner, pick dishes where the base cooks in parallel with the sauce or needs almost no cooking at all. Mix a pasta or grain dish, a light vegetable option, a one-pot soup, and a no-cook option.",
-  meta_title: "20-Minute Dinners: Fast Recipe Roundup",
-  meta_description: "A roundup of 20-minute dinners: pasta, soup, bowls and simple plates for busy weeknights.",
-  cover_image_alt: "Several fast home-cooked dinners on a table",
+  slug: "20-minute-creamy-chicken-pasta",
+  title: "20-Minute Dinner: Creamy Chicken Pasta",
+  excerpt: "Creamy chicken pasta, one pan, 20 minutes: real measurements, a clear step-by-step plan, and how to keep the sauce from curdling.",
+  tldr: "Ready in 20 minutes for 4 servings. The trick to a thick sauce is starchy pasta water and cream that never fully boils.",
+  meta_title: "20-Minute Dinner: Creamy Chicken Pasta",
+  meta_description: "Creamy chicken pasta in 20 minutes: real measurements, step-by-step plan, and the mistakes to avoid. One-pan dinner.",
+  cover_image_alt: "Creamy chicken pasta with parmesan on a plate",
   og_image_url: "https://example.com/recipe-og.jpg",
-  sections: exampleArticleRu.sections,
-  faq_json: [
-    { q: "What counts as a fast dinner?", a: "Usually a dish with under 20 minutes of active cooking and no long marinating or baking." },
-    { q: "Can a roundup skip a single main recipe?", a: "Yes — use article_type: collection and fill related_recipes with exact titles or UUIDs." },
-    { q: "Do I need a recipe_id?", a: "For a single recipe article, prefer recipe_id. For a collection, list several recipes in related_recipes." },
+  sections: [
+    { type: "p", text: "After a long day you want a filling dinner without a long cook. This creamy chicken pasta takes 20 minutes, one pan." },
+    { type: "h2", text: "What matters for the result" },
+    {
+      type: "ul",
+      items: [
+        "Starchy pasta water is a natural emulsifier — it keeps the sauce from splitting.",
+        "Never let the cream boil hard — just warm it through, or it will curdle.",
+        "Fry the chicken in batches: too much at once steams the meat instead of browning it.",
+      ],
+    },
+    { type: "h2", text: "Common mistakes" },
+    { type: "p", text: "The main mistake is boiling the sauce hard. Keep the heat low once the cream goes in." },
+    { type: "h2", text: "Variations" },
+    { type: "ul", items: ["With mushrooms: sauté 200g before the chicken.", "Dairy-free: swap the cream for coconut milk."] },
   ],
+  faq_json: [
+    { q: "Can I use 10% cream?", a: "Yes, but the sauce will be thinner and curdles more easily — mix it with a teaspoon of cornstarch first." },
+    { q: "How do I thicken a runny sauce?", a: "Simmer a little longer on low heat — the pasta will absorb the extra liquid." },
+  ],
+  recipe: {
+    prep_time_min: 5,
+    cook_time_min: 15,
+    servings: 4,
+    difficulty: "easy",
+    cuisine: "Italian",
+    ingredients: ["Penne pasta — 350 g", "Chicken breast — 400 g", "20% cream — 200 ml", "Garlic — 3 cloves", "Parmesan — 50 g"],
+    instructions: [
+      "Cook the pasta to al dente, saving 100 ml of the cooking water.",
+      "Fry the diced chicken until golden.",
+      "Add garlic, then cream, cheese, and the pasta water; warm through without boiling.",
+      "Toss with the pasta and heat 1-2 minutes until the sauce thickens.",
+    ],
+    nutrition: { calories: 520, protein: 35, fat: 22, carbs: 45 },
+  },
 };
 
 const exampleImport = {
   status: "draft",
   source: "ai_assisted",
-  article_type: "collection",
+  article_type: "recipe",
   category: {
-    slug: "podborki",
+    slug: "dinners",
     translations: {
-      ru: { name: "Подборки", description: "Практичные подборки рецептов Dishday для быстрых решений на каждый день." },
-      en: { name: "Roundups", description: "Practical Dishday recipe roundups for quick everyday decisions." },
+      ru: { name: "Ужины", description: "Практичные и быстрые рецепты для вечернего меню." },
+      en: { name: "Dinners", description: "Practical and quick recipes for your evening menu." },
     },
   },
   author: {
@@ -103,22 +132,9 @@ const exampleImport = {
   tags: [
     { slug: "uzhin", translations: { ru: "Ужин", en: "Dinner" } },
     { slug: "bystro", translations: { ru: "Быстро", en: "Fast" } },
-    { slug: "podborka-retseptov", translations: { ru: "Подборка рецептов", en: "Recipe roundup" } },
-  ],
-  related_recipes: [
-    {
-      recipe_title: "Точное название рецепта из базы",
-      label: "Главный быстрый ужин",
-      note: "Подходит, когда нужен сытный ужин за 20 минут.",
-    },
-    {
-      recipe_title: "Еще одно точное название рецепта",
-      label: "Легкая альтернатива",
-      note: "Добавьте в подборку второй рецепт, если статья является списком.",
-    },
   ],
   cover_image_url: "https://example.com/recipe-cover.jpg",
-  reading_time_min: 7,
+  reading_time_min: 6,
   translations: {
     ru: exampleArticleRu,
     en: exampleArticleEn,
@@ -130,24 +146,25 @@ function buildPrompt(exampleJson: string) {
 Верни ТОЛЬКО валидный JSON без markdown, комментариев и пояснений.
 
 Задача:
-- Статья должна быть готова к публикации как recipe article, СРАЗУ на нескольких языках в одном JSON.
-- Она может быть трех типов: article_type "recipe" для одного рецепта, "collection" для подборки рецептов, "guide" для обычной статьи без рецепта.
-- Она должна помогать Google и AI-поисковикам понять страницу: понятный title, excerpt, TL;DR, подробные секции, FAQ, cover image, теги, категория. Для recipe добавь recipe_title/recipe_id, для collection добавь related_recipes.
-- Если у рецепта уже есть точные ингредиенты, время, порции и шаги — не противоречь им в статье.
+- Статья должна быть готова к публикации, СРАЗУ на нескольких языках в одном JSON.
+- Она может быть трёх типов: article_type "recipe" для одного рецепта, "collection" для подборки рецептов, "guide" для обычной статьи без рецепта.
+- Она должна помогать Google и AI-поисковикам понять страницу: понятный title, excerpt, TL;DR, подробные секции, FAQ, cover image, теги, категория.
+
+Как привязать рецепт (ВАЖНО — у меня НЕТ доступа к базе рецептов Dishday, поэтому НЕ придумывай recipe_id и НЕ используй recipe_title/related_recipes):
+- Для article_type "recipe": заполни translations.<lang>.recipe реальными данными блюда — ингредиенты с граммовками, шаги, время, порции, КБЖУ (см. пример ниже). Это поле само по себе даёт карточку рецепта и Recipe-разметку на сайте, привязка к базе не нужна.
+- Для article_type "guide": заполняй translations.<lang>.recipe, только если статья построена вокруг одного конкретного блюда. Если это обычная статья без рецепта — не добавляй это поле вообще.
+- Для article_type "collection" (подборка из нескольких РАЗНЫХ рецептов) — этот тип требует привязки к реальным рецептам в базе Dishday, чего у тебя нет. Не используй его без доступа к базе — вместо подборки сделай "recipe" с одним топ-рецептом, а остальные идеи опиши текстом в sections (без attempts привязать их как отдельные рецепты).
 
 Языки:
-- Поле "translations" — объект, где ключ это код языка, а значение — полностью заполненная статья на этом языке (свой slug, title, excerpt, tldr, meta, sections, faq_json).
+- Поле "translations" — объект, где ключ это код языка, а значение — полностью заполненная статья на этом языке (свой slug, title, excerpt, tldr, meta, sections, faq_json, recipe).
 - Заполни языки: ${APP_LANGUAGES.join(", ")} (это все языки приложения Dishday). Если явно попросили конкретный язык или подмножество — используй только их.
-- Каждый язык переведи полноценно, не дословно, с учётом того, как реально ищут на этом языке — не просто гугл-перевод.
+- Каждый язык переведи полноценно, не дословно, с учётом того, как реально ищут на этом языке — не просто гугл-перевод. Ингредиенты и шаги в translations.<lang>.recipe тоже переведи на этот язык, включая единицы измерения.
 - category.translations и tags[].translations — тоже объекты по языкам: { "ru": {...}, "en": {...}, ... }. Не показывай их только на одном языке.
-- author, cover_image_url, article_type, recipe_title/recipe_id, related_recipes, tags[].slug, category.slug — общие для всех языков, заполняются один раз (не дублируются по языкам).
+- author, cover_image_url, article_type, tags[].slug, category.slug — общие для всех языков, заполняются один раз (не дублируются по языкам).
 
 Правила структуры:
 - status: сначала "draft", если явно не попросили публиковать.
-- article_type обязателен: "recipe", "collection" или "guide".
-- Для article_type "recipe": recipe_required: true, recipe_title должен точно совпадать с названием рецепта в базе, если recipe_id неизвестен.
-- Для article_type "collection": recipe_required не нужен, но related_recipes обязателен. Каждый элемент related_recipes содержит recipe_title или recipe_id, optional label и note.
-- Для article_type "guide": не указывай recipe_title и related_recipes, если статья не связана с рецептами.
+- article_type обязателен: "recipe" или "guide" (см. выше про "collection").
 - category.slug и tags[].slug пиши латиницей или понятной транслитерацией без пробелов, ОДИНАКОВО во всех языках (это технический идентификатор, не текст).
 - translations.<lang>.slug пиши латиницей, коротко, без дат — на каждом языке свой, соответствующий переведённому заголовку.
 - translations.<lang>.title: поисковый заголовок с намерением пользователя на этом языке, не кликбейт.
@@ -157,11 +174,11 @@ function buildPrompt(exampleJson: string) {
 - meta_description: до 155 символов.
 - cover_image_alt: конкретно описывает готовое блюдо, на языке перевода.
 - sections: 5-8 блоков на каждом языке. Используй только type: "p", "h2", "h3", "ul", "ol", "blockquote", "image".
-- В sections обязательно должны быть: краткое вступление, что важно для результата, пошаговый план, частые ошибки, подача/хранение или вариации.
+- В sections обязательно должны быть: краткое вступление, что важно для результата, частые ошибки, подача/хранение или вариации. НЕ пиши в sections список ингредиентов и нумерованные шаги готовки — они уже берутся из translations.<lang>.recipe и рендерятся на странице отдельным блоком автоматически.
 - faq_json: 3-5 вопросов на каждом языке, ответы короткие и конкретные.
 - Не вставляй HTML в sections. Только текст и массивы.
-- Не выдумывай UUID. Если recipe_id неизвестен, используй recipe_title.
 - Не используй trailing commas.
+- ЕДИНОЕ ВРЕМЯ: используй сумму prep_time_min + cook_time_min из recipe как ЕДИНОЕ число времени во всех местах — title, meta_title, excerpt, tldr. Не указывай в разных полях разные цифры (например "15 минут" в одном поле и "20 минут" в другом) — это одна из главных ошибок, которую нужно избегать.
 
 Пример формата (здесь только 2 языка для краткости — в реальном ответе сделай все запрошенные):
 ${exampleJson}`;
