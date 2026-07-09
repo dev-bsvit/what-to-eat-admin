@@ -97,6 +97,7 @@ export async function PATCH(
     "content_html",
     "meta_title",
     "meta_description",
+    "cover_image_alt",
     "og_image_url",
     "faq_json",
     "recipe_json",

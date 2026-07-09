@@ -37,6 +37,27 @@ export function asNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+const PLACEHOLDER_IMAGE_HOSTS = new Set(["example.com", "example.org", "example.net", "placeholder.com"]);
+
+// AI-generated JSON occasionally leaves a placeholder image URL in (or the
+// user's client mangles a plain URL into "[url](url)" markdown before
+// pasting) — either would otherwise get saved and silently break og:image /
+// the cover. Only a clean, real http(s) URL survives; anything else is
+// dropped rather than saved broken.
+export function sanitizeImageUrl(value: unknown): string | null {
+  const text = asString(value);
+  if (!text) return null;
+
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (PLACEHOLDER_IMAGE_HOSTS.has(url.hostname.toLowerCase())) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function isUuid(value: string | null | undefined) {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
@@ -226,32 +247,65 @@ export async function ensureCategory(category: unknown, primaryLanguage: string)
   return data as { id: string; slug: string };
 }
 
-export async function ensureAuthor(author: unknown) {
+// author.translations: { [language_code]: { title, bio } }. Falls back to
+// flat author.title/author.bio seeded under primaryLanguage when no
+// translations object is given (legacy single-language imports).
+export async function ensureAuthor(author: unknown, primaryLanguage: string = DEFAULT_LANGUAGE) {
   if (!isRecord(author)) return null;
 
+  let authorId: string | null = null;
   const id = asString(author.id);
-  if (isUuid(id)) return id;
+  if (isUuid(id)) {
+    authorId = id;
+  } else {
+    const name = asString(author.name);
+    if (!name) return null;
 
-  const name = asString(author.name);
-  if (!name) return null;
+    const { data: existing } = await supabaseAdmin.from("blog_authors").select("id").eq("name", name).limit(1).maybeSingle();
+    if (existing?.id) {
+      authorId = existing.id as string;
+    } else {
+      const { data, error } = await supabaseAdmin
+        .from("blog_authors")
+        .insert({
+          name,
+          title: asNullableString(author.title),
+          bio: asNullableString(author.bio),
+          avatar_url: asNullableString(author.avatar_url),
+          profile_url: asNullableString(author.profile_url),
+          same_as: Array.isArray(author.same_as) ? author.same_as.map(asString).filter(Boolean) : [],
+        })
+        .select("id")
+        .single();
+      if (error || !data) throw new Error(error?.message || "Failed to create author");
+      authorId = data.id as string;
+    }
+  }
 
-  const { data: existing } = await supabaseAdmin.from("blog_authors").select("id").eq("name", name).limit(1).maybeSingle();
-  if (existing?.id) return existing.id as string;
+  if (!authorId) return null;
 
-  const { data, error } = await supabaseAdmin
-    .from("blog_authors")
-    .insert({
-      name,
-      title: asNullableString(author.title),
-      bio: asNullableString(author.bio),
-      avatar_url: asNullableString(author.avatar_url),
-      profile_url: asNullableString(author.profile_url),
-      same_as: Array.isArray(author.same_as) ? author.same_as.map(asString).filter(Boolean) : [],
-    })
-    .select("id")
-    .single();
-  if (error || !data) throw new Error(error?.message || "Failed to create author");
-  return data.id as string;
+  const translationsInput = isRecord(author.translations)
+    ? (author.translations as Record<string, unknown>)
+    : author.title || author.bio
+      ? { [primaryLanguage]: { title: author.title, bio: author.bio } }
+      : {};
+
+  const rows = Object.entries(translationsInput)
+    .filter(([, value]) => isRecord(value))
+    .map(([languageCode, value]) => ({
+      author_id: authorId,
+      language_code: languageCode,
+      title: asNullableString((value as JsonRecord).title),
+      bio: asNullableString((value as JsonRecord).bio),
+    }))
+    .filter((row) => row.title || row.bio);
+
+  if (rows.length > 0) {
+    const { error } = await supabaseAdmin.from("blog_author_translations").upsert(rows, { onConflict: "author_id,language_code" });
+    if (error) throw new Error(error.message);
+  }
+
+  return authorId;
 }
 
 export interface RecipeMatch {
@@ -445,7 +499,7 @@ export async function upsertBlogPost(input: UpsertPostInput) {
     recipe_id: input.recipeId,
     category_id: input.categoryId,
     author_id: input.authorId,
-    cover_image_url: input.coverImageUrl,
+    cover_image_url: sanitizeImageUrl(input.coverImageUrl),
     cover_image_alt: input.coverImageAlt,
     reading_time_min: input.readingTimeMin,
   };
@@ -483,7 +537,8 @@ export async function upsertBlogPost(input: UpsertPostInput) {
       content_html: contentHtml,
       meta_title: asNullableString(article.meta_title),
       meta_description: asNullableString(article.meta_description),
-      og_image_url: asNullableString(article.og_image_url),
+      cover_image_alt: asNullableString(article.cover_image_alt),
+      og_image_url: sanitizeImageUrl(article.og_image_url),
       faq_json: Array.isArray(article.faq_json) ? article.faq_json : null,
       recipe_json: normalizeRecipeJson(article.recipe),
       recipes_json: (() => {

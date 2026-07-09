@@ -6,7 +6,7 @@ import { slugify } from "@/lib/slug";
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from("blog_authors")
-    .select("id, slug, name, title, bio, avatar_url, profile_url, same_as")
+    .select("id, slug, name, title, bio, avatar_url, profile_url, same_as, translations:blog_author_translations(language_code, title, bio)")
     .order("name", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });

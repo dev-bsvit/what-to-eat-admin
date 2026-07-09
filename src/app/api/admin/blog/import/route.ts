@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     }
 
     const category = await ensureCategory(body.category, primaryLanguage);
-    const authorId = await ensureAuthor(body.author);
+    const authorId = await ensureAuthor(body.author, primaryLanguage);
     const tags = await ensureTags(body.tags, primaryLanguage);
 
     const status = VALID_STATUSES.has(asString(body.status)) ? asString(body.status) : "draft";
