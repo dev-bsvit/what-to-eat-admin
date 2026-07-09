@@ -99,6 +99,7 @@ export async function PATCH(
     "meta_description",
     "og_image_url",
     "faq_json",
+    "recipe_json",
   ] as const) {
     if (key in body) translationFields[key] = body[key];
   }

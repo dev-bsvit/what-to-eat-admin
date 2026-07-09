@@ -133,6 +133,39 @@ export function renderArticleContent(article: JsonRecord) {
   return { contentJson, contentHtml };
 }
 
+// translations.<lang>.recipe: full recipe data embedded directly in a
+// translation, so a guide/recipe article gets the same recipe-facts card +
+// ingredients/steps blocks + Recipe JSON-LD as one linked via recipe_id —
+// without needing a row in the separate, app-wide `recipes` table. Only
+// used as a fallback when the post has no recipe_id.
+export function normalizeRecipeJson(value: unknown): JsonRecord | null {
+  if (!isRecord(value)) return null;
+
+  const ingredients = Array.isArray(value.ingredients) ? value.ingredients.map(asString).filter(Boolean) : [];
+  const instructions = Array.isArray(value.instructions) ? value.instructions.map(asString).filter(Boolean) : [];
+  if (ingredients.length === 0 && instructions.length === 0) return null;
+
+  const nutrition = isRecord(value.nutrition)
+    ? {
+        calories: asNumber(value.nutrition.calories),
+        protein: asNumber(value.nutrition.protein),
+        fat: asNumber(value.nutrition.fat),
+        carbs: asNumber(value.nutrition.carbs),
+      }
+    : null;
+
+  return {
+    prep_time_min: asNumber(value.prep_time_min),
+    cook_time_min: asNumber(value.cook_time_min),
+    servings: asNumber(value.servings),
+    difficulty: asNullableString(value.difficulty),
+    cuisine: asNullableString(value.cuisine),
+    ingredients,
+    instructions,
+    nutrition,
+  };
+}
+
 // category.translations: { [language_code]: { name, description? } }
 export async function ensureCategory(category: unknown, primaryLanguage: string) {
   if (!isRecord(category)) return null;
@@ -433,6 +466,7 @@ export async function upsertBlogPost(input: UpsertPostInput) {
       meta_description: asNullableString(article.meta_description),
       og_image_url: asNullableString(article.og_image_url),
       faq_json: Array.isArray(article.faq_json) ? article.faq_json : null,
+      recipe_json: normalizeRecipeJson(article.recipe),
       is_machine_translated: Boolean(article.is_machine_translated),
       updated_at: now,
     };
