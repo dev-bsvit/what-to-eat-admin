@@ -12,6 +12,7 @@ import {
   ensureTags,
   isRecord,
   isUuid,
+  normalizeRecipeJson,
   resolveRecipeByTitleOrId,
   resolveRelatedRecipes,
   slugify,
@@ -87,8 +88,15 @@ export async function POST(request: Request) {
     const { recipes: relatedRecipes, warnings: relatedWarnings } = await resolveRelatedRecipes(body.related_recipes);
     warnings.push(...relatedWarnings);
 
-    if ((articleType === "recipe" || body.recipe_required === true) && !recipeId) {
-      return NextResponse.json({ error: "Recipe was required but was not found by recipe_id or recipe_title" }, { status: 400 });
+    // A "recipe" article can be satisfied either by a linked recipe_id or by
+    // a translation carrying its own recipe_json (see normalizeRecipeJson) —
+    // both give the same recipe-facts card + Recipe JSON-LD on the frontend.
+    const hasInlineRecipe = languageCodes.some((code) => normalizeRecipeJson((translationsInput[code] as JsonRecord).recipe) !== null);
+    if ((articleType === "recipe" || body.recipe_required === true) && !recipeId && !hasInlineRecipe) {
+      return NextResponse.json(
+        { error: "Recipe was required but was not found by recipe_id/recipe_title, and no translation had a recipe object" },
+        { status: 400 }
+      );
     }
     if (articleType === "collection" && relatedRecipes.length === 0) {
       return NextResponse.json(
