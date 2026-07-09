@@ -1,23 +1,25 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { slugify } from "@/lib/slug";
 
 // GET /api/admin/blog/authors
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from("blog_authors")
-    .select("id, name, title, bio, avatar_url, profile_url, same_as")
+    .select("id, slug, name, title, bio, avatar_url, profile_url, same_as")
     .order("name", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ authors: data ?? [] });
 }
 
-// POST /api/admin/blog/authors — { name, title?, bio?, avatar_url?, profile_url?, same_as? }
+// POST /api/admin/blog/authors — { name, slug?, title?, bio?, avatar_url?, profile_url?, same_as? }
 export async function POST(request: Request) {
   const body = await request.json();
   const name: string = (body.name || "").trim();
+  const slug = slugify(body.slug || "") || slugify(name);
 
-  if (!name) {
+  if (!name || !slug) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
@@ -25,6 +27,7 @@ export async function POST(request: Request) {
     .from("blog_authors")
     .insert({
       name,
+      slug,
       title: body.title || null,
       bio: body.bio || null,
       avatar_url: body.avatar_url || null,

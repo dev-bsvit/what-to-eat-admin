@@ -16,7 +16,8 @@ export async function GET(request: Request) {
   const categories = (data ?? []).map((c) => {
     const translations = (c.translations ?? []) as Array<{ language_code: string; name: string; description: string | null }>;
     const translation = translations.find((t) => t.language_code === languageCode) ?? translations[0] ?? null;
-    return { id: c.id, slug: c.slug, icon: c.icon, name: translation?.name ?? c.slug };
+    const translationsByLanguage = Object.fromEntries(translations.map((t) => [t.language_code, { name: t.name, description: t.description }]));
+    return { id: c.id, slug: c.slug, icon: c.icon, name: translation?.name ?? c.slug, translations: translationsByLanguage };
   });
 
   return NextResponse.json({ categories });

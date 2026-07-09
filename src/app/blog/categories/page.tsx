@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Save, X } from "lucide-react";
 import styles from "../blog.module.css";
 
 const languages = [
@@ -29,6 +29,7 @@ interface Category {
   id: string;
   slug: string;
   name: string;
+  translations: Record<string, { name: string; description: string | null }>;
 }
 
 export default function BlogCategoriesPage() {
@@ -39,6 +40,12 @@ export default function BlogCategoriesPage() {
   const [names, setNames] = useState<Record<string, string>>({ ru: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editSlug, setEditSlug] = useState("");
+  const [editNames, setEditNames] = useState<Record<string, string>>({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -92,6 +99,44 @@ export default function BlogCategoriesPage() {
     }
   };
 
+  const startEdit = (category: Category) => {
+    setEditingId(category.id);
+    setEditSlug(category.slug);
+    setEditError(null);
+    setEditNames(Object.fromEntries(languages.map((l) => [l.code, category.translations[l.code]?.name ?? ""])));
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditError(null);
+  };
+
+  const saveEdit = async (id: string) => {
+    setEditError(null);
+    const translations = Object.fromEntries(
+      Object.entries(editNames)
+        .filter(([, name]) => name.trim())
+        .map(([code, name]) => [code, { name: name.trim() }])
+    );
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/admin/blog/categories/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: editSlug, translations }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEditError(data.error || "Не удалось сохранить категорию");
+        return;
+      }
+      setEditingId(null);
+      await load();
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 720 }}>
       <Link href="/blog" className="breadcrumb-item" style={{ marginBottom: 16 }}>
@@ -101,7 +146,10 @@ export default function BlogCategoriesPage() {
 
       <div className="section-header">
         <h1 className="section-title">Категории блога</h1>
-        <p className="section-subtitle">Категории используются для навигации по темам на публичном блоге.</p>
+        <p className="section-subtitle">
+          Категории используются для навигации по темам на публичном блоге. Один slug на все языки — при переименовании старый адрес
+          автоматически редиректится на новый.
+        </p>
       </div>
 
       <div className={styles.tableWrap} style={{ marginBottom: 32 }}>
@@ -110,33 +158,87 @@ export default function BlogCategoriesPage() {
             <tr>
               <th>Название</th>
               <th>Slug</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={2} className={styles.emptyCell}>
+                <td colSpan={3} className={styles.emptyCell}>
                   Загрузка…
                 </td>
               </tr>
             )}
             {!loading && categories.length === 0 && (
               <tr>
-                <td colSpan={2} className={styles.emptyCell}>
+                <td colSpan={3} className={styles.emptyCell}>
                   Категорий пока нет — создайте первую ниже.
                 </td>
               </tr>
             )}
             {!loading &&
+              editingId === null &&
               categories.map((c) => (
                 <tr key={c.id}>
                   <td style={{ fontWeight: 600 }}>{c.name}</td>
                   <td style={{ color: "var(--text-secondary)", fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{c.slug}</td>
+                  <td>
+                    <button type="button" className="btn btn-secondary" onClick={() => startEdit(c)}>
+                      Редактировать
+                    </button>
+                  </td>
                 </tr>
               ))}
           </tbody>
         </table>
       </div>
+
+      {editingId !== null && (
+        <div className="app-card" style={{ cursor: "default", marginBottom: 32 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700 }}>Редактирование категории</h2>
+            <button type="button" className="icon-button" onClick={cancelEdit} aria-label="Отмена">
+              <X size={18} />
+            </button>
+          </div>
+
+          {editError && <div className="form-error">{editError}</div>}
+
+          <div className="form-group">
+            <label className="form-label">Slug (URL, общий для всех языков)</label>
+            <input
+              className="input"
+              style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}
+              value={editSlug}
+              onChange={(e) => setEditSlug(e.target.value)}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {languages.map((l) => (
+              <div className="form-group" key={l.code} style={{ marginBottom: 0 }}>
+                <label className="form-label">{l.label}</label>
+                <input
+                  className="input"
+                  value={editNames[l.code] ?? ""}
+                  onChange={(e) => setEditNames({ ...editNames, [l.code]: e.target.value })}
+                />
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={editSaving}
+            style={{ marginTop: 20 }}
+            onClick={() => saveEdit(editingId)}
+          >
+            <Save size={18} />
+            {editSaving ? "Сохраняем…" : "Сохранить"}
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="app-card" style={{ cursor: "default" }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Новая категория</h2>
