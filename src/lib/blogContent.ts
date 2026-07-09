@@ -465,17 +465,23 @@ export async function upsertBlogPost(input: UpsertPostInput) {
     if (relatedError) throw new Error(relatedError.message);
   }
 
-  const paths = new Set<string>(["/"]);
-  const ruSlug = perLanguage[DEFAULT_LANGUAGE]?.slug;
-  if (ruSlug) paths.add(`/${ruSlug}`);
-  if (input.categorySlug) paths.add(`/category/${input.categorySlug}`);
-  for (const tag of input.tags) paths.add(`/tag/${tag.slug}`);
+  // Every page is locale-prefixed (/ru/..., /en/..., ...) — revalidate each
+  // language this post actually has a translation for, not just ru.
+  const paths = new Set<string>();
+  for (const languageCode of languageCodes) {
+    const slug = perLanguage[languageCode]?.slug;
+    paths.add(`/${languageCode}`);
+    if (slug) paths.add(`/${languageCode}/${slug}`);
+    if (input.categorySlug) paths.add(`/${languageCode}/category/${input.categorySlug}`);
+    for (const tag of input.tags) paths.add(`/${languageCode}/tag/${tag.slug}`);
+  }
   await revalidateBlogPaths(Array.from(paths));
 
+  const ruSlug = perLanguage[DEFAULT_LANGUAGE]?.slug;
   return {
     id: postId,
     languages: languageCodes,
-    publicUrl: input.status === "published" && ruSlug ? `https://dishday.online/blog/${ruSlug}` : null,
+    publicUrl: input.status === "published" && ruSlug ? `https://dishday.online/blog/${DEFAULT_LANGUAGE}/${ruSlug}` : null,
   };
 }
 

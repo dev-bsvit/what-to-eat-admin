@@ -9,19 +9,26 @@ interface RevalidatePostShape {
   tags?: Array<{ tag: { slug: string }[] | { slug: string } | null }> | null;
 }
 
-function pathsForPost(post: RevalidatePostShape | null | undefined, languageCode = "ru") {
-  const paths = new Set<string>(["/"]);
-  const slug = post?.translations?.find((t) => t.language_code === languageCode)?.slug ?? post?.translations?.[0]?.slug;
-  if (slug) paths.add(`/${slug}`);
+// Every page is locale-prefixed (/ru/..., /en/...) — category_id/tags apply
+// to the whole post regardless of which language was just edited, so this
+// revalidates every language the post actually has a translation for, not
+// just the one that was saved.
+function pathsForPost(post: RevalidatePostShape | null | undefined) {
+  const paths = new Set<string>();
 
   const rawCategory = post?.category;
   const categorySlug = Array.isArray(rawCategory) ? rawCategory[0]?.slug : rawCategory?.slug;
-  if (categorySlug) paths.add(`/category/${categorySlug}`);
 
-  for (const item of post?.tags ?? []) {
-    const rawTag = item.tag;
-    const tagSlug = Array.isArray(rawTag) ? rawTag[0]?.slug : rawTag?.slug;
-    if (tagSlug) paths.add(`/tag/${tagSlug}`);
+  const tagSlugs = (post?.tags ?? [])
+    .map((item) => (Array.isArray(item.tag) ? item.tag[0]?.slug : item.tag?.slug))
+    .filter((slug): slug is string => Boolean(slug));
+
+  for (const translation of post?.translations ?? []) {
+    const lang = translation.language_code;
+    paths.add(`/${lang}`);
+    if (translation.slug) paths.add(`/${lang}/${translation.slug}`);
+    if (categorySlug) paths.add(`/${lang}/category/${categorySlug}`);
+    for (const tagSlug of tagSlugs) paths.add(`/${lang}/tag/${tagSlug}`);
   }
 
   return Array.from(paths);
@@ -136,7 +143,7 @@ export async function PATCH(
     .eq("id", id)
     .single();
 
-  await revalidateBlogPaths(pathsForPost(fresh as RevalidatePostShape | null, languageCode));
+  await revalidateBlogPaths(pathsForPost(fresh as RevalidatePostShape | null));
 
   return NextResponse.json({ ok: true });
 }
