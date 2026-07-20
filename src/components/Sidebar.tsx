@@ -19,6 +19,7 @@ const sections = [
     items: [
       { name: "Подписки", href: "/subscription-rules", icon: "$" },
       { name: "Уведомления", href: "/notifications", icon: "•" },
+      { name: "AI Social Monitor", href: "/social-monitor", icon: "◎" },
       { name: "Парсеры", href: "/parsers", icon: "⌁" },
       { name: "Instagram импорт", href: "/instagram-import", icon: "+" },
     ],

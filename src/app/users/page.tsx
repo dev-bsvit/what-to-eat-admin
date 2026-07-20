@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { extractProfileLanguage, formatProfileLanguage } from "@/lib/profileLanguage";
 import styles from "./users.module.css";
 
 type JsonRecord = Record<string, any>;
@@ -15,6 +16,58 @@ type ProfileRow = {
   subscription_expires_at?: string | null;
   cuisines_count?: number;
   favorites_count?: number;
+  recipes_count?: number;
+  imports_count?: number;
+  imported_recipes_count?: number;
+  shopping_lists_count?: number;
+  shopping_items_count?: number;
+  shopping_items_checked_count?: number;
+  pantry_items_count?: number;
+  meal_plans_count?: number;
+  cooked_count?: number;
+  language_code?: string | null;
+  language_label?: string | null;
+  language_source?: string | null;
+  language_raw?: string | null;
+  language_status?: "confirmed" | "legacy_default" | "missing";
+  language_note?: string | null;
+};
+
+type ProfilesStats = {
+  total: number;
+  scanned: number;
+  created_24h: number;
+  created_7d: number;
+  created_30d: number;
+  updated_24h: number;
+  with_activity: number;
+  with_onboarding: number;
+  free_users: number;
+  paid_users: number;
+  usage_totals?: {
+    imports: number;
+    imported_recipes: number;
+    shopping_lists: number;
+    shopping_items: number;
+    shopping_items_checked: number;
+    pantry_items: number;
+    meal_plans: number;
+    cooked_recipes: number;
+  };
+  usage_24h?: {
+    imports: number;
+    imported_recipes: number;
+    shopping_lists: number;
+    shopping_items: number;
+    pantry_items: number;
+    meal_plans: number;
+    cooked_recipes: number;
+  };
+  language_counts: Array<{
+    code: string | null;
+    label: string;
+    count: number;
+  }>;
 };
 
 const PAGE_SIZE = 50;
@@ -45,15 +98,26 @@ const formatShortDate = (value?: string | null) => {
 
 const shortId = (value?: string | null) => (value ? `${value.slice(0, 8)}...` : "-");
 
-const extractSettings = (settings?: JsonRecord | null) => {
+const extractSettings = (profile: ProfileRow) => {
+  const settings = profile.settings;
+  const fallbackLanguage = extractProfileLanguage(profile as unknown as JsonRecord);
+  const languageCode = profile.language_code ?? fallbackLanguage.code;
+  const languageLabel = profile.language_label ?? fallbackLanguage.label;
+  const languageStatus = profile.language_status ?? fallbackLanguage.status;
+  const languageSource = languageCode ? profile.language_source ?? fallbackLanguage.source : null;
+  const languageNote = profile.language_note ?? fallbackLanguage.note;
+  const languageMeta =
+    languageStatus === "legacy_default"
+      ? "default ru, не подтверждён"
+      : languageSource;
   const theme = settings?.theme || "-";
-  const language = settings?.language || settings?.locale || "-";
+  const language = formatProfileLanguage({ code: languageCode, label: languageLabel, status: languageStatus });
   const measurement = settings?.measurementUnit || settings?.measurement_unit || "-";
   const diets = Array.isArray(settings?.preferences?.diets) ? settings.preferences.diets.length : 0;
   const allergies = Array.isArray(settings?.preferences?.allergies)
     ? settings.preferences.allergies.length
     : 0;
-  return { theme, language, measurement, diets, allergies };
+  return { theme, language, languageSource, languageMeta, languageNote, measurement, diets, allergies };
 };
 
 const extractOnboarding = (settings?: JsonRecord | null) => {
@@ -102,6 +166,7 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [stats, setStats] = useState<ProfilesStats | null>(null);
   const [status, setStatus] = useState("");
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [userCuisines, setUserCuisines] = useState<any[]>([]);
@@ -127,6 +192,7 @@ export default function UsersPage() {
       if (!response.ok) {
         setStatus(`Ошибка: ${result.error || "не удалось загрузить"}`);
         setProfiles([]);
+        setStats(null);
         return;
       }
       const data = result.data || [];
@@ -135,8 +201,10 @@ export default function UsersPage() {
       if (typeof result.count === "number") {
         setTotalCount(result.count);
       }
+      setStats(result.stats || null);
     } catch {
       setStatus("Ошибка: не удалось подключиться");
+      setStats(null);
     } finally {
       setLoading(false);
     }
@@ -146,15 +214,25 @@ export default function UsersPage() {
     void loadProfiles(1, true);
   }, [loadProfiles]);
 
-  const summary = useMemo(() => {
+  const localSummary = useMemo(() => {
     const withOnboarding = profiles.filter((profile) => extractOnboarding(profile.settings).completed).length;
     const freeUsers = profiles.filter((profile) => getSubscriptionLabel(profile) === "Free").length;
     const withActivity = profiles.filter(
-      (profile) => (profile.cuisines_count || 0) > 0 || (profile.favorites_count || 0) > 0
+      (profile) =>
+        (profile.cuisines_count || 0) > 0 ||
+        (profile.favorites_count || 0) > 0 ||
+        (profile.recipes_count || 0) > 0 ||
+        (profile.imports_count || 0) > 0 ||
+        (profile.shopping_items_count || 0) > 0 ||
+        (profile.pantry_items_count || 0) > 0 ||
+        (profile.meal_plans_count || 0) > 0 ||
+        (profile.cooked_count || 0) > 0
     ).length;
 
     return { withOnboarding, freeUsers, withActivity };
   }, [profiles]);
+
+  const languageStats = stats?.language_counts?.filter((item) => item.count > 0) || [];
 
   const canLoadMore =
     totalCount !== null ? profiles.length < totalCount : profiles.length % PAGE_SIZE === 0;
@@ -238,6 +316,7 @@ export default function UsersPage() {
       }
       setProfiles((prev) => prev.filter((profile) => profile.id !== userId));
       setTotalCount((prev) => (prev !== null ? prev - 1 : null));
+      setStats((prev) => (prev ? { ...prev, total: Math.max(0, prev.total - 1) } : prev));
       if (expandedUserId === userId) setExpandedUserId(null);
     } catch {
       alert("Ошибка: не удалось подключиться");
@@ -272,32 +351,107 @@ export default function UsersPage() {
 
       <section className={styles.metricsGrid} aria-label="Сводка по пользователям">
         <div className={styles.metricCard}>
-          <span className={styles.metricValue}>{profiles.length}</span>
+          <span className={styles.metricValue}>{stats?.total ?? totalCount ?? profiles.length}</span>
           <span className={styles.metricLabel}>
-            {totalCount !== null ? `из ${totalCount} загружено` : "загружено"}
+            {profiles.length > 0 ? `${profiles.length} загружено` : "всего профилей"}
           </span>
         </div>
         <div className={styles.metricCard}>
-          <span className={styles.metricValue}>{summary.withActivity}</span>
+          <span className={styles.metricValue}>{stats?.created_24h ?? 0}</span>
+          <span className={styles.metricLabel}>новых за 24ч</span>
+        </div>
+        <div className={styles.metricCard}>
+          <span className={styles.metricValue}>{stats?.created_7d ?? 0}</span>
+          <span className={styles.metricLabel}>новых за 7 дней</span>
+        </div>
+        <div className={styles.metricCard}>
+          <span className={styles.metricValue}>{stats?.with_activity ?? localSummary.withActivity}</span>
           <span className={styles.metricLabel}>с активностью</span>
         </div>
         <div className={styles.metricCard}>
-          <span className={styles.metricValue}>{summary.withOnboarding}</span>
+          <span className={styles.metricValue}>{stats?.with_onboarding ?? localSummary.withOnboarding}</span>
           <span className={styles.metricLabel}>с анкетой</span>
         </div>
         <div className={styles.metricCard}>
-          <span className={styles.metricValue}>{summary.freeUsers}</span>
-          <span className={styles.metricLabel}>free в выборке</span>
+          <span className={styles.metricValue}>{stats?.paid_users ?? 0}</span>
+          <span className={styles.metricLabel}>
+            paid / free {stats ? stats.free_users : localSummary.freeUsers}
+          </span>
         </div>
       </section>
 
+      {(stats || languageStats.length > 0) && (
+        <section className={styles.statsPanel} aria-label="Дополнительная статистика">
+          <div>
+            <h2>Статистика</h2>
+            <p>
+              {stats
+                ? `Обновлялись за 24ч: ${stats.updated_24h}. Новых за 30 дней: ${stats.created_30d}.`
+                : "Сводка будет доступна после загрузки данных."}
+            </p>
+          </div>
+          {(stats?.usage_totals || languageStats.length > 0) && (
+            <div className={styles.languageStats}>
+              {stats?.usage_totals && (
+                <>
+                  <span className={styles.languageBadge}>
+                    <strong>{stats.usage_totals.imports}</strong>
+                    <span>импортов</span>
+                    <em>24ч {stats.usage_24h?.imports ?? 0}</em>
+                  </span>
+                  <span className={styles.languageBadge}>
+                    <strong>{stats.usage_totals.imported_recipes}</strong>
+                    <span>имп. рецептов</span>
+                    <em>24ч {stats.usage_24h?.imported_recipes ?? 0}</em>
+                  </span>
+                  <span className={styles.languageBadge}>
+                    <strong>{stats.usage_totals.shopping_lists}</strong>
+                    <span>списков</span>
+                    <em>24ч {stats.usage_24h?.shopping_lists ?? 0}</em>
+                  </span>
+                  <span className={styles.languageBadge}>
+                    <strong>{stats.usage_totals.shopping_items}</strong>
+                    <span>позиций</span>
+                    <em>24ч {stats.usage_24h?.shopping_items ?? 0}</em>
+                  </span>
+                  <span className={styles.languageBadge}>
+                    <strong>{stats.usage_totals.pantry_items}</strong>
+                    <span>кладовая</span>
+                    <em>24ч {stats.usage_24h?.pantry_items ?? 0}</em>
+                  </span>
+                  <span className={styles.languageBadge}>
+                    <strong>{stats.usage_totals.meal_plans}</strong>
+                    <span>планы</span>
+                    <em>24ч {stats.usage_24h?.meal_plans ?? 0}</em>
+                  </span>
+                  <span className={styles.languageBadge}>
+                    <strong>{stats.usage_totals.cooked_recipes}</strong>
+                    <span>готовил</span>
+                    <em>24ч {stats.usage_24h?.cooked_recipes ?? 0}</em>
+                  </span>
+                </>
+              )}
+              {languageStats.map((item) => (
+                <span key={item.code || "unknown"} className={styles.languageBadge}>
+                  <strong>{item.label}</strong>
+                  <span>{item.code || "n/a"}</span>
+                  <em>{item.count}</em>
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       <form className={styles.toolbar} onSubmit={handleSearch}>
         <input
-          type="text"
+          type="search"
           className={styles.searchInput}
           placeholder="Поиск по имени или ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
         />
         <button type="submit" className={styles.secondaryButton} disabled={loading}>
           {loading ? "Загрузка..." : "Обновить"}
@@ -327,14 +481,14 @@ export default function UsersPage() {
                 </thead>
                 <tbody>
                   {profiles.map((profile) => {
-                    const settings = extractSettings(profile.settings);
+                    const settings = extractSettings(profile);
                     const onboarding = extractOnboarding(profile.settings);
                     const isExpanded = expandedUserId === profile.id;
 
                     return (
                       <Fragment key={profile.id}>
                         <tr className={isExpanded ? styles.rowActive : ""}>
-                          <td>
+                          <td data-label="Пользователь">
                             <button
                               type="button"
                               className={styles.userButton}
@@ -346,11 +500,11 @@ export default function UsersPage() {
                               </span>
                               <span>
                                 <strong>{profile.name || "Без имени"}</strong>
-                                <code>{profile.id}</code>
+                                <code title={profile.id}>{profile.id}</code>
                               </span>
                             </button>
                           </td>
-                          <td>
+                          <td data-label="Подписка">
                             <span
                               className={
                                 getSubscriptionLabel(profile) === "Free"
@@ -366,16 +520,23 @@ export default function UsersPage() {
                               </div>
                             )}
                           </td>
-                          <td>
+                          <td data-label="Активность">
                             <div className={styles.activityGroup}>
                               <span className={styles.outlineBadge}>C {profile.cuisines_count || 0}</span>
                               <span className={styles.outlineBadge}>F {profile.favorites_count || 0}</span>
+                              <span className={styles.outlineBadge}>R {profile.recipes_count || 0}</span>
+                              <span className={styles.outlineBadge}>Imp {profile.imports_count || 0}</span>
+                              <span className={styles.outlineBadge}>Shop {profile.shopping_items_count || 0}</span>
+                              <span className={styles.outlineBadge}>Pantry {profile.pantry_items_count || 0}</span>
                             </div>
                             <div className={styles.microText}>
-                              анкета: {onboarding.completed ? "да" : "нет"}
+                              анкета: {onboarding.completed ? "да" : "нет"} / списки{" "}
+                              {profile.shopping_lists_count || 0} / куплено{" "}
+                              {profile.shopping_items_checked_count || 0} / планы{" "}
+                              {profile.meal_plans_count || 0} / готовил {profile.cooked_count || 0}
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Настройки">
                             <div className={styles.settingsLine}>
                               <span>{settings.language}</span>
                               <span>{settings.theme}</span>
@@ -383,10 +544,13 @@ export default function UsersPage() {
                             </div>
                             <div className={styles.microText}>
                               diets {settings.diets} / allergies {settings.allergies}
+                              {settings.languageMeta ? ` / ${settings.languageMeta}` : ""}
                             </div>
                           </td>
-                          <td className={styles.mutedCell}>{formatDate(profile.updated_at || profile.created_at)}</td>
-                          <td className={styles.actionCell}>
+                          <td data-label="Обновлен" className={styles.mutedCell}>
+                            {formatDate(profile.updated_at || profile.created_at)}
+                          </td>
+                          <td data-label="Действия" className={styles.actionCell}>
                             <button
                               type="button"
                               className={styles.deleteButton}
@@ -394,13 +558,13 @@ export default function UsersPage() {
                               disabled={deletingUserId === profile.id}
                               title="Удалить аккаунт"
                             >
-                              {deletingUserId === profile.id ? "..." : "Delete"}
+                              {deletingUserId === profile.id ? "..." : "Удалить"}
                             </button>
                           </td>
                         </tr>
 
                         {isExpanded && (
-                          <tr>
+                          <tr className={styles.detailRow}>
                             <td colSpan={6} className={styles.detailCell}>
                               {loadingDetails ? (
                                 <div className={styles.emptyState}>Загрузка данных пользователя...</div>
@@ -423,7 +587,15 @@ export default function UsersPage() {
                                       </div>
                                       <div>
                                         <dt>Язык</dt>
-                                        <dd>{settings.language}</dd>
+                                        <dd>
+                                          {settings.language}
+                                          {settings.languageSource && (
+                                            <small className={styles.inlineMeta}>из {settings.languageSource}</small>
+                                          )}
+                                          {settings.languageNote && (
+                                            <small className={styles.inlineMeta}>{settings.languageNote}</small>
+                                          )}
+                                        </dd>
                                       </div>
                                       <div>
                                         <dt>Тема</dt>
@@ -487,6 +659,48 @@ export default function UsersPage() {
                                         </button>
                                       ))}
                                     </EntityList>
+                                  </section>
+
+                                  <section className={styles.detailPanel}>
+                                    <PanelHeader
+                                      title="Использование"
+                                      count={`${profile.imports_count || 0} импортов`}
+                                    />
+                                    <dl className={styles.definitionList}>
+                                      <div>
+                                        <dt>Импортов</dt>
+                                        <dd>{profile.imports_count || 0}</dd>
+                                      </div>
+                                      <div>
+                                        <dt>Импорт. рецептов</dt>
+                                        <dd>{profile.imported_recipes_count || 0}</dd>
+                                      </div>
+                                      <div>
+                                        <dt>Списки покупок</dt>
+                                        <dd>{profile.shopping_lists_count || 0}</dd>
+                                      </div>
+                                      <div>
+                                        <dt>Позиций</dt>
+                                        <dd>
+                                          {profile.shopping_items_count || 0}
+                                          <small className={styles.inlineMeta}>
+                                            куплено {profile.shopping_items_checked_count || 0}
+                                          </small>
+                                        </dd>
+                                      </div>
+                                      <div>
+                                        <dt>Кладовая</dt>
+                                        <dd>{profile.pantry_items_count || 0}</dd>
+                                      </div>
+                                      <div>
+                                        <dt>Планы</dt>
+                                        <dd>{profile.meal_plans_count || 0}</dd>
+                                      </div>
+                                      <div>
+                                        <dt>Готовил</dt>
+                                        <dd>{profile.cooked_count || 0}</dd>
+                                      </div>
+                                    </dl>
                                   </section>
 
                                   <section className={`${styles.detailPanel} ${styles.onboardingPanel}`}>

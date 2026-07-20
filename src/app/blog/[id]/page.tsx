@@ -6,6 +6,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { JSONContent } from "@tiptap/react";
 import { ArrowLeft, ImageUp, Plus, X } from "lucide-react";
+import MagnificStockPicker from "@/components/MagnificStockPicker";
 import styles from "../blog.module.css";
 
 const BlogEditor = dynamic(() => import("@/components/BlogEditor"), { ssr: false });
@@ -32,6 +33,7 @@ interface PostDetail {
   author_id: string | null;
   recipe_id: string | null;
   cover_image_url: string | null;
+  cover_image_alt: string | null;
   translations: Translation[];
   tags?: { tag_id: string }[];
 }
@@ -178,6 +180,7 @@ export default function BlogPostEditorPage() {
     overrides?: Partial<{
       status: string;
       cover_image_url: string | null;
+      cover_image_alt: string | null;
       category_id: string | null;
       author_id: string | null;
       recipe_id: string | null;
@@ -311,11 +314,15 @@ export default function BlogPostEditorPage() {
         {post.cover_image_url ? (
           <div className={styles.coverPreview}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={post.cover_image_url} alt="Обложка статьи" className={styles.coverPreviewImg} />
+            <img
+              src={post.cover_image_url}
+              alt={post.cover_image_alt || draft.title || "Обложка статьи"}
+              className={styles.coverPreviewImg}
+            />
             <button
               type="button"
               className="icon-button"
-              onClick={() => save({ cover_image_url: null })}
+              onClick={() => save({ cover_image_url: null, cover_image_alt: null })}
               aria-label="Удалить обложку"
               style={{ position: "absolute", top: 8, right: 8 }}
             >
@@ -338,6 +345,15 @@ export default function BlogPostEditorPage() {
             />
           </label>
         )}
+        <MagnificStockPicker
+          initialQuery={draft.title}
+          slugHint={params.id || draft.slug || "post"}
+          language={activeLanguage}
+          disabled={saving || uploadingCover}
+          onSelect={async (image) => {
+            await save({ cover_image_url: image.url, cover_image_alt: image.alt });
+          }}
+        />
       </div>
 
       <div className={styles.metaGrid} style={{ marginBottom: 0 }}>

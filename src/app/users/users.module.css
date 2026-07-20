@@ -42,7 +42,7 @@
   color: var(--color-deep-black);
   font-size: 48px;
   font-weight: 600;
-  letter-spacing: -2.4px;
+  letter-spacing: 0;
   line-height: 1;
   margin: 0;
 }
@@ -50,7 +50,7 @@
 .subtitle {
   color: var(--color-rich-black);
   font-size: 18px;
-  letter-spacing: -0.45px;
+  letter-spacing: 0;
   line-height: 1.33;
   margin: 16px 0 0;
   max-width: 720px;
@@ -70,13 +70,14 @@
 .metricsGrid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 24px;
 }
 
 .metricCard,
 .card,
 .detailPanel,
+.statsPanel,
 .modal {
   background: var(--color-canvas-white);
   border-radius: 14px;
@@ -94,7 +95,8 @@
   color: var(--color-deep-black);
   font-size: 32px;
   font-weight: 600;
-  letter-spacing: -1.2px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
   line-height: 1;
 }
 
@@ -120,9 +122,9 @@
   color: var(--color-rich-black);
   flex: 1;
   font: inherit;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.43;
-  min-height: 38px;
+  min-height: 44px;
   min-width: 240px;
   outline: none;
   padding: 7px 10px;
@@ -152,7 +154,9 @@
   font-size: 14px;
   font-weight: 500;
   line-height: 1.43;
+  min-height: 44px;
   padding: 8px 16px;
+  touch-action: manipulation;
 }
 
 .secondaryButton:disabled {
@@ -187,6 +191,78 @@
 
 .card {
   overflow: hidden;
+}
+
+.statsPanel {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 16px;
+}
+
+.statsPanel h2 {
+  color: var(--color-deep-black);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.43;
+  margin: 0 0 4px;
+}
+
+.statsPanel p {
+  color: var(--color-midtone-gray);
+  font-size: 13px;
+  line-height: 1.38;
+  margin: 0;
+}
+
+.languageStats {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.languageBadge {
+  align-items: center;
+  background: var(--color-ghost-gray);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 9999px;
+  color: var(--color-rich-black);
+  display: inline-flex;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.languageBadge strong,
+.languageBadge span,
+.languageBadge em {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.languageBadge strong {
+  font-weight: 600;
+}
+
+.languageBadge span {
+  color: var(--color-midtone-gray);
+  font-family: var(--font-geist-mono);
+}
+
+.languageBadge em {
+  background: var(--color-canvas-white);
+  border-radius: 9999px;
+  color: var(--color-deep-black);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  min-width: 22px;
+  padding: 0 6px;
+  text-align: center;
 }
 
 .tableWrap {
@@ -231,8 +307,10 @@
   display: flex;
   font: inherit;
   gap: 8px;
-  padding: 0;
+  min-height: 44px;
+  padding: 2px 0;
   text-align: left;
+  touch-action: manipulation;
   width: 100%;
 }
 
@@ -276,6 +354,15 @@
   margin-top: 4px;
 }
 
+.inlineMeta {
+  color: var(--color-midtone-gray);
+  display: block;
+  font-family: var(--font-geist-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
 .settingsLine span {
   background: var(--color-ghost-gray);
   border-radius: 26px;
@@ -299,7 +386,9 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
-  padding: 5px 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  touch-action: manipulation;
 }
 
 .deleteButton:disabled {
@@ -535,7 +624,7 @@
   color: var(--color-deep-black);
   font-size: 32px;
   font-weight: 600;
-  letter-spacing: -1.2px;
+  letter-spacing: 0;
   line-height: 1.1;
   margin: 0;
 }
@@ -628,7 +717,7 @@
 
 @media (max-width: 1120px) {
   .metricsGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .detailsGrid {
@@ -645,16 +734,21 @@
 }
 
 @media (max-width: 760px) {
+  .page {
+    max-width: none;
+  }
+
   .heroTop,
   .toolbar,
+  .statsPanel,
   .recipeHeader {
     align-items: stretch;
     flex-direction: column;
   }
 
   .title {
-    font-size: 40px;
-    letter-spacing: -2px;
+    font-size: 36px;
+    letter-spacing: 0;
   }
 
   .subtitle {
@@ -662,10 +756,17 @@
     letter-spacing: 0;
   }
 
-  .metricsGrid,
+  .metricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .detailsGrid,
   .definitionGrid {
     grid-template-columns: 1fr;
+  }
+
+  .languageStats {
+    justify-content: flex-start;
   }
 
   .onboardingPanel {
@@ -677,7 +778,95 @@
     width: 100%;
   }
 
+  .tableWrap {
+    overflow: visible;
+  }
+
+  .table {
+    display: block;
+    min-width: 0;
+  }
+
+  .table thead {
+    display: none;
+  }
+
+  .table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .table tr {
+    background: var(--color-canvas-white);
+    border: 1px solid var(--color-subtle-ash);
+    border-radius: 12px;
+    display: block;
+    overflow: hidden;
+  }
+
+  .table td {
+    align-items: start;
+    border-bottom: 0;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
+    padding: 10px 12px;
+  }
+
+  .table td + td {
+    border-top: 1px solid var(--color-subtle-ash);
+  }
+
+  .table td::before {
+    color: var(--color-midtone-gray);
+    content: attr(data-label);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.5;
+    text-transform: uppercase;
+  }
+
+  .detailRow {
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+
+  .table .detailCell {
+    display: block;
+    padding: 4px 0 0 !important;
+  }
+
+  .table .detailCell::before {
+    display: none;
+  }
+
+  .actionCell {
+    text-align: left;
+  }
+
+  .deleteButton {
+    width: 100%;
+  }
+
   .recipeBody {
     padding: 18px;
+  }
+
+  .modalOverlay {
+    align-items: flex-start;
+    padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+
+  .modal {
+    max-height: calc(100dvh - 24px);
+  }
+}
+
+@media (max-width: 460px) {
+  .metricsGrid {
+    grid-template-columns: 1fr;
   }
 }
