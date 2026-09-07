@@ -98,6 +98,25 @@ const formatShortDate = (value?: string | null) => {
 
 const shortId = (value?: string | null) => (value ? `${value.slice(0, 8)}...` : "-");
 
+const formatCount = (value?: number | null) => String(value || 0);
+
+const formatTheme = (value?: string | null) => {
+  if (!value || value === "-") return "Не выбрано";
+  const normalized = value.toLowerCase();
+  if (normalized === "system") return "Как в системе";
+  if (normalized === "light") return "Светлая";
+  if (normalized === "dark") return "Темная";
+  return value;
+};
+
+const formatMeasurement = (value?: string | null) => {
+  if (!value || value === "-") return "Не выбрано";
+  const normalized = value.toLowerCase();
+  if (normalized === "metric") return "Метрическая";
+  if (normalized === "imperial") return "Американская";
+  return value;
+};
+
 const extractSettings = (profile: ProfileRow) => {
   const settings = profile.settings;
   const fallbackLanguage = extractProfileLanguage(profile as unknown as JsonRecord);
@@ -108,17 +127,34 @@ const extractSettings = (profile: ProfileRow) => {
   const languageNote = profile.language_note ?? fallbackLanguage.note;
   const languageMeta =
     languageStatus === "legacy_default"
-      ? "default ru, не подтверждён"
+      ? "Русский по умолчанию, не подтвержден"
       : languageSource;
-  const theme = settings?.theme || "-";
+  const theme = formatTheme(settings?.theme);
   const language = formatProfileLanguage({ code: languageCode, label: languageLabel, status: languageStatus });
-  const measurement = settings?.measurementUnit || settings?.measurement_unit || "-";
+  const measurement = formatMeasurement(settings?.measurementUnit || settings?.measurement_unit);
   const diets = Array.isArray(settings?.preferences?.diets) ? settings.preferences.diets.length : 0;
   const allergies = Array.isArray(settings?.preferences?.allergies)
     ? settings.preferences.allergies.length
     : 0;
   return { theme, language, languageSource, languageMeta, languageNote, measurement, diets, allergies };
 };
+
+const getActivityItems = (profile: ProfileRow) => [
+  { label: "Каталоги", value: profile.cuisines_count },
+  { label: "Избранное", value: profile.favorites_count },
+  { label: "Рецепты", value: profile.recipes_count },
+  { label: "Импорты", value: profile.imports_count },
+  { label: "Покупки", value: profile.shopping_items_count },
+  { label: "Кладовая", value: profile.pantry_items_count },
+];
+
+const getActivitySummaryItems = (profile: ProfileRow, onboardingCompleted: boolean) => [
+  { label: "Анкета", value: onboardingCompleted ? "заполнена" : "не заполнена" },
+  { label: "Списки покупок", value: formatCount(profile.shopping_lists_count) },
+  { label: "Куплено", value: formatCount(profile.shopping_items_checked_count) },
+  { label: "Планы питания", value: formatCount(profile.meal_plans_count) },
+  { label: "Приготовлено", value: formatCount(profile.cooked_count) },
+];
 
 const extractOnboarding = (settings?: JsonRecord | null) => {
   const onboarding = settings?.onboarding || {};
@@ -154,10 +190,10 @@ const extractOnboarding = (settings?: JsonRecord | null) => {
 
 const getSubscriptionLabel = (profile: ProfileRow) => {
   const status = profile.subscription_status || "free";
-  if (status === "lifetime") return "Lifetime";
-  if (status === "monthly") return "Monthly";
-  if (status === "yearly") return "Yearly";
-  return "Free";
+  if (status === "lifetime") return "Навсегда";
+  if (status === "monthly") return "Месячная";
+  if (status === "yearly") return "Годовая";
+  return "Бесплатно";
 };
 
 export default function UsersPage() {
@@ -216,7 +252,7 @@ export default function UsersPage() {
 
   const localSummary = useMemo(() => {
     const withOnboarding = profiles.filter((profile) => extractOnboarding(profile.settings).completed).length;
-    const freeUsers = profiles.filter((profile) => getSubscriptionLabel(profile) === "Free").length;
+    const freeUsers = profiles.filter((profile) => getSubscriptionLabel(profile) === "Бесплатно").length;
     const withActivity = profiles.filter(
       (profile) =>
         (profile.cuisines_count || 0) > 0 ||
@@ -375,7 +411,7 @@ export default function UsersPage() {
         <div className={styles.metricCard}>
           <span className={styles.metricValue}>{stats?.paid_users ?? 0}</span>
           <span className={styles.metricLabel}>
-            paid / free {stats ? stats.free_users : localSummary.freeUsers}
+            платных / бесплатных {stats ? stats.free_users : localSummary.freeUsers}
           </span>
         </div>
       </section>
@@ -507,7 +543,7 @@ export default function UsersPage() {
                           <td data-label="Подписка">
                             <span
                               className={
-                                getSubscriptionLabel(profile) === "Free"
+                                getSubscriptionLabel(profile) === "Бесплатно"
                                   ? styles.neutralBadge
                                   : styles.inverseBadge
                               }
@@ -522,29 +558,41 @@ export default function UsersPage() {
                           </td>
                           <td data-label="Активность">
                             <div className={styles.activityGroup}>
-                              <span className={styles.outlineBadge}>C {profile.cuisines_count || 0}</span>
-                              <span className={styles.outlineBadge}>F {profile.favorites_count || 0}</span>
-                              <span className={styles.outlineBadge}>R {profile.recipes_count || 0}</span>
-                              <span className={styles.outlineBadge}>Imp {profile.imports_count || 0}</span>
-                              <span className={styles.outlineBadge}>Shop {profile.shopping_items_count || 0}</span>
-                              <span className={styles.outlineBadge}>Pantry {profile.pantry_items_count || 0}</span>
+                              {getActivityItems(profile).map((item) => (
+                                <span key={item.label} className={styles.activityBadge}>
+                                  <span>{item.label}</span>
+                                  <strong>{formatCount(item.value)}</strong>
+                                </span>
+                              ))}
                             </div>
-                            <div className={styles.microText}>
-                              анкета: {onboarding.completed ? "да" : "нет"} / списки{" "}
-                              {profile.shopping_lists_count || 0} / куплено{" "}
-                              {profile.shopping_items_checked_count || 0} / планы{" "}
-                              {profile.meal_plans_count || 0} / готовил {profile.cooked_count || 0}
+                            <div className={styles.activitySummary}>
+                              {getActivitySummaryItems(profile, onboarding.completed).map((item) => (
+                                <span key={item.label}>
+                                  <span>{item.label}</span>
+                                  <strong>{item.value}</strong>
+                                </span>
+                              ))}
                             </div>
                           </td>
                           <td data-label="Настройки">
                             <div className={styles.settingsLine}>
-                              <span>{settings.language}</span>
-                              <span>{settings.theme}</span>
-                              <span>{settings.measurement}</span>
+                              <span>
+                                <small>Язык</small>
+                                <strong>{settings.language}</strong>
+                              </span>
+                              <span>
+                                <small>Тема</small>
+                                <strong>{settings.theme}</strong>
+                              </span>
+                              <span>
+                                <small>Единицы</small>
+                                <strong>{settings.measurement}</strong>
+                              </span>
                             </div>
-                            <div className={styles.microText}>
-                              diets {settings.diets} / allergies {settings.allergies}
-                              {settings.languageMeta ? ` / ${settings.languageMeta}` : ""}
+                            <div className={styles.settingsSummary}>
+                              <span>Диеты: {settings.diets}</span>
+                              <span>Аллергии: {settings.allergies}</span>
+                              {settings.languageMeta && <span>{settings.languageMeta}</span>}
                             </div>
                           </td>
                           <td data-label="Обновлен" className={styles.mutedCell}>

@@ -57,13 +57,17 @@
 }
 
 .heroBadges,
-.activityGroup,
-.settingsLine,
 .badgeList,
 .recipeMeta {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+}
+
+.activityGroup,
+.settingsLine {
+  display: grid;
   gap: 8px;
 }
 
@@ -273,7 +277,7 @@
   border-collapse: collapse;
   font-size: 14px;
   line-height: 1.43;
-  min-width: 1020px;
+  min-width: 1120px;
   width: 100%;
 }
 
@@ -354,6 +358,67 @@
   margin-top: 4px;
 }
 
+.activityGroup {
+  grid-template-columns: repeat(3, minmax(112px, 1fr));
+}
+
+.activityBadge {
+  align-items: center;
+  background: var(--color-canvas-white);
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
+  color: var(--color-rich-black);
+  display: inline-flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 34px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.activityBadge span {
+  color: var(--color-midtone-gray);
+  font-size: 12px;
+  line-height: 1.33;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityBadge strong {
+  color: var(--color-deep-black);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+  min-width: 20px;
+  text-align: right;
+}
+
+.activitySummary,
+.settingsSummary {
+  color: var(--color-midtone-gray);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 6px 10px;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.activitySummary > span,
+.settingsSummary > span {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.activitySummary strong {
+  color: var(--color-rich-black);
+  font-weight: 500;
+}
+
 .inlineMeta {
   color: var(--color-midtone-gray);
   display: block;
@@ -363,13 +428,38 @@
   margin-top: 2px;
 }
 
+.settingsLine {
+  grid-template-columns: repeat(3, minmax(96px, 1fr));
+}
+
 .settingsLine span {
   background: var(--color-ghost-gray);
-  border-radius: 26px;
+  border: 1px solid var(--color-subtle-ash);
+  border-radius: 10px;
   color: var(--color-rich-black);
+  display: grid;
+  gap: 1px;
   font-size: 12px;
   line-height: 1.5;
-  padding: 2px 8px;
+  min-height: 42px;
+  min-width: 0;
+  padding: 5px 8px;
+}
+
+.settingsLine small {
+  color: var(--color-midtone-gray);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.settingsLine strong {
+  color: var(--color-rich-black);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .actionCell {
