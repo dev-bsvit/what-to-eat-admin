@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import puppeteer from "puppeteer";
+import { AI_API_KEY, AI_CHAT_URL, AI_MODEL } from "@/lib/ai";
 
 // Интерфейс для импортированного рецепта
 interface ImportedRecipe {
@@ -175,7 +176,7 @@ export async function POST(request: Request) {
     const missingSemanticTags = !SEMANTIC_TAGS.some((t: string) => recipe.tags.includes(t));
     const needsAiTags = missingSemanticTags;
 
-    if ((needsAiCleanup || needsAiTags) && process.env.OPENAI_API_KEY) {
+    if ((needsAiCleanup || needsAiTags) && AI_API_KEY) {
       console.log("🤖 Запуск AI доработки рецепта...");
       try {
         const aiResult = await cleanupRecipeWithAI(recipe, needsAiCleanup);
@@ -267,7 +268,7 @@ function autoClassifyTagsFromData(recipe: ImportedRecipe): string[] {
 // AI Cleanup функция
 // ============================================================================
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_URL = AI_CHAT_URL;
 
 async function cleanupRecipeWithAI(
   recipe: ImportedRecipe,
@@ -287,7 +288,7 @@ async function cleanupRecipeWithAI(
   kid_friendly: boolean;
   spicy_level: number;
 } | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = AI_API_KEY;
   if (!apiKey) return null;
 
   const hasIngredients = recipe.ingredients.length > 0;
@@ -383,7 +384,7 @@ Return format:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.1,
         max_tokens: 1200,

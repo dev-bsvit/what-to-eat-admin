@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import puppeteer from "puppeteer";
+import { AI_API_KEY, AI_MODEL, AI_RESPONSES_URL } from "@/lib/ai";
 
 export const runtime = "nodejs";
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
-const MODEL = "gpt-4o-mini";
+const OPENAI_URL = AI_RESPONSES_URL;
+const MODEL = AI_MODEL;
 
 interface ImportedRecipe {
   title: string;
@@ -254,9 +255,9 @@ async function importFromWebEndpoint(sourceUrl: string, baseUrl: string): Promis
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = AI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      return NextResponse.json({ error: "Missing OPENROUTER_API_KEY" }, { status: 500 });
     }
 
     const { url } = await request.json();

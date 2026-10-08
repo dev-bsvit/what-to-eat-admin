@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { AI_API_KEY, AI_CHAT_URL, AI_MODEL } from "@/lib/ai";
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const MODEL = "gpt-4o-mini";
+const OPENAI_URL = AI_CHAT_URL;
+const MODEL = AI_MODEL;
 
 const ALLOWED_TAGS = [
   "quick", "special occasion",
@@ -19,8 +20,8 @@ async function classifyTags(recipe: {
   prep_time: number | null;
   cook_time: number | null;
 }): Promise<string[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY not set");
+  const apiKey = AI_API_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
 
   const totalTime = (recipe.prep_time ?? 0) + (recipe.cook_time ?? 0);
 

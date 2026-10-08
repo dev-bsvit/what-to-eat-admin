@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { translateLandingToAllLanguages } from "@/lib/translate";
 import { CATALOG_RECOMMENDATION_PROMPT } from "@/lib/catalogRecommendationTags";
+import { AI_API_KEY, AI_MODEL_STRONG, AI_RESPONSES_URL } from "@/lib/ai";
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
+const OPENAI_URL = AI_RESPONSES_URL;
 
 export const dynamic = "force-dynamic";
 
@@ -97,9 +98,9 @@ const SCHEMA_DESCRIPTION = `
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = AI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      return NextResponse.json({ error: "Missing OPENROUTER_API_KEY" }, { status: 500 });
     }
 
     const body = await request.json();
@@ -167,7 +168,7 @@ ${SCHEMA_DESCRIPTION}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: AI_MODEL_STRONG,
         input: prompt,
         temperature: 0.7,
       }),

@@ -25,6 +25,7 @@ import {
   normalize,
   type MatchResult,
 } from "./stringUtils";
+import { AI_API_KEY, AI_MODEL, AI_RESPONSES_URL } from "@/lib/ai";
 
 // Supported languages for translation
 const SUPPORTED_LOCALES = ["ru", "uk", "en", "fr", "de", "it", "es", "pt"] as const;
@@ -249,13 +250,13 @@ async function processBatch(): Promise<void> {
 async function batchAILink(inputs: string[]): Promise<ModerationResult[]> {
   sessionStats.aiCalls++;
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = AI_API_KEY;
   if (!apiKey) {
     return inputs.map(() => ({
       success: false,
       action: "error" as const,
       aiUsed: true,
-      details: "Missing OPENAI_API_KEY",
+      details: "Missing OPENROUTER_API_KEY",
     }));
   }
 
@@ -288,14 +289,14 @@ ${inputs.map((input, i) => `${i + 1}. ${input}`).join("\n")}
 ]`;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch(AI_RESPONSES_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_MODEL,
         input: prompt,
         temperature: 0.1,
       }),
@@ -422,7 +423,7 @@ export async function fillProductWithAI(
 
   sessionStats.aiCalls++;
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = AI_API_KEY;
   if (!apiKey) {
     return { success: false, fieldsUpdated: 0, tokensUsed: 0 };
   }
@@ -444,14 +445,14 @@ export async function fillProductWithAI(
 Верни ТОЛЬКО валидный JSON без markdown.`;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch(AI_RESPONSES_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_MODEL,
         input: prompt,
         temperature: 0.2,
       }),

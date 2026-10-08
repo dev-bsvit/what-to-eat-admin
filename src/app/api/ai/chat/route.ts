@@ -5,14 +5,15 @@
 import { after } from "next/server";
 import { verifyUser, checkAndIncrementAiUsage, logTokenUsage, AuthError, FREE_LIMITS } from "@/lib/verifyUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { AI_API_KEY, AI_CHAT_URL, AI_EMBED_MODEL, AI_EMBED_URL, AI_MODEL } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
-const OPENAI_EMBED_URL = "https://api.openai.com/v1/embeddings";
-const CHAT_MODEL = "gpt-4o-mini";
-const EMBED_MODEL = "text-embedding-3-small";
+const OPENAI_CHAT_URL = AI_CHAT_URL;
+const OPENAI_EMBED_URL = AI_EMBED_URL;
+const CHAT_MODEL = AI_MODEL;
+const EMBED_MODEL = AI_EMBED_MODEL;
 
 // AI сам решает когда показывать рецепты и что именно искать.
 // Тег [SEARCH: ...] вырезается из отображаемого текста и используется для embedding-поиска.
@@ -339,7 +340,7 @@ interface RequestBody {
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = AI_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: "Server misconfiguration" }), { status: 500 });
   }

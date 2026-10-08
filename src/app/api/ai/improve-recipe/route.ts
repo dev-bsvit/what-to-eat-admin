@@ -7,14 +7,15 @@ import { after } from "next/server";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyUser, logTokenUsage, AuthError } from "@/lib/verifyUser";
+import { AI_API_KEY, AI_CHAT_URL, AI_EMBED_MODEL, AI_EMBED_URL, AI_MODEL } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
-const OPENAI_EMBED_URL = "https://api.openai.com/v1/embeddings";
-const CHAT_MODEL = "gpt-4o-mini";
-const EMBED_MODEL = "text-embedding-3-small";
+const OPENAI_CHAT_URL = AI_CHAT_URL;
+const OPENAI_EMBED_URL = AI_EMBED_URL;
+const CHAT_MODEL = AI_MODEL;
+const EMBED_MODEL = AI_EMBED_MODEL;
 const FREE_IMPROVE_LIMIT = 2;
 
 const LANG_NAMES: Record<string, string> = {
@@ -312,7 +313,7 @@ export async function GET() { return NextResponse.json({ ok: true }); }
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = AI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
 
     const user = await verifyUser(request);

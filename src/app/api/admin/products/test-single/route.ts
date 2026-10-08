@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { APP_LANGUAGES, translateBatch } from "@/lib/translate";
 import { normalize } from "@/lib/stringUtils";
+import { AI_API_KEY, AI_CHAT_URL, AI_MODEL } from "@/lib/ai";
 
 export const maxDuration = 120;
 
-const OPENAI_URL  = "https://api.openai.com/v1/chat/completions";
+const OPENAI_URL  = AI_CHAT_URL;
 const NVIDIA_URL  = "https://integrate.api.nvidia.com/v1/chat/completions";
 const NVIDIA_MODEL = "google/gemma-3n-e2b-it";
 const PRICE_IN  = 0.15  / 1_000_000;
@@ -91,8 +92,8 @@ async function callDeepLHybrid(
 ): Promise<{ translations: TranslationMap; inputTokens: number; outputTokens: number; timeTaken: number }> {
   const startMs = Date.now();
   const isNv = synonymsProvider === "nvidia";
-  const apiKey = isNv ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} is not set`);
+  const apiKey = isNv ? process.env.NVIDIA_API_KEY : AI_API_KEY;
+  if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENROUTER_API_KEY"} is not set`);
 
   // Step 1: DeepL — sequential calls to stay under Free API rate limits
   const names: Array<{ lang: string; name: string }> = [];
@@ -143,7 +144,7 @@ async function callDeepLHybrid(
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: isNv ? NVIDIA_MODEL : "gpt-4o-mini",
+      model: isNv ? NVIDIA_MODEL : AI_MODEL,
       messages: [{ role: "user", content: prompt }],
       temperature: isNv ? 0.2 : 0.1,
       ...(isNv ? { max_tokens: 2048, top_p: 0.7 } : {}),
@@ -246,8 +247,8 @@ export async function POST(request: Request) {
     }
 
     const isNvidia = provider === "nvidia";
-    const apiKey = isNvidia ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: `${isNvidia ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} not set` }, { status: 500 });
+    const apiKey = isNvidia ? process.env.NVIDIA_API_KEY : AI_API_KEY;
+    if (!apiKey) return NextResponse.json({ error: `${isNvidia ? "NVIDIA_API_KEY" : "OPENROUTER_API_KEY"} not set` }, { status: 500 });
 
     const latinWarning = issues.some(i => i.includes("кириллица"))
       ? "\n⚠️ EN/DE/IT/FR/ES/PT-BR ОБЯЗАТЕЛЬНО только латиница (a-z). Если не знаешь точный перевод — используй транслитерацию латиницей или описательный аналог.\n"
@@ -297,7 +298,7 @@ ${issues.length ? `Проблемы с текущими переводами: ${
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: isNvidia ? NVIDIA_MODEL : "gpt-4o-mini",
+        model: isNvidia ? NVIDIA_MODEL : AI_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: isNvidia ? 0.2 : 0.1,
         max_tokens: isNvidia ? 4096 : undefined,

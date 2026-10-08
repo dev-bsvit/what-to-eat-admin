@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { AI_API_KEY, AI_MODEL, AI_RESPONSES_URL } from "@/lib/ai";
 
 interface FillRequest {
   productIds: string[];
@@ -19,7 +20,7 @@ interface AIProductData {
   synonyms?: string[];
 }
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
+const OPENAI_URL = AI_RESPONSES_URL;
 
 function stripMarkdownCodeBlocks(content: string): string {
   let cleaned = content.trim();
@@ -36,9 +37,9 @@ function stripMarkdownCodeBlocks(content: string): string {
 
 async function fetchAIData(productName: string): Promise<AIProductData | null> {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = AI_API_KEY;
     if (!apiKey) {
-      console.error("[AI Fill] Missing OPENAI_API_KEY");
+      console.error("[AI Fill] Missing OPENROUTER_API_KEY");
       return null;
     }
 
@@ -65,7 +66,7 @@ async function fetchAIData(productName: string): Promise<AIProductData | null> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: AI_MODEL,
         input: prompt,
         temperature: 0.2,
       }),

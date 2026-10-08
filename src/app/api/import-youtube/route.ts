@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { AI_API_KEY, AI_CHAT_URL, AI_MODEL } from "@/lib/ai";
 
 export const runtime = "nodejs";
 // YouTube pages can be large — increase limit to 60 s (Vercel hobby plan max)
 export const maxDuration = 60;
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const MODEL = "gpt-4o-mini";
+const OPENAI_URL = AI_CHAT_URL;
+const MODEL = AI_MODEL;
 
 interface ImportedRecipe {
   title: string;
@@ -319,9 +320,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = AI_API_KEY;
     if (!metaOnly && !apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      return NextResponse.json({ error: "Missing OPENROUTER_API_KEY" }, { status: 500 });
     }
 
     const videoId = extractVideoId(url.trim());

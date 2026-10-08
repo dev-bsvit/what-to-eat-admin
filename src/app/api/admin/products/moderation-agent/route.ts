@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { APP_LANGUAGES } from "@/lib/translate";
 import { normalize, similarity } from "@/lib/stringUtils";
+import { AI_API_KEY, AI_MODEL, AI_RESPONSES_URL } from "@/lib/ai";
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
+const OPENAI_URL = AI_RESPONSES_URL;
 const CATEGORIES = [
   "grains",
   "meat",
@@ -646,8 +647,8 @@ function compactCandidate(c: Candidate) {
 // ── AI call ───────────────────────────────────────────────────────────────────
 
 async function askAgent(product: ProductRow, candidates: Candidate[]): Promise<AgentDecision> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+  const apiKey = AI_API_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
   const candidateNote = candidates.length === 0
     ? "Похожих продуктов не найдено."
@@ -719,7 +720,7 @@ ${candidateNote}
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model: "gpt-4o-mini", input: prompt, temperature: 0.1 }),
+    body: JSON.stringify({ model: AI_MODEL, input: prompt, temperature: 0.1 }),
   });
 
   if (!response.ok) {

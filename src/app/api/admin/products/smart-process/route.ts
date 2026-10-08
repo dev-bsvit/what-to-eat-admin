@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { APP_LANGUAGES, translateBatch } from "@/lib/translate";
 import { normalize } from "@/lib/stringUtils";
+import { AI_API_KEY, AI_CHAT_URL, AI_MODEL } from "@/lib/ai";
 
 export const maxDuration = 300;
 
-const OPENAI_URL  = "https://api.openai.com/v1/chat/completions";
+const OPENAI_URL  = AI_CHAT_URL;
 const NVIDIA_URL  = "https://integrate.api.nvidia.com/v1/chat/completions";
 const NVIDIA_MODEL = "google/gemma-3n-e2b-it";
 
@@ -347,8 +348,8 @@ async function callDeepLBatch(
   inputTokens: number; outputTokens: number;
 }> {
   const isNv = synonymsProvider === "nvidia";
-  const apiKey = isNv ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} not set`);
+  const apiKey = isNv ? process.env.NVIDIA_API_KEY : AI_API_KEY;
+  if (!apiKey) throw new Error(`${isNv ? "NVIDIA_API_KEY" : "OPENROUTER_API_KEY"} not set`);
 
   const nameMap: Record<string, string> = {};
   if (precomputedNames) {
@@ -407,7 +408,7 @@ async function callDeepLBatch(
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: isNv ? NVIDIA_MODEL : "gpt-4o-mini",
+      model: isNv ? NVIDIA_MODEL : AI_MODEL,
       messages: [{ role: "user", content: prompt }],
       temperature: isNv ? 0.2 : 0.1,
       ...(isNv ? { max_tokens: 2048, top_p: 0.7 } : {}),
@@ -467,8 +468,8 @@ type GPTResult = {
 
 async function callGPTTranslate(product: ProductRow, provider: "openai" | "nvidia" = "openai", mode = "auto"): Promise<GPTResult> {
   const isNvidia = provider === "nvidia";
-  const apiKey = isNvidia ? process.env.NVIDIA_API_KEY : process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error(`${isNvidia ? "NVIDIA_API_KEY" : "OPENAI_API_KEY"} is not set`);
+  const apiKey = isNvidia ? process.env.NVIDIA_API_KEY : AI_API_KEY;
+  if (!apiKey) throw new Error(`${isNvidia ? "NVIDIA_API_KEY" : "OPENROUTER_API_KEY"} is not set`);
 
   const fixTranslationsWarning = mode === "fix-translations"
     ? `\n⚠️ КРИТИЧЕСКИ ВАЖНО: Переводы на EN, DE, IT, FR, ES, PT-BR содержат кириллицу — это ОШИБКА. Исправь их.\nПравило: EN/DE/IT/FR/ES/PT-BR ОБЯЗАТЕЛЬНО должны использовать ТОЛЬКО латинские буквы (a-z, A-Z).\nЕсли не знаешь точный перевод — используй описательный аналог или транслитерацию латиницей. НИКОГДА не оставляй кириллицу в этих языках.\n`
@@ -525,7 +526,7 @@ ${fixTranslationsWarning}
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: isNvidia ? NVIDIA_MODEL : "gpt-4o-mini",
+      model: isNvidia ? NVIDIA_MODEL : AI_MODEL,
       messages: [{ role: "user", content: prompt }],
       temperature: isNvidia ? 0.2 : 0.1,
       max_tokens: isNvidia ? 4096 : undefined,

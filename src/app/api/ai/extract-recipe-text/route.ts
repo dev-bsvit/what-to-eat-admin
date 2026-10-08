@@ -4,13 +4,14 @@
 import { after } from "next/server";
 import { NextResponse } from "next/server";
 import { verifyUser, checkAndIncrementAiUsage, logTokenUsage, AuthError } from "@/lib/verifyUser";
+import { AI_API_KEY, AI_CHAT_URL, AI_MODEL } from "@/lib/ai";
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const MODEL = "gpt-4o-mini";
+const OPENAI_URL = AI_CHAT_URL;
+const MODEL = AI_MODEL;
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = AI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
     }

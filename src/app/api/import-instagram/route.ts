@@ -4,11 +4,12 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { AI_API_KEY, AI_MODEL, AI_RESPONSES_URL, AI_TRANSCRIBE_MODEL, AI_TRANSCRIBE_URL } from "@/lib/ai";
 
 export const runtime = "nodejs";
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
-const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
+const OPENAI_URL = AI_RESPONSES_URL;
+const TRANSCRIBE_URL = AI_TRANSCRIBE_URL;
 
 interface ImportedRecipe {
   title: string;
@@ -50,8 +51,8 @@ interface InstagramExtraction {
   owner_username?: string;
 }
 
-const MODEL = "gpt-4o-mini";
-const TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
+const MODEL = AI_MODEL;
+const TRANSCRIBE_MODEL = AI_TRANSCRIBE_MODEL;
 const META_CACHE_TTL_MS = 5 * 60 * 1000;
 const META_EXTRACT_TIMEOUT_MS = 20_000;
 const FULL_EXTRACT_TIMEOUT_MS = 120_000;
@@ -696,9 +697,9 @@ export async function POST(request: Request) {
       typeof clientCaption === "string" &&
       clientCaption.trim().length >= 20
     ) {
-      const apiKey = process.env.OPENAI_API_KEY;
+      const apiKey = AI_API_KEY;
       if (!apiKey) {
-        return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+        return NextResponse.json({ error: "Missing OPENROUTER_API_KEY" }, { status: 500 });
       }
       const captionText = clientCaption.trim();
       const imageUrl =
@@ -761,9 +762,9 @@ export async function POST(request: Request) {
       });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = AI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      return NextResponse.json({ error: "Missing OPENROUTER_API_KEY" }, { status: 500 });
     }
 
     // Тяжёлая часть (python + ffmpeg + whisper) — не больше N параллельно,

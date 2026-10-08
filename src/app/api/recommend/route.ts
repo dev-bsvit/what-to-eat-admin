@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { AI_API_KEY, AI_CHAT_URL, AI_EMBED_MODEL, AI_EMBED_URL, AI_MODEL } from "@/lib/ai";
 
 export const runtime = "nodejs";
 
@@ -8,11 +9,11 @@ export async function GET() {
   return NextResponse.json({ ok: true });
 }
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
-const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
-const OPENAI_EMBED_URL = "https://api.openai.com/v1/embeddings";
-const EMBED_MODEL = "text-embedding-3-small";
-const CHAT_MODEL = "gpt-4o-mini";
+const OPENAI_API_KEY = AI_API_KEY ?? "";
+const OPENAI_CHAT_URL = AI_CHAT_URL;
+const OPENAI_EMBED_URL = AI_EMBED_URL;
+const EMBED_MODEL = AI_EMBED_MODEL;
+const CHAT_MODEL = AI_MODEL;
 
 interface RecommendationAnswers {
   maxCookTime?: number | null;

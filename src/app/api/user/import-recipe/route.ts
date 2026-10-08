@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import * as cheerio from "cheerio";
+import { AI_API_KEY, AI_MODEL, AI_RESPONSES_URL, AI_TRANSCRIBE_MODEL, AI_TRANSCRIBE_URL } from "@/lib/ai";
 
 export const runtime = "nodejs";
 
@@ -65,10 +66,10 @@ type LinkSource = "instagram" | "tiktok" | "youtube" | "pinterest" | "web";
 // Constants
 // ============================================================================
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
-const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
-const MODEL = "gpt-4o-mini";
-const TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe";
+const OPENAI_URL = AI_RESPONSES_URL;
+const TRANSCRIBE_URL = AI_TRANSCRIBE_URL;
+const MODEL = AI_MODEL;
+const TRANSCRIBE_MODEL = AI_TRANSCRIBE_MODEL;
 
 // Free tier limits
 const FREE_IMPORTS_PER_DAY = 1;
@@ -1267,9 +1268,9 @@ function normalizeUnit(unit: string): string {
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = AI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      return NextResponse.json({ error: "Missing OPENROUTER_API_KEY" }, { status: 500 });
     }
 
     const body = await request.json();

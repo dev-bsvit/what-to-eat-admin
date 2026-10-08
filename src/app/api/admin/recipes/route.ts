@@ -21,6 +21,7 @@ import {
   translateRecipeToAllLanguages,
   type RecipeContent,
 } from "@/lib/translate";
+import { AI_API_KEY, AI_CHAT_URL, AI_EMBED_MODEL, AI_EMBED_URL, AI_MODEL } from "@/lib/ai";
 
 const isUuid = (value: string | null | undefined) => {
   if (!value) return false;
@@ -416,7 +417,7 @@ export async function POST(request: Request) {
 
 // Runs in background after save — generates embedding and lightweight tags if missing
 async function autoFillRecipe(recipeId: string) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = AI_API_KEY;
   if (!apiKey) return;
 
   const { data: recipe } = await supabaseAdmin
@@ -433,10 +434,10 @@ async function autoFillRecipe(recipeId: string) {
   if (!recipe.embedding) {
     try {
       const text = [recipe.title, recipe.description].filter(Boolean).join(" ");
-      const res = await fetch("https://api.openai.com/v1/embeddings", {
+      const res = await fetch(AI_EMBED_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: "text-embedding-3-small", input: text }),
+        body: JSON.stringify({ model: AI_EMBED_MODEL, input: text }),
         signal: AbortSignal.timeout(10_000),
       });
       if (res.ok) {
@@ -451,11 +452,11 @@ async function autoFillRecipe(recipeId: string) {
   // Generate mood_tags if missing
   if (!recipe.mood_tags?.length) {
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch(AI_CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: AI_MODEL,
           messages: [
             {
               role: "system",
@@ -495,11 +496,11 @@ Return ONLY a JSON array, e.g. ["light"]. No explanation.`,
   // Estimate budget_level (1=low, 2=medium, 3=high) if missing
   if (recipe.budget_level == null) {
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch(AI_CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: AI_MODEL,
           messages: [
             {
               role: "system",

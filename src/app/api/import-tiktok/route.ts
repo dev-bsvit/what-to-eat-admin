@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { AI_API_KEY, AI_CHAT_URL, AI_MODEL } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const MODEL = "gpt-4o-mini";
+const OPENAI_URL = AI_CHAT_URL;
+const MODEL = AI_MODEL;
 
 const LANG_NAMES: Record<string, string> = {
   ru: "Russian", uk: "Ukrainian", en: "English", de: "German",
@@ -183,8 +184,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+    const apiKey = AI_API_KEY;
+    if (!apiKey) return NextResponse.json({ error: "Missing OPENROUTER_API_KEY" }, { status: 500 });
 
     const body = await request.json();
     const { url, metaOnly = false, caption: clientCaption, thumbnail_url: clientThumbnail, language = "ru" } =

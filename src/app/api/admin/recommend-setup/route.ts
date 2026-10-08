@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { AI_API_KEY, AI_CHAT_URL, AI_EMBED_MODEL, AI_EMBED_URL, AI_MODEL } from "@/lib/ai";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
+const OPENAI_API_KEY = AI_API_KEY ?? "";
 const MOOD_TAGS = ["comfort", "light", "energizing", "festive", "quick", "cozy"];
 
 const MIGRATION_SQL = `
@@ -58,11 +59,11 @@ $$;
 `;
 
 async function classifyRecipe(recipe: { id: string; title: string; description: string | null }) {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetch(AI_CHAT_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: AI_MODEL,
       messages: [
         {
           role: "system",
@@ -95,10 +96,10 @@ Return ONLY a JSON array, e.g.: ["light"] No explanation.`,
 }
 
 async function embedBatch(texts: string[]): Promise<number[][]> {
-  const res = await fetch("https://api.openai.com/v1/embeddings", {
+  const res = await fetch(AI_EMBED_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: texts }),
+    body: JSON.stringify({ model: AI_EMBED_MODEL, input: texts }),
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(`OpenAI embeddings ${res.status}`);
@@ -131,7 +132,7 @@ export async function POST(req: NextRequest) {
 
   // --- Tag recipes ---
   if (action === "tag") {
-    if (!OPENAI_API_KEY) return NextResponse.json({ ok: false, error: "OPENAI_API_KEY not set" }, { status: 500 });
+    if (!OPENAI_API_KEY) return NextResponse.json({ ok: false, error: "OPENROUTER_API_KEY not set" }, { status: 500 });
 
     const { data: recipes, error } = await supabaseAdmin
       .from("recipes")
@@ -167,7 +168,7 @@ export async function POST(req: NextRequest) {
 
   // --- Embed recipes ---
   if (action === "embed") {
-    if (!OPENAI_API_KEY) return NextResponse.json({ ok: false, error: "OPENAI_API_KEY not set" }, { status: 500 });
+    if (!OPENAI_API_KEY) return NextResponse.json({ ok: false, error: "OPENROUTER_API_KEY not set" }, { status: 500 });
 
     const { data: recipes, error } = await supabaseAdmin
       .from("recipes")

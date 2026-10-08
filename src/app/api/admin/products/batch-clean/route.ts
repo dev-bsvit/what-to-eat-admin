@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { APP_LANGUAGES } from "@/lib/translate";
 import { normalize } from "@/lib/stringUtils";
+import { AI_API_KEY, AI_MODEL, AI_RESPONSES_URL } from "@/lib/ai";
 
 export const maxDuration = 300;
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
+const OPENAI_URL = AI_RESPONSES_URL;
 
 const CATEGORIES = [
   "grains", "meat", "dairy", "vegetables", "fruits",
@@ -152,8 +153,8 @@ async function cleanAndTranslate(product: ProductRow): Promise<{
   synonyms: string[];
   translations: Record<string, { name: string; synonyms: string[]; description: string | null; storage_tips: string | null }>;
 }> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+  const apiKey = AI_API_KEY;
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
 
   const prompt = `Ты нормализуешь и переводишь продукты для кулинарного приложения.
 
@@ -229,7 +230,7 @@ async function cleanAndTranslate(product: ProductRow): Promise<{
   const response = await fetch(OPENAI_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "gpt-4o-mini", input: prompt, temperature: 0.1 }),
+    body: JSON.stringify({ model: AI_MODEL, input: prompt, temperature: 0.1 }),
   });
 
   if (!response.ok) {

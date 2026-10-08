@@ -1,11 +1,12 @@
 import { createHash } from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { AI_API_KEY, AI_CHAT_URL, AI_EMBED_MODEL, AI_EMBED_URL, AI_MODEL } from "@/lib/ai";
 
-const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
-const OPENAI_EMBED_URL = "https://api.openai.com/v1/embeddings";
+const OPENAI_CHAT_URL = AI_CHAT_URL;
+const OPENAI_EMBED_URL = AI_EMBED_URL;
 const DEFAULT_SETTINGS_ID = "default";
-const DEFAULT_MODEL = "gpt-4o-mini";
-const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+const DEFAULT_MODEL = AI_MODEL;
+const DEFAULT_EMBEDDING_MODEL = AI_EMBED_MODEL;
 const THREADS_DEFAULT_FIELDS = [
   "id",
   "text",
@@ -196,7 +197,7 @@ function getTextFromChatResponse(payload: unknown) {
 }
 
 async function callOpenAIJson<T>(messages: Array<{ role: "system" | "user"; content: string }>): Promise<T | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = AI_API_KEY;
   if (!apiKey) return null;
 
   const response = await fetch(OPENAI_CHAT_URL, {
@@ -224,7 +225,7 @@ async function callOpenAIJson<T>(messages: Array<{ role: "system" | "user"; cont
 }
 
 export async function generateEmbedding(text: string): Promise<number[] | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = AI_API_KEY;
   if (!apiKey || !text.trim()) return null;
 
   const response = await fetch(OPENAI_EMBED_URL, {
