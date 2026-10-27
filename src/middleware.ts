@@ -23,6 +23,9 @@ function isPublicPath(pathname: string, method: string) {
   if (pathname === "/api/import-pinterest") {
     return true;
   }
+  if (pathname === "/api/import-threads") {
+    return true;
+  }
   if (pathname === "/api/recommend") {
     return true;
   }
